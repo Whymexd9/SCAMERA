@@ -170,7 +170,11 @@ void main() {
             vec2 a11 = texelFetch(GfAB, clamp(ivec2(bx + 1, by + 1), ivec2(0), lastAb), 0).rg;
             ab = mix(mix(a00, a10, fx), mix(a01, a11, fx), fy);
         }
-        tot += (c - (ab.x * c + ab.y)) * gfLcU;
+        // the local contrast of the guided filter is a linear-light difference against the radius-8 base: on the dark side of a
+        // bright edge (a window frame against the sky) the base is several times the pixel and the term took 78 - 98 % of it,
+        // a 5 - 12 px dark trench. The detail is bounded below by the pixel itself (c - q >= -c): a pixel keeps at least
+        // 1 - gfLcU of its value; texture whose base is under 2 c is unchanged.
+        tot += max(c - (ab.x * c + ab.y), -c) * gfLcU;
     }
     float ef = smoothstep(0.15, 0.40, lc);
     float md = mix(0.30, 0.0, halo);

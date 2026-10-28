@@ -102,6 +102,27 @@ def units() -> list[tuple[str, str, str]]:
             src = '\n'.join(('#define %s 1' % name) if ('#define' in l and (' ' + name + ' ') in l + ' ') else l for l in src.split('\n'))
         out.append(('why/combine.glsl (' + ' + '.join(d + ' 1' for d in defines) + ')', 'frag',
                     '#version 310 es\n#line 1\n' + expand_imports(src)))
+    # P378: the low-chroma glow round a light «Inpaint opposed» rebuilt landing on white (HL_OPPOSED, with HL_LANDING) and the
+    # map's block weights (suncore MODE 2)
+    src = combine
+    for name in ('HL_LANDING', 'HL_OPPOSED'):
+        src = '\n'.join(('#define %s 1' % name) if ('#define' in l and (' ' + name + ' ') in l + ' ') else l for l in src.split('\n'))
+    out.append(('why/combine.glsl (HL_LANDING 1 + HL_OPPOSED 1)', 'frag', '#version 310 es\n#line 1\n' + expand_imports(src)))
+    # P378: the sky term (SKY, WhySky's mask) with the landing and its opposed map - a sun at the sensor floor in a sky takes
+    # all three; every SKY block, the landing's L4 among them, is in this form
+    src = combine
+    for name in ('HL_LANDING', 'HL_OPPOSED', 'SKY'):
+        src = '\n'.join(('#define %s 1' % name) if ('#define' in l and (' ' + name + ' ') in l + ' ') else l for l in src.split('\n'))
+    out.append(('why/combine.glsl (HL_LANDING 1 + HL_OPPOSED 1 + SKY 1)', 'frag', '#version 310 es\n#line 1\n' + expand_imports(src)))
+    # P378 review (P301): the viewfinder's sky term - its cells and the pixel's own gate (utils/import_skygate.glsl) in the point
+    # tone (P314's passes) and the fused pass
+    for defines in (('SKY', 'POINT_FUSED'), ('SKY', 'POINT_FUSED', 'RAW_SOURCE')):
+        src = combine
+        for name in defines:
+            src = '\n'.join(('#define %s 1' % name) if ('#define' in l and (' ' + name + ' ') in l + ' ') else l for l in src.split('\n'))
+        out.append(('why/combine.glsl (' + ' + '.join(d + ' 1' for d in defines) + ')', 'frag', '#version 310 es\n#line 1\n' + expand_imports(src)))
+    sun = '\n'.join('#define MODE 2' if l.startswith('#define MODE ') else l for l in read(SH / 'scamhdr/suncore.glsl').split('\n'))
+    out.append(('scamhdr/suncore.glsl (MODE 2)', 'frag', '#version 310 es\n#line 1\n' + expand_imports(sun)))
     return out
 
 

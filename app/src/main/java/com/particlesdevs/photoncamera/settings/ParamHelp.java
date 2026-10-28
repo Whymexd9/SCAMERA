@@ -58,6 +58,23 @@ public final class ParamHelp {
             case FilmSim.TONE_KEY:
                 return Lang.t(c, "Крутизна кривой плёнки при проявке: плюс — плотнее, темнее и насыщеннее, больше контраста в светах; минус — светлее, мягче и бледнее. 0 — как у этой плёнки. На ч/б плёнки не действует.",
                         "The steepness of the film's curve in development: plus is denser, darker and more saturated with more contrast in the highlights; minus lighter, softer and paler. 0 is this film's. No effect on black-and-white films.");
+            // P381: the film page's «Печать» and «Формат» in the tray
+            case FilmSim.PRINT_KEY:
+                return Lang.t(c, "На чём печатается негатив: фотобумага или кинопечатная плёнка — у каждой свои краски, контраст и белый. По умолчанию — та, с которой производитель сочетает эту плёнку. Слайды и обращаемые плёнки не печатают; у ч/б негатива от бумаги зависит только зерно.",
+                        "What the negative is printed on: a photo paper or a print film, each with its own dyes, contrast and white. By default the one the maker pairs this film with. Slides and reversal films are not printed; on a black-and-white negative the paper changes only the grain.");
+            case FilmSim.FORMAT_KEY:
+                return Lang.t(c, "Размер кадра плёнки: чем меньше кадр, тем крупнее зерно, шире ореол и диффузия и мягче картинка — всё считается в микрометрах плёнки. «Выкл.» — без зерна, ореола и мягкости плёнки. По умолчанию 35 мм.",
+                        "The film's frame size: the smaller the frame, the coarser the grain, the wider the halation and the diffusion and the softer the picture, all in micrometres of film. «Off» has no grain, halation or film softness. 35 mm by default.");
+            // P380: the film's own diffusion and the DIR couplers
+            case FilmSim.DIFFUSION_KEY:
+                return Lang.t(c, "Диффузионный фильтр перед плёнкой, как на камере: часть света рассеивается вокруг ярких мест — свечение, дымка, мягче мелкие детали и ниже контраст. Размер свечения задаёт формат кадра. Действует вместе с фильтром объектива, если он тоже включён. «Нет» — без диффузии.",
+                        "A diffusion filter in front of the film, as on a camera: part of the light is scattered round bright areas - a glow, a haze, softer fine detail and lower contrast. The frame format sets the glow's size. Acts together with the lens filter when that is on too. «None» has no diffusion.");
+            case FilmSim.DIFFUSION_STRENGTH_KEY:
+                return Lang.t(c, "Плотность диффузионного фильтра, как у настоящих: 1/8, 1/4, 1/2, 1 и 2. Чем больше, тем больше света рассеивается: 0.5 — заметное свечение, 2 — сильная дымка. 0 — без диффузии.",
+                        "The diffusion filter's grade, as real ones: 1/8, 1/4, 1/2, 1 and 2. The higher, the more light is scattered: 0.5 a visible glow, 2 a strong haze. 0 has no diffusion.");
+            case FilmSim.DIR_KEY:
+                return Lang.t(c, "Межслойные эффекты проявки (DIR-компоненты): проявляясь, каждый слой плёнки тормозит соседние, и цвета разделяются сильнее. 100 % — как у этой плёнки (по умолчанию), 0 — без них: цвет мягче и бледнее. На серые тона почти не действует; на ч/б плёнки не действует.",
+                        "The interlayer effects of development (DIR couplers): as each layer develops it holds back its neighbours, separating the colours more. 100 % is this film's (the default), 0 none: softer, paler colour. Hardly acts on greys; no effect on black-and-white films.");
             case FilmSim.PRINT_M_KEY:
                 return Lang.t(c, "Пурпурный фильтр увеличителя при печати, как в фотолаборатории: минус — пурпурнее, плюс — зеленее. Для слайдов не действует.",
                         "The enlarger's magenta filter, as in a darkroom: minus more magenta, plus greener. No effect on slides.");

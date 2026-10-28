@@ -25,10 +25,10 @@ public final class ScamRgb extends Node {
      * frames clip is no sun) per block (~192 blocks on the shorter side), spread by a max-gaussian of the setting's
      * radius. A few hundred kB; WhyCombine closes it.
      */
-    private GLTexture sunBloom(GLTexture flags,Point size){
+    private GLTexture sunBloom(GLTexture flags,Point size,int shorter){
         final float[] set=WhyTone.sunBloom();
         if(set[0]<=0f)return null;
-        final int block=Math.max(1,Math.round(Math.min(size.x,size.y)/192f));
+        final int block=shareBlock(shorter);
         final Point coarse=new Point((size.x+block-1)/block,(size.y+block-1)/block);
         final GLFormat one=new GLFormat(GLFormat.DataType.FLOAT_16,1);
         GLTexture share=null,half=null,out=null;
@@ -39,7 +39,7 @@ public final class ScamRgb extends Node {
             glProg.setTexture("InputBuffer",flags);
             glProg.setVar("blockU",block);
             glProg.drawBlocks(share);
-            final float radius=set[1]*Math.min(size.x,size.y)/block;
+            final float radius=set[1]*shorter/block;
             half=new GLTexture(coarse,one,null,GL_NEAREST,GL_CLAMP_TO_EDGE);
             glProg.setDefine("MODE",1);
             glProg.useAssetProgram("scamhdr/suncore",false);
@@ -60,6 +60,118 @@ public final class ScamRgb extends Node {
             if(half!=null)half.close();
             if(out!=null)out.close();
         }
+    }
+
+    /**
+     * P349 / P378: the shorter side of the frame the sun bloom's and the opposed landing's blocks divide (~192 blocks on it) -
+     * P277: of the whole frame on a lab fragment (its whyLow height or width x the box, WhyCombine's highlight mask likewise takes
+     * the whole frame's), so a fragment's lights fill the blocks and get the radius the photo's do.
+     */
+    static int wholeShorter(LabFrame fz,int lowFactor,Point size){
+        if(fz!=null&&fz.lowWidth>0&&fz.lowHeight>0)return Math.min(fz.lowWidth,fz.lowHeight)*lowFactor;
+        return Math.min(size.x,size.y);
+    }
+
+    /** P349 / P378: the maps' block, px: ~192 blocks on the frame's shorter side ({@link #wholeShorter}). */
+    static int shareBlock(int shorter){
+        return Math.max(1,Math.round(shorter/192f));
+    }
+
+    /** P378: the opposed landing's radius, a share of the frame's shorter side (the sun bloom's default). */
+    static final float OPPOSED_RADIUS=0.033f;
+
+    /**
+     * P378 (owner, 2026-10-28: a pink / orange ring round a sun clipped at the sensor floor, «везде»: a light clipped with no
+     * ultrashort data keeps a neutral core and a neutral ramp out of it): the ring is the light's warm, low-chroma glow beside
+     * the clipped core that WhyCombine's highlight landing paints at full brightness. Where such a light is - the pixels «Inpaint
+     * opposed» rebuilds, with the clip flags or without them (cpu-single; scamhdr/suncore.glsl MODE 2) - per block, a block's
+     * weight 1 from 15 % of it rebuilt (a light a block wide or more, wherever it sits on the grid; a few clipped dots none),
+     * spread by a max-gaussian of {@link #OPPOSED_RADIUS} (MODE 1) for the landing (HL_OPPOSED: a low-saturation glow there
+     * lands on white). Null - no pass, no define - when the landing is not drawn (WhyCombine.landingDrawn) or no block has a
+     * weight (glints, LED dots: one small read-back of the blocks says so). A few hundred kB; WhyCombine closes it.
+     * P378 review: every channel blown (a G-clipped sky is no light), and per light whether its glow goes white (MODE 2 measures
+     * the glow's saturation in the render's colour, MODE 3 gates each block's light, MODE 1 carries the nearest light's gate in
+     * .g): a pale sun's aureole white, an orange lamp or a red rim keeps its colour over its whole glow - no contour where a
+     * glow pales with distance.
+     */
+    private GLTexture opposedShare(PostPipeline p,GLTexture input,GLTexture flags,ChannelClip cc,Point size,int shorter){
+        if(!WhyCombine.landingDrawn(p))return null;
+        final int block=shareBlock(shorter);
+        final Point coarse=new Point((size.x+block-1)/block,(size.y+block-1)/block);
+        final GLFormat two=new GLFormat(GLFormat.DataType.FLOAT_16,2),cells=new GLFormat(GLFormat.DataType.FLOAT_32,4);
+        GLTexture weights=null,sums=null,gates=null,half=null,out=null;
+        try{
+            weights=new GLTexture(coarse,cells,null,GL_NEAREST,GL_CLAMP_TO_EDGE);
+            glProg.setDefine("MODE",2);
+            glProg.useAssetProgram("scamhdr/suncore",false);
+            glProg.setTexture("InputBuffer",input);
+            if(flags!=null)glProg.setTexture("ClipFlags",flags);
+            glProg.setVar("clipFlagsU",flags!=null?1:0);
+            glProg.setVar("clipLoU",cc.lo);glProg.setVar("clipHiU",cc.hi);
+            glProg.setVar("toRenderU",toRender(p));
+            glProg.setVar("blockU",block);
+            glProg.drawBlocks(weights);
+            glProg.closed=true;
+            final java.nio.ByteBuffer b=java.nio.ByteBuffer.allocateDirect(coarse.x*coarse.y*16).order(java.nio.ByteOrder.nativeOrder());
+            weights.textureBuffer(cells,b);
+            b.rewind();
+            final java.nio.FloatBuffer v=b.asFloatBuffer();
+            int filled=0;
+            double glowW=0,glowS=0;
+            for(int i=0;i<coarse.x*coarse.y;i++){
+                if(v.get(4*i)>0f)filled++;
+                glowW+=v.get(4*i+3);glowS+=v.get(4*i+3)*v.get(4*i+2);
+            }
+            if(filled==0){
+                com.particlesdevs.photoncamera.util.Log.i("SCAM_PIPELINE","highlight opposed landing: no block of "+coarse.x+"x"+coarse.y+"@"+block+" filled");
+                return null;
+            }
+            final float radius=OPPOSED_RADIUS*shorter/block;
+            // each block's light by its nearest glow: along x, then along y with the gate
+            sums=new GLTexture(coarse,cells,null,GL_NEAREST,GL_CLAMP_TO_EDGE);
+            glProg.setDefine("MODE",3);
+            glProg.useAssetProgram("scamhdr/suncore",false);
+            glProg.setTexture("InputBuffer",weights);
+            glProg.setVar("dirU",1,0);glProg.setVar("radiusU",radius);glProg.setVar("finalU",0);glProg.setVar("glowFullU",0.1f*block*block);
+            glProg.drawBlocks(sums);
+            gates=new GLTexture(coarse,two,null,GL_NEAREST,GL_CLAMP_TO_EDGE);
+            glProg.setDefine("MODE",3);
+            glProg.useAssetProgram("scamhdr/suncore",false);
+            glProg.setTexture("InputBuffer",sums);
+            glProg.setVar("dirU",0,1);glProg.setVar("radiusU",radius);glProg.setVar("finalU",1);glProg.setVar("glowFullU",0.1f*block*block);
+            glProg.drawBlocks(gates);
+            half=new GLTexture(coarse,two,null,GL_NEAREST,GL_CLAMP_TO_EDGE);
+            glProg.setDefine("MODE",1);
+            glProg.useAssetProgram("scamhdr/suncore",false);
+            glProg.setTexture("InputBuffer",gates);
+            glProg.setVar("dirU",1,0);glProg.setVar("radiusU",radius);
+            glProg.drawBlocks(half);
+            out=new GLTexture(coarse,two,null,GL_LINEAR,GL_CLAMP_TO_EDGE);
+            glProg.setDefine("MODE",1);
+            glProg.useAssetProgram("scamhdr/suncore",false);
+            glProg.setTexture("InputBuffer",half);
+            glProg.setVar("dirU",0,1);glProg.setVar("radiusU",radius);
+            glProg.drawBlocks(out);
+            glProg.closed=true;
+            com.particlesdevs.photoncamera.util.Log.i("SCAM_PIPELINE","highlight opposed landing: "+filled+" of "+coarse.x+"x"+coarse.y+"@"+block
+                    +" blocks filled, radius "+radius+(flags!=null?"":" (no clip flags)")+", glow saturation "
+                    +(glowW>0?String.format(java.util.Locale.ROOT,"%.3f over %.0f px",glowS/glowW,glowW):"none"));
+            final GLTexture done=out;out=null;
+            return done;
+        }finally{
+            if(weights!=null)weights.close();
+            if(sums!=null)sums.close();
+            if(gates!=null)gates.close();
+            if(half!=null)half.close();
+            if(out!=null)out.close();
+        }
+    }
+
+    /** P378 review: camera RGB (scamrgb's input) to the render's linear sRGB - why/low's chain (WhyTone.colourMatrix x sensorToProPhoto). */
+    static float[] toRender(PostPipeline p){
+        final float[] m=new float[9];
+        com.particlesdevs.photoncamera.processing.render.Converter.multiply(WhyTone.colourMatrix(p),p.mParameters.sensorToProPhoto,m);
+        return m;
     }
 
     /**
@@ -894,7 +1006,15 @@ public final class ScamRgb extends Node {
             glProg.setVar("inverseSize",1f/size.x,1f/size.y);
             // Keep the ping-pong cursor in sync for every following postprocessing pass.
             WorkingTexture=p.getMain();glProg.drawBlocks(WorkingTexture);glProg.closed=true;
-            if(hybrid&&flagsTex!=null){p.sunBloom=sunBloom(flagsTex,size);p.sunBloomSize=p.sunBloom!=null?new Point(size):null;}
+            final int shorter=wholeShorter(p.frozen,WhyTone.lowFactor(p.mParameters),size);
+            if(hybrid&&flagsTex!=null){
+                p.sunBloom=sunBloom(flagsTex,size,shorter);p.sunBloomSize=p.sunBloom!=null?new Point(size):null;p.sunBloomBlock=shareBlock(shorter);
+            }
+            // P378: the low-chroma glow round a light «Inpaint opposed» rebuilt lands on white in WhyCombine (with the flags or without)
+            if(opposed){
+                p.opposedShare=opposedShare(p,input,flagsTex,cc,size,shorter);
+                p.opposedShareSize=p.opposedShare!=null?new Point(size):null;p.opposedShareBlock=shareBlock(shorter);
+            }
             final String chromaLog=chromaNear!=null?chromaNear.mSize.x+"x"+chromaNear.mSize.y+" block "+block:"neutral";
             // Clip band: the dashed orange/blue line where a slanted clip edge alternates between clipped-mean and
             // unclipped-sample colours (assets/shaders/scamhdr/clipband.glsl). pref_scam_hybrid_highlight_band 0..1.

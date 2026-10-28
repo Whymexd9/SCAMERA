@@ -80,6 +80,50 @@ public class FilmGatesTest {
         assertFalse(FilmGrain.addsGrain(film("kodak_portra_400", "135", 0, 1, 1, 1)));
     }
 
+    static java.util.List<String> names(java.util.List<com.particlesdevs.photoncamera.processing.opengl.nodes.Node> nodes) {
+        final java.util.List<String> out = new java.util.ArrayList<>();
+        for (com.particlesdevs.photoncamera.processing.opengl.nodes.Node n : nodes) out.add(n.Name);
+        return out;
+    }
+
+    static FilmSim.Settings diffused(String stock, String format, String diffusion, float grade, float halation, float softness, float strength) {
+        return new FilmSim.Settings(FilmSim.stock(stock), FilmSim.print("", FilmSim.stock(stock)), FilmSim.format(format), 1, halation, softness,
+                0, 0, 0, 0, 0, strength, diffusion, grade, 1f);
+    }
+
+    /**
+     * P380: the light nodes before the tone - without a film the lens filter's alone, as before; the film's diffusion (spektrafilm's
+     * order) after the lens filter and before the film's halation, with a lens filter on too; none without a diffusion or at grade 0.
+     */
+    @Test
+    public void theFilmsDiffusionSitsBetweenTheLensFilterAndTheHalation() {
+        final LensFilter.Choice bpm = new LensFilter.Choice(com.particlesdevs.photoncamera.processing.color.LensFilters.BLACK_PRO_MIST, .5f,
+                com.particlesdevs.photoncamera.processing.color.LensFilters.Tune.defaults(com.particlesdevs.photoncamera.processing.color.LensFilters.BLACK_PRO_MIST));
+        // no film: the node list of before
+        assertEquals(java.util.Collections.emptyList(), names(PostPipeline.lightNodes(LensFilter.Choice.NONE, null)));
+        assertEquals(java.util.Collections.singletonList("LensFilter"), names(PostPipeline.lightNodes(bpm, null)));
+        // a film without a diffusion: as before (P369)
+        assertEquals(java.util.Arrays.asList("LensFilter", "FilmHalation"), names(PostPipeline.lightNodes(bpm, portra(1))));
+        assertEquals(java.util.Collections.singletonList("FilmHalation"), names(PostPipeline.lightNodes(LensFilter.Choice.NONE, portra(1))));
+        // the film's diffusion
+        final String pm = com.particlesdevs.photoncamera.processing.color.LensFilters.PEARLESCENT;
+        assertEquals(java.util.Arrays.asList("LensFilter", "FilmDiffusion", "FilmHalation"),
+                names(PostPipeline.lightNodes(bpm, diffused("kodak_portra_160", "imax70", pm, 2f, 1, 1, 1))));
+        assertEquals(java.util.Arrays.asList("FilmDiffusion", "FilmHalation"),
+                names(PostPipeline.lightNodes(LensFilter.Choice.NONE, diffused("kodak_portra_160", "imax70", pm, 2f, 1, 1, 1))));
+        assertEquals("their recipe: halation and softness 0", java.util.Collections.singletonList("FilmDiffusion"),
+                names(PostPipeline.lightNodes(LensFilter.Choice.NONE, diffused("kodak_portra_160", "imax70", pm, 2f, 0, 0, 1))));
+        assertEquals("no format: the diffusion on the 36 mm frame, no halation", java.util.Collections.singletonList("FilmDiffusion"),
+                names(PostPipeline.lightNodes(LensFilter.Choice.NONE, diffused("kodak_portra_160", "off", pm, .5f, 1, 1, 1))));
+        assertEquals("grade 0: none", java.util.Collections.singletonList("FilmHalation"),
+                names(PostPipeline.lightNodes(LensFilter.Choice.NONE, diffused("kodak_portra_160", "135", pm, 0f, 1, 1, 1))));
+        assertEquals("a black-and-white stock too", java.util.Arrays.asList("FilmDiffusion", "FilmHalation"),
+                names(PostPipeline.lightNodes(LensFilter.Choice.NONE, diffused("trix400", "135", pm, .5f, 1, 1, 1))));
+        assertNull(LensFilter.film(null));
+        assertNull(LensFilter.film(portra(1)));
+        assertNotNull(LensFilter.film(diffused("kodak_portra_160", "135", pm, .5f, 1, 1, .3f)));
+    }
+
     @Test
     public void theDetailBoostIsOursNotTheFilms() {
         for (float snr : new float[]{Float.NaN, 5f, 20f, 39f, 77f, 150f, 527f, 683f}) {

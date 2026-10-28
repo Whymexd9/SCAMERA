@@ -29,8 +29,13 @@ public class ModuleCopyFragment extends ModuleConceptFragment {
         String[] keys={"evmodel","shuttermodel","isomodel","whitebalancemodel","focusmodel"};
         String[] titles={Lang.t(getContext(),"Экспокоррекция","Exposure compensation"),Lang.t(getContext(),"Выдержка","Shutter"),"ISO",Lang.t(getContext(),"Баланс белого","White balance"),Lang.t(getContext(),"Фокус","Focus")};
         for(int i=0;i<keys.length;i++){CheckBoxPreference p=new CheckBoxPreference(requireContext());p.setKey("pref_manual_"+keys[i]);p.setTitle(titles[i]);p.setPersistent(false);manual.addPreference(p);}
-        PreferenceScreen sensors=tree.findPreference("pref_sensor_config_submenu");
-        if(sensors!=null){sensors.setTitle(Lang.t(getContext(),"Настройки сенсора модуля","Module sensor settings"));
+        // P384: the main page's module cards and Camera ID rows hold no value to copy; the module's sensor settings are a page of
+        // «Сенсор по модулям» (was the empty page pref_sensor_config_submenu)
+        for(String key:new String[]{ModuleRows.GROUP,ModuleRows.IDS}){Preference group=tree.findPreference(key);if(group!=null&&group.getParent()!=null)group.getParent().removePreference(group);}
+        PreferenceGroup sensorGroup=tree.findPreference(ModuleRows.SENSOR);
+        PreferenceScreen sensors=null;
+        if(sensorGroup!=null){sensors=pm.createPreferenceScreen(requireContext());sensors.setKey("module_sensor_copy");sensorGroup.addPreference(sensors);}
+        if(sensors!=null){sensors.setTitle(getString(R.string.module_sensor_copy_title));
             java.util.List<java.lang.reflect.Field> fields=new ArrayList<>();
             for(Class<?> cls:SensorConfigRegistry.SENSOR_CONFIG_CLASSES)fields.addAll(java.util.Arrays.asList(cls.getDeclaredFields()));
             fields.sort(java.util.Comparator.comparingInt(f->SensorConfigPreferenceGenerator.rank(f.getName()))); // the sensor page's order
@@ -76,7 +81,8 @@ public class ModuleCopyFragment extends ModuleConceptFragment {
                 Runnable choose=()->{if(targets.contains(id))targets.remove(id);else targets.add(id);render();};chip.addView(mark(on?2:0,label(id),choose),new LinearLayout.LayoutParams(dp(36),dp(40)));chip.addView(text(label(id),13,on?accent:TEXT),new LinearLayout.LayoutParams(0,-2,1));chip.setOnClickListener(v->choose.run());chip.setTag("target_"+id);
                 LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,-2,1);if(index%2==1)lp.rightMargin=dp(10);line.addView(chip,lp);
             }
-            if(index==0)note(Lang.t(getContext(),"Добавьте ещё один модуль в разделе «Назначение Camera ID».","Add another module in “Camera ID assignment”."));
+            // P384: the stale «Назначение Camera ID» (that page is long gone): a copy is made in «Модули камеры» of the main page
+            if(index==0)note(Lang.t(getContext(),"Сделайте копию модуля в группе «Модули камеры» на главной странице настроек","Make a copy of a module in “Camera modules” on the settings' main page"));
         }
         actions(()->{collect(group,selected);render();},()->{Set<String> keys=new HashSet<>();collect(group,keys);selected.removeAll(keys);render();});
         if(home){

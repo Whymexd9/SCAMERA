@@ -39,6 +39,9 @@ import com.particlesdevs.photoncamera.circularbarlib.ui.AccentPalette;
 import com.particlesdevs.photoncamera.circularbarlib.ui.UiTokens;
 import com.particlesdevs.photoncamera.settings.PreferenceKeys;
 import com.particlesdevs.photoncamera.ui.settings.custompreferences.BackupPreferences;
+import com.particlesdevs.photoncamera.ui.settings.custompreferences.ModuleChipsPreference;
+import com.particlesdevs.photoncamera.ui.settings.custompreferences.ModuleRowPreference;
+import com.particlesdevs.photoncamera.ui.settings.custompreferences.ModuleSection;
 import com.particlesdevs.photoncamera.ui.settings.custompreferences.ResetPreferences;
 import com.particlesdevs.photoncamera.ui.settings.custompreferences.RestorePreference;
 import com.particlesdevs.photoncamera.ui.settings.custompreferences.TunableKeyPreference;
@@ -64,6 +67,10 @@ public final class SettingsStyle {
     public static final int FIELD = UiTokens.FIELD, SHEET = UiTokens.SHEET, INK = UiTokens.INK;
     public static final int WARN = 0xFFFFB4A8;
     public static final int OFF_TRACK = 0xFF3A3E45, OFF_THUMB = 0xFF9AA0A7;
+    /** P384: the rows of an open module card, a step lighter than the card (res: settings_card_nested). */
+    public static final int CARD_NESTED = 0xFF1F2528;
+    /** P384: the expert groups of the main page (their title carries the «для опытных» pill). */
+    static final Set<String> EXPERT_GROUPS = new HashSet<>(Arrays.asList("expert_module_ids", "expert_module_sensor"));
     public static final float DIMMED = UiTokens.DIMMED;
     /** P139: a row's description (dimmer than MUTED); titles take UiTokens.title (medium weight). */
     public static final int SUMMARY = UiTokens.SUMMARY;
@@ -101,7 +108,21 @@ public final class SettingsStyle {
     public static final class Header {
         public FrameLayout view;
         public TextView heading, subtitle;
-        public ImageView back, search, reset;
+        public ImageView back, search, reset, arrange;
+    }
+
+    /** P385: the header's «Расположение» disc (the page's order), before the reset disc. */
+    public static ImageView arrangeDisc(Context c, Header h, Runnable onArrange) {
+        LinearLayout row = (LinearLayout) h.view.getChildAt(0);
+        h.arrange = disc(c, R.drawable.settings_ic_arrange);
+        h.arrange.setContentDescription(Lang.t(c, "Расположение настроек страницы", "This page's layout"));
+        h.arrange.setTag("settings_page_arrange");
+        h.arrange.setFocusable(true);
+        h.arrange.setOnClickListener(v -> onArrange.run());
+        LinearLayout.LayoutParams ap = new LinearLayout.LayoutParams(dp(c, 44), dp(c, 44));
+        ap.setMarginStart(dp(c, 6));
+        row.addView(h.arrange, h.reset != null ? row.indexOfChild(h.reset) : row.getChildCount(), ap);
+        return h.arrange;
     }
 
     /**
@@ -214,58 +235,86 @@ public final class SettingsStyle {
     public static void apply(PreferenceGroup group) {
         for (int i = 0; i < group.getPreferenceCount(); i++) {
             Preference p = group.getPreference(i);
-            if (p instanceof PreferenceCategory) {
-                p.setLayoutResource(R.layout.preference_category_layout);
-                apply((PreferenceGroup) p);
-                continue;
-            }
-            p.setSingleLineTitle(false);
-            // P144: the own tone curve draws its own card (graph and shortcuts); P162: so does the crop picture
-            if (p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.ToneCurvePreference
-                    || p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.RawCropPreference
-                    || page(p)) {
-                p.setIconSpaceReserved(false);
-                continue;
-            }
-            if (p.getKey() != null && TILES.contains(p.getKey())) {
-                p.setLayoutResource(R.layout.preference_tile);
-                continue;
-            }
-            if (p instanceof PreferenceGroup) {
-                p.setLayoutResource(R.layout.preference_card);
-                p.setWidgetLayoutResource(R.layout.settings_widget_chevron);
-                apply((PreferenceGroup) p);
-                defaultIcon(p, R.drawable.settings_ic_gear);
-                continue;
-            }
-            if (com.particlesdevs.photoncamera.processing.color.FilmLut.STRENGTH_KEY.equals(p.getKey())) {
-                p.setLayoutResource(R.layout.preference_seekbar_inline);   // SIMPLE_UI §4c: «Сила» on the LUT page
-            } else if (p instanceof UniversalSeekBarPreference || p instanceof TunableSeekBarPreference) {
-                p.setLayoutResource(R.layout.preference_seekbar);
-                defaultIcon(p, R.drawable.settings_ic_sliders);
-            } else if (p instanceof TwoStatePreference) {
-                p.setLayoutResource(R.layout.preference_card);
-                defaultIcon(p, R.drawable.settings_ic_toggle);
-            } else if (p instanceof ListPreference) {
-                p.setLayoutResource(R.layout.preference_card);
-                p.setWidgetLayoutResource(R.layout.settings_widget_chevron);
-                defaultIcon(p, R.drawable.settings_ic_list);
-            } else if (p instanceof EditTextPreference) {
-                p.setLayoutResource(R.layout.preference_card);
-                p.setWidgetLayoutResource(R.layout.settings_widget_chevron);
-                defaultIcon(p, R.drawable.settings_ic_edit);
-            } else if (p instanceof DialogPreference || p instanceof TunableKeyPreference) {
-                p.setLayoutResource(R.layout.preference_card);
-            } else if (p.getClass() == Preference.class && !p.isSelectable() && p.getIcon() == null) {
-                p.setLayoutResource(R.layout.preference_info);
-            } else {
-                p.setLayoutResource(R.layout.preference_card);
-                if (p.getFragment() != null || p.getIntent() != null || (p.getKey() != null && NAVIGATION.contains(p.getKey())))
-                    p.setWidgetLayoutResource(R.layout.settings_widget_chevron);
-                defaultIcon(p, p.isSelectable() ? R.drawable.settings_ic_gear : R.drawable.settings_ic_info);
-            }
-            p.setIconSpaceReserved(true);
+            style(p, group);
+            if (p instanceof PreferenceGroup) apply((PreferenceGroup) p);
         }
+    }
+
+    /**
+     * The row layout of {@code p} in {@code parent} (P384: also for a row built later, before it is added - the list fixes a row's
+     * layout when it first sees it): a module card's header, the expert groups' titles, a module's sensor caption, the gap under
+     * the module cards, the module chips, and inside an open module card the nested row.
+     */
+    public static void style(Preference p, @androidx.annotation.Nullable PreferenceGroup parent) {
+        if (p instanceof ModuleSection) {
+            p.setLayoutResource(R.layout.preference_module_card);
+            p.setSingleLineTitle(false);
+            return;
+        }
+        if (p instanceof ModuleChipsPreference) {
+            p.setLayoutResource(R.layout.preference_module_chips);
+            return;
+        }
+        if (p instanceof PreferenceCategory) {
+            String key = p.getKey();
+            if (key != null && EXPERT_GROUPS.contains(key)) p.setLayoutResource(R.layout.preference_category_expert);
+            else if (key != null && key.startsWith(com.particlesdevs.photoncamera.settings.SensorConfigPreferenceGenerator.CATEGORY_PREFIX))
+                p.setLayoutResource(R.layout.preference_subcategory_layout);
+            else if ("module_actions".equals(key)) p.setLayoutResource(R.layout.preference_spacer);
+            else p.setLayoutResource(R.layout.preference_category_layout);
+            return;
+        }
+        rowLayout(p);
+        if (parent instanceof ModuleSection && p.getLayoutResource() == R.layout.preference_card)
+            p.setLayoutResource(R.layout.preference_card_nested);
+    }
+
+    private static void rowLayout(Preference p) {
+        p.setSingleLineTitle(false);
+        // P144: the own tone curve draws its own card (graph and shortcuts); P162: so does the crop picture
+        if (p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.ToneCurvePreference
+                || p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.RawCropPreference
+                || page(p)) {
+            p.setIconSpaceReserved(false);
+            return;
+        }
+        if (p.getKey() != null && TILES.contains(p.getKey())) {
+            p.setLayoutResource(R.layout.preference_tile);
+            return;
+        }
+        if (p instanceof PreferenceGroup) {
+            p.setLayoutResource(R.layout.preference_card);
+            p.setWidgetLayoutResource(R.layout.settings_widget_chevron);
+            defaultIcon(p, R.drawable.settings_ic_gear);
+            return;
+        }
+        if (com.particlesdevs.photoncamera.processing.color.FilmLut.STRENGTH_KEY.equals(p.getKey())) {
+            p.setLayoutResource(R.layout.preference_seekbar_inline);   // SIMPLE_UI §4c: «Сила» on the LUT page
+        } else if (p instanceof UniversalSeekBarPreference || p instanceof TunableSeekBarPreference) {
+            p.setLayoutResource(R.layout.preference_seekbar);
+            defaultIcon(p, R.drawable.settings_ic_sliders);
+        } else if (p instanceof TwoStatePreference) {
+            p.setLayoutResource(R.layout.preference_card);
+            defaultIcon(p, R.drawable.settings_ic_toggle);
+        } else if (p instanceof ListPreference) {
+            p.setLayoutResource(R.layout.preference_card);
+            p.setWidgetLayoutResource(R.layout.settings_widget_chevron);
+            defaultIcon(p, R.drawable.settings_ic_list);
+        } else if (p instanceof EditTextPreference) {
+            p.setLayoutResource(R.layout.preference_card);
+            p.setWidgetLayoutResource(R.layout.settings_widget_chevron);
+            defaultIcon(p, R.drawable.settings_ic_edit);
+        } else if (p instanceof DialogPreference || p instanceof TunableKeyPreference || p instanceof ModuleRowPreference) {
+            p.setLayoutResource(R.layout.preference_card);
+        } else if (p.getClass() == Preference.class && !p.isSelectable() && p.getIcon() == null) {
+            p.setLayoutResource(R.layout.preference_info);
+        } else {
+            p.setLayoutResource(R.layout.preference_card);
+            if (p.getFragment() != null || p.getIntent() != null || (p.getKey() != null && NAVIGATION.contains(p.getKey())))
+                p.setWidgetLayoutResource(R.layout.settings_widget_chevron);
+            defaultIcon(p, p.isSelectable() ? R.drawable.settings_ic_gear : R.drawable.settings_ic_info);
+        }
+        p.setIconSpaceReserved(true);
     }
 
     /**
@@ -274,6 +323,7 @@ public final class SettingsStyle {
      */
     public static boolean standalone(@androidx.annotation.Nullable Preference p) {
         if (p == null) return true;
+        if (p instanceof ModuleChipsPreference) return true;   // P384: the module chips sit on the page, not in a card
         if (p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.ToneCurvePreference
                 || p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.RawCropPreference) return true;
         if (p.getKey() != null && TILES.contains(p.getKey())) return true;
@@ -324,22 +374,44 @@ public final class SettingsStyle {
         return valueWidth > share;
     }
 
+    /** P384: the alpha a bound row rests at (a disabled one, a dimmed module row), for SettingsCardDecoration's fades. */
+    public static float restingAlpha(@androidx.annotation.Nullable Preference p) {
+        if (p == null || p instanceof PreferenceCategory) return 1f;
+        if (p instanceof ModuleRowPreference && ((ModuleRowPreference) p).dimmed()) return .55f;
+        return p.isEnabled() ? 1f : DIMMED;
+    }
+
+    /** P384: a row whose action loses something - the two resets, a module's sensor reset, deleting a copy: warning colours. */
+    static boolean warn(Preference p) {
+        String key = p.getKey();
+        return "pref_reset_preferences_key".equals(key) || (key != null && key.startsWith("pref_reset_sensor_config_settings"))
+                || (p instanceof ModuleRowPreference && ((ModuleRowPreference) p).warn());
+    }
+
     public static void bind(PreferenceViewHolder holder, Preference p) {
         View row = holder.itemView;
         Context c = row.getContext();
         int accent = accent(c);
-        float alpha = p.isEnabled() ? 1f : DIMMED;
         String key = p.getKey();
-        row.setAlpha(alpha);
+        // P384: the preference this view shows (SettingsCardDecoration reads it, also while the row fades out of the list)
+        row.setTag(R.id.settings_bound_preference, p);
+        row.setAlpha(restingAlpha(p));
         if (p instanceof PreferenceCategory) {
             // a category is never "enabled" (PreferenceCategory.isEnabled is false): its label is not a dimmed row
             row.setAlpha(1f);
             TextView title = (TextView) holder.findViewById(android.R.id.title);
-            if (title != null) title.setTextColor(accent);
+            // P384: a module's sensor caption stays quiet (its layout's muted colour)
+            if (title != null && p.getLayoutResource() != R.layout.preference_subcategory_layout) title.setTextColor(accent);
+            TextView pill = (TextView) holder.findViewById(R.id.settings_expert_pill);
+            if (pill != null) {
+                pill.setTextColor(accent);
+                pill.setBackground(shape(c, tint(accent, .12f), 0, 999));
+            }
             return;
         }
+        if (p instanceof ModuleSection) return;   // P384: the card header binds its badge and chevron itself
         ImageView icon = (ImageView) holder.findViewById(android.R.id.icon);
-        boolean warn = "pref_reset_preferences_key".equals(key) || "pref_reset_sensor_config_settings".equals(key);
+        boolean warn = warn(p);
         // P136: the row icons are the multi-tone glyphs of tools/make_ui_icons.py (light body, accent details from the theme):
         // drawn as they are; only the reset rows tint theirs in the warning colour
         if (icon != null && !(p instanceof TunableKeyPreference)) {
@@ -348,6 +420,10 @@ public final class SettingsStyle {
         TextView title = (TextView) holder.findViewById(android.R.id.title);
         if (title != null && warn) title.setTextColor(WARN);
         else if (title != null && action(p)) title.setTextColor(accent);
+        else if (title != null) title.setTextColor(TEXT);   // P384: a recycled view that showed a warning or an action row
+        // P384: a camera key's name breaks after its dots («vivo.control.forceSensorMo / de» broke inside a word); shown only
+        if (title != null && p instanceof TunableKeyPreference && p.getTitle() != null)
+            title.setText(p.getTitle().toString().replace(".", ".\u200B"));
         // P214g: «↻» - the camera session reads it when it is built (SessionKeys: the module's session type, OIS, vendor keys,
         // 16:9, live RAW ...): a change takes a new session, the camera restarts with it
         // SIMPLE_UI §4: as the concept, a row with its own restart pill says it in words («Камера перезапустится») under the
@@ -386,6 +462,7 @@ public final class SettingsStyle {
                 String s = summary.getText().toString(), v = shown.toString();
                 if (s.equals(v)) summary.setVisibility(View.GONE);
                 else if (s.startsWith(v + ". ")) summary.setText(s.substring(v.length() + 2));
+                else if (s.startsWith(v + "\n")) summary.setText(s.substring(v.length() + 1));   // P384: "%s\n…" summaries
             }
         }
         View widget = holder.findViewById(androidx.preference.R.id.switchWidget);
@@ -423,6 +500,7 @@ public final class SettingsStyle {
 
     static CharSequence valueOf(Preference p) {
         if (p instanceof RestorePreference) return null;
+        if (p instanceof ModuleRowPreference) return ((ModuleRowPreference) p).value();
         // SIMPLE_UI §4: «Плёночный LUT» shows the chosen look on the right (the concept's .rv)
         try {
             if ("output_settings_screen".equals(p.getKey())) return com.particlesdevs.photoncamera.settings.FormatChoice.current().shortLabel();

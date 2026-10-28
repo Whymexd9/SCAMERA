@@ -216,8 +216,7 @@ public final class ScamHybridBurst implements ScamTransport {
         keepOneLayout(usable);
         // P35: the stream's stored block (or a declared Quad / Tetra sensor mode) without the detector; a binned burst is another
         // grid and is always measured.
-        final int knownBlock = p.rawBinning > 1 ? 0 : com.particlesdevs.photoncamera.processing.MosaicBlockStore.blockForShot(
-                declaredSensorModeBlock());
+        final int knownBlock = knownBlock(p);
         if (knownBlock > 0) {
             mosaicBlock = knownBlock;
             Log.i("SCAM_HDR", "hybrid stream colour block: " + knownBlock + " (stored for "
@@ -608,6 +607,14 @@ public final class ScamHybridBurst implements ScamTransport {
     @Override public boolean rgbHalfTransport() { return rgbHalf; }
     @Override public boolean hybrid() { return true; }
     @Override public String burstTuning() { return tuningOverride(); }
+
+    /**
+     * P35: the colour block of the shot's stream without the detector - its stored block, else its module's declared Quad / Tetra
+     * mode; 0 when unknown (the merge measures it) or for a binned burst (another grid). P386: the black floor reads the same.
+     */
+    public static int knownBlock(Parameters p) {
+        return p.rawBinning > 1 ? 0 : com.particlesdevs.photoncamera.processing.MosaicBlockStore.blockForShot(declaredSensorModeBlock());
+    }
 
     /**
      * P35: block of the active module's declared ISZ sensor mode (5 Quad -> 2, 7 Tetra -> 4), else 0. Only a fallback: a shot

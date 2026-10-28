@@ -1,0 +1,16 @@
+Film formats and the grain's final blur (spektrafilm OFX)
+=========================================================
+
+Source: spektrafilm OFX by Aedan Diez - https://github.com/chaert-s/spektrafilm-ofx
+Version: commit 86476afc5b077de77e2278e3658d1ba9309892a1 (2026-07-06).
+Licence: the source repository is GPL-3.0 (its LICENSE.txt). SCAMERA is GPL-3.0 as well. Nothing from the official OFX
+binaries, their bundled non-GPL resources or exported LUTs is used.
+
+Used by SCAMERA (2026-10-28, P380), as numbers in its own Java code (processing/color/FilmSim.java):
+- the long edges of the film formats 65 mm (52.48 mm) and IMAX 70 (70.41 mm), from filmFormatMm (src/SpektraFilmPlugin.cpp);
+- the grain's final blur scale (format / 35 mm)^0.62 on its 11.8 um blur, from grainFinalBlurFormatScale and
+  effectiveGrainFinalBlurUm (src/SpektraFilmPlugin.cpp).
+
+The colour model, the DIR couplers' amount and the camera diffusion filters are ports of spektrafilm by Andrea Volpato
+(https://github.com/andreavolpato/spektrafilm, GPL-3.0 code: src/spektrafilm/model/couplers.py and diffusion.py at commit
+3bb2c2d); its film and paper profiles are CC BY-SA 4.0 (LICENSE-spektrafilm.txt and CHANGELOG.txt in this folder).

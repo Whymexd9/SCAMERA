@@ -19,7 +19,8 @@ public final class ModuleSensorSettings {
             case "ISP Surface":return Lang.t("Поток ISP","ISP stream");
             case "RAW Frame Rate":return Lang.t("Частота кадров RAW","RAW frame rate");
             case "RAW Viewfinder Size":return Lang.t("Разрешение видоискателя RAW","RAW viewfinder size");
-            case "Sensor Mode":return Lang.t("Режим сенсора (SensorModeTable)","Sensor mode (SensorModeTable)");
+            // P384: the plain name; «SensorModeTable» only in the row's description
+            case "Sensor Mode":return Lang.t("Режим сенсора","Sensor mode");
             default:return title;
         }
     }
@@ -37,6 +38,28 @@ public final class ModuleSensorSettings {
         }
     }
     public static String prefix(String slot){return "pref_sensorconfig_"+slot+"_";}
+    /**
+     * P384: the module has sensor values of its own (the dot on its chip in «Сенсор по модулям»): a sensor row stored off its
+     * default, a switched-on camera key, or a picked row of the camera's sensor mode table. The rows' defaults («Авто» -1, 0 - what
+     * a list row writes when it is first shown) and an empty key list count as none.
+     */
+    public static boolean customised(Map<String,?> all,String slot){
+        String prefix=prefix(slot);
+        for(Map.Entry<String,?> e:all.entrySet()){
+            if(!e.getKey().startsWith(prefix)||e.getValue()==null)continue;
+            String field=e.getKey().substring(prefix.length()),value=String.valueOf(e.getValue()).trim();
+            if("tunablekeys".equals(field)){   // a key without "enabled":false is on (keys saved before P122 have no flag)
+                java.util.regex.Matcher key=java.util.regex.Pattern.compile("\\{[^{}]*\\}").matcher(value);
+                while(key.find())if(!key.group().replace(" ","").contains("\"enabled\":false"))return true;
+                continue;
+            }
+            double number;
+            try{number=Double.parseDouble(value);}catch(NumberFormatException notNumber){if(!value.isEmpty())return true;continue;}
+            if(ModuleDuplicates.SENSOR_MODE_SUFFIX.equals(field)){if(number>=0)return true;continue;}
+            if(number!=0&&number!=-1)return true;
+        }
+        return false;
+    }
     public static String physical(String slot){return SensorConfigPreferenceGenerator.toPhysicalId(ModuleRegistry.camera(slot));}
     public static synchronized void ensure(String slot){
         if(!ModuleRegistry.slots().contains(slot))return;

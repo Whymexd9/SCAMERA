@@ -58,8 +58,9 @@ public final class FilmChain {
         if (key.equals(cachedKey)) return cached;
         final String body = key.substring(PREFIX.length());
         final String[] parts = body.split("\\|", -1);
-        // lutKey's seven fields, the simulation's strength, the chosen LUT and its strength
-        final FilmSim.Settings sim = parts.length >= 10 ? FilmSim.Settings.forLut(body, FilmSim.number(parts[7], 1f)) : null;
+        // lutKey's eight fields (P380: the couplers' amount the 8th), the simulation's strength, the chosen LUT and its strength
+        final FilmSim.Settings sim = parts.length >= 11
+                ? FilmSim.Settings.forLut(String.join("|", java.util.Arrays.copyOf(parts, 8)), FilmSim.number(parts[8], 1f)) : null;
         FilmLut out = null;
         if (sim != null) {
             final FilmLut film = FilmSim.lut(sim, FilmLooks.SIZE);

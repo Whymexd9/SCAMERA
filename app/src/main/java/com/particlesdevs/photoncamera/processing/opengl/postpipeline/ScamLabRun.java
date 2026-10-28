@@ -525,6 +525,8 @@ public final class ScamLabRun {
             p.hybridFinalSize = new Point(Math.max(2, (int) Math.round(ow * s)) & ~1, Math.max(2, (int) Math.round(oh * s)) & ~1);
         }
         p.labWholeSize = full != null ? new Point(full) : null; // P306: a 200 MP shot's fragment takes its 200 MP denoise
+        // P378 review: the fragment's place in the whole shot (WhySky: the whole frame's sky cells there)
+        if (shot.width > 0 && shot.height > 0) p.labOrigin = new android.graphics.PointF(crop[0] / (float) shot.width, crop[1] / (float) shot.height);
         p.rawSize = new Point(ow, oh);
         p.sensorPix = new android.graphics.Rect(0, 0, ow, oh);
         if (p.gainMap != null && p.mapSize != null)

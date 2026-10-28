@@ -36,8 +36,6 @@
     <string name="restore_summary_json">Load settings from an XML file in Download/SCAMERA/XML, or pick a file</string>
     <string name="empty_file_name_error">File name cannot be an empty string</string>
     <string name="af_mode">Auto Focus Mode</string>
-    <string name="sensor_configurations">Sensor settings per module</string>
-    <string name="sensor_configurations_summary">RAW levels, stabilization, session and vendor keys of each module</string>
     <string name="this_device">Your Device - %1$s</string>
     <string name="mode_unlimited">Unlimited</string>
     <string name="mode_rawvideo">RAW Video</string>

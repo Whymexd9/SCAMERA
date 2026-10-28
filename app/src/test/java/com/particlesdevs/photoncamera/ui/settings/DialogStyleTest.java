@@ -273,6 +273,12 @@ public class DialogStyleTest {
             }
         }
         assertTrue(String.join("\n", found), found.isEmpty());
-        assertTrue("the converted dialogs (" + built + ")", built >= 22);
+        // P384: the Camera ID list and its typed-id dialog (ModuleLensFragment, 2 of the 22) are one bottom sheet now, the app's
+        // styled sheet (CameraIdSheet); the module pages' other dialogs moved to ModuleActions, which adds the FULLRES retry
+        assertTrue("the converted dialogs (" + built + ")", built >= 21);
+        String sheet = new String(Files.readAllBytes(new File(src, "com/particlesdevs/photoncamera/ui/settings/CameraIdSheet.java").toPath()),
+                StandardCharsets.UTF_8);
+        assertTrue("the Camera ID sheet is the app's sheet", sheet.contains("SettingsStyle.sheet(") && sheet.contains("SettingsStyle.sheetBody("));
+        assertFalse("no dialog of its own", sheet.contains("new BottomSheetDialog(") || builder.matcher(sheet).find());
     }
 }

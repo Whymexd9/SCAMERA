@@ -46,6 +46,12 @@ public final class WhyTone {
          * passed on from node to node is deleted; WhyCombine must not bind it).
          */
         boolean inputReleased;
+        /**
+         * P378: the sky mask of the sky term (WhySky, RG16F at whyLow size, its longer side kept at ~2048 px, linear filter: r the
+         * sky, g the clear sky) and its decision; both null without a sky (no SKY define anywhere: the tone before P378).
+         */
+        GLTexture sky;
+        WhySkyMask.Mask skyMask;
 
         void closeTextures() {
             if (low != null) low.close();
@@ -54,7 +60,8 @@ public final class WhyTone {
             if (fused != null) fused.close();
             if (detailRef != null) detailRef.close();
             if (lumaS != null) lumaS.close();
-            low = lowDn = mid = fused = detailRef = lumaS = null;
+            if (sky != null) sky.close();
+            low = lowDn = mid = fused = detailRef = lumaS = sky = null;
         }
     }
 
@@ -181,6 +188,55 @@ public final class WhyTone {
         return new float[]{value("fusion_guided_lo", 0.8f), value("fusion_guided_hi", 1.6f)};
     }
 
+    /**
+     * P378 (owner, 2026-10-28: the sky like the reference app's, «при этом чтобы в остальных сценариях ничего не сломалось»; «Нет,
+     * только небо»): the sky term's master strength 0 .. 1 (0 = off: no mask, no define, the tone before P378 bit for bit). It
+     * scales every term: the clouds' neutrality, the sky's level and top (not in a backlit scene), the clouds' modelling, the
+     * landing's glow off in the clear sky.
+     */
+    static float sky() {
+        return Math.max(0f, Math.min(1f, value("sky", 1f)));
+    }
+
+    /**
+     * P378 (L2, L3): the sky's own tone - the gain of its level (scene light before OKLab; it fades out over the clouds' tops,
+     * WhySkyMask.TOP_FROM .. TOP_TO), its macro contrast as a share of «Контраст» (P378 review: a fixed 1.0 in its place made the
+     * term brighten the sky at «Контраст» 0.8 and lower it x0.73 at 1.5; 0.91 is the 1.0 of the default 1.1) and the room of the
+     * shoulders above white x this (the no-Bento ceiling and roll-off). Tuned on tools/check_why_sky.py's overcast sky against the
+     * transfer of the owner's flats to the reference app (its sky x0.86 of ours in linear output up to the 80th percentile, x0.95
+     * at the 91st, x1 - 1.05 at the top; local contrast 1.3x in the sky, 1.8x in the tops): gain 0.94, macro x0.91 - at a ceiling
+     * 1.2 (the landing on: the flats' own levels) x0.82 .. 0.90 up to the 90th percentile, x0.97 at the top, contrast 1.5x / 2.0x;
+     * at 2.5 (no landing) x0.85 .. 0.87, x0.93, 1.2x / 1.6x.
+     */
+    static float[] skyTone() {
+        return new float[]{Math.max(0.5f, Math.min(1.5f, value("sky_gain", 0.94f))), Math.max(0.5f, Math.min(1.5f, value("sky_macro", 0.91f))),
+                Math.max(1f, Math.min(8f, value("sky_top", 2.0f)))};
+    }
+
+    /**
+     * P378 review (C1: the blue gaps between the clouds went x1.06 in chroma under the term, where the reference app's are x0.87 of
+     * ours - L* 68.0 / C* 22.8 against 71.8 / 26.4 on the owner's flats): the share of the sky vibrance («vibrance_sky») the sky's
+     * clear blue keeps under the mask (why/combine.glsl skyMU.w; tools/check_why_sky.py gates the gaps on that target: 1 gave x1.05,
+     * 0.25 x0.92, 0.05 x0.87). The ground's blue keeps it all.
+     */
+    static final float SKY_VIBRANCE = 0.05f;
+
+    /**
+     * P378 (L4): how much of the clear sky's landing follows the pixel's own share of the ceiling instead of the blurred one (1:
+     * all - at a low ceiling the clouds' local contrast 2.2x / 2.9x, far above the reference's 1.3x / 1.8x; 0.2: 1.5x / 2.0x).
+     */
+    static final float SKY_GLOW = 0.2f;
+
+    /**
+     * Window halo (owner's window burst, 2026-10-28: a glow inside the glass along every frame bar, the bars darker): the band
+     * contrast of the guide's log light against its coarsest pyramid level (EV) over which the WHY fusion goes from the Laplacian
+     * pyramid to the guided filter's blend (why/lpyr edgeMixU x, y), and the light floor (x AE) under which the deep shadows count
+     * as one level (z: no share on their noise); hi <= lo: off, the pyramid as before.
+     */
+    static float[] edgeShare() {
+        return new float[]{value("fusion_edge_lo", 0.3f), value("fusion_edge_hi", 1.0f), Math.max(1e-4f, value("fusion_edge_floor", 0.0078125f))};
+    }
+
     /** P341: the vibrance of the light tones (why/combine.glsl vibHlU; 0 = off). */
     static float vibranceHl() {
         return Math.max(0f, value("vibrance_hl", 1.0f));
@@ -189,6 +245,20 @@ public final class WhyTone {
     /** P291: the rise of the fusion's monotonic envelope per ln of the light (why/gf.glsl monoU; 0 = the kernel's fusion). */
     static float fusionMono() {
         return Math.max(0f, value("fusion_mono", 0.04f));
+    }
+
+    /**
+     * Window burst (2026-10-28, a room 7 EV under the window rendered black): the bright layer's weight floor in deep shadows, in
+     * sigma under the fusion's centre (import why_fusion deepFloorU; 0 = off) - far under the centre every layer's weight was about
+     * equal and a deep shadow took the four layers' average (x1.47 of the bright layer's x2.61).
+     */
+    static float deepFloor() {
+        return Math.max(0f, value("deep_floor", 2f));
+    }
+
+    /** Window burst: why/combine MACRO_TOE - the macro contrast below its pivot as a power, no black offset (scam_dev macro_toe 0: off). */
+    static boolean macroToe() {
+        return value("macro_toe", 1f) >= 0.5f;
     }
 
     static float[] headroomTone() {

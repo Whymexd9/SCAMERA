@@ -75,21 +75,54 @@ public class DeviceDefaultsTest {
         for (SharedPreferences p : new SharedPreferences[]{main, module}) assertEquals("raw10", p.getString("pref_raw_stream_format", ""));
         assertFalse(main.getBoolean("pref_camera_package_spoof_enabled", true));
         assertEquals("0.8", main.getString("pref_scam_hybrid_why_ccm_sat", ""));
-        assertEquals(7, main.getInt("device_defaults_version", 0));
+        assertEquals(DeviceDefaults.VERSION, main.getInt("device_defaults_version", 0));
         main.edit().putString("pref_raw_stream_format", "auto").commit();
         DeviceDefaults.applyOnce(context, main);
         assertEquals("the user's later choice stays", "auto", main.getString("pref_raw_stream_format", ""));
         meta.edit().clear().commit();
     }
 
-    /** P365: v7 is the X7 Ultra's only: a Find X8 Ultra on v6 gets nothing (its RAW10 came with v2). */
-    @Test public void updateFromVersionSixLeavesTheX8UltraAlone() {
+    /**
+     * P388 (owner, 2026-10-28: «у оппо x8 ultra по дефолту на всех модулях должен быть Raw10»): a Find X8 Ultra on v6 or v7 gets
+     * RAW10 again in the main settings and in every module profile, once (a later choice of the user stays); v7 was the X7 Ultra's
+     * only (P365) and gives the X8 Ultra nothing of its own.
+     */
+    @Test public void updateFromVersionSixOrSevenPutsRaw10OnEveryModuleOfTheX8Ultra() {
         ShadowBuild.setManufacturer("OPPO");
         ShadowBuild.setModel("PKJ110");
-        SharedPreferences main = prefs("defaults_x8u_v6");
-        main.edit().putInt("device_defaults_version", 6).putString("pref_raw_stream_format", "auto").commit();
-        DeviceDefaults.applyOnce(RuntimeEnvironment.getApplication(), main);
-        assertEquals("auto", main.getString("pref_raw_stream_format", ""));
+        Context context = RuntimeEnvironment.getApplication();
+        SharedPreferences meta = prefs("module_profiles_meta");
+        meta.edit().putBoolean("exists_back1", true).putBoolean("exists_back4", true).commit();
+        SharedPreferences back1 = prefs("module_profile_v2_back1"), back4 = prefs("module_profile_v2_back4");
+        back1.edit().putString("pref_raw_stream_format", "auto").commit();
+        back4.edit().putString("pref_raw_stream_format", "auto").commit();
+        for (int from : new int[]{6, 7}) {
+            SharedPreferences main = prefs("defaults_x8u_v" + from);
+            main.edit().putInt("device_defaults_version", from).putString("pref_raw_stream_format", "auto")
+                    .putBoolean("pref_camera_package_spoof_enabled", false).commit();
+            DeviceDefaults.applyOnce(context, main);
+            for (SharedPreferences p : new SharedPreferences[]{main, back1, back4}) assertEquals("raw10", p.getString("pref_raw_stream_format", ""));
+            assertFalse("the X7 Ultra's spoof is not the X8 Ultra's", main.getBoolean("pref_camera_package_spoof_enabled", true));
+            assertEquals(8, main.getInt("device_defaults_version", 0));
+            main.edit().putString("pref_raw_stream_format", "auto").commit();
+            DeviceDefaults.applyOnce(context, main);
+            assertEquals("the user's later choice stays", "auto", main.getString("pref_raw_stream_format", ""));
+        }
+        meta.edit().clear().commit();
+    }
+
+    /** P388: where nothing is stored, the RAW stream's format is RAW10 on the Find X8 / X7 Ultra, «auto» elsewhere. */
+    @Test public void theRawStreamDefaultIsRaw10OnTheOppoUltras() {
+        ShadowBuild.setManufacturer("OPPO");
+        ShadowBuild.setModel("PKJ110");
+        assertEquals("raw10", DeviceDefaults.rawStreamDefault());
+        ShadowBuild.setModel("PHY110");
+        assertEquals("raw10", DeviceDefaults.rawStreamDefault());
+        ShadowBuild.setModel("CPH2581");
+        assertEquals("auto", DeviceDefaults.rawStreamDefault());
+        ShadowBuild.setManufacturer("vivo");
+        ShadowBuild.setModel("PKJ110");
+        assertEquals("auto", DeviceDefaults.rawStreamDefault());
     }
 
     /** P365: the X7 Ultra's runtime rules - a RAW reader of 8 (the reference app's there), the light ISP stream; none elsewhere. */

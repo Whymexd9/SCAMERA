@@ -170,4 +170,84 @@ public class ParametersBlackFloorTest {
         assertEquals(10, p.levelBits);
         assertEquals(1023, p.whiteLevel);
     }
+
+    /**
+     * P386: the daylight scene of the owner's 2.4x tele shot (vivo X200 Ultra camera 5, 2026-10-28 15:38, ISO 100), scaled 1/4: a
+     * sky (G 350, R 146, B 240 DN), a sunlit brick wall (G 45, R 19, B 31) and below it trees - 64 px tiles of deep shade (each
+     * colour cell either a dark gap, G 6 / R 2 / B 4, or a lit twig, G 30 / R 12 / B 20) next to tiles of open shade (G 24, R 10,
+     * B 16). GRBG, the colour block {@code block} (2: Quad, each colour a 2x2 square of a 4x4 cell), the shot's read and shot
+     * noise (0.133 + 0.0678 x DN^2 of 10 bits), {@code pedestal} added (0: the RAW without it).
+     */
+    private static ByteBuffer daylight(int block, int pedestal, long seed) {
+        final int w = 1024, h = 768, cell = 2 * block;
+        ByteBuffer b = ByteBuffer.allocateDirect(w * h * 2).order(ByteOrder.nativeOrder());
+        ShortBuffer s = b.asShortBuffer();
+        Random r = new Random(seed);
+        final double[][] gap = new double[w / cell][h / cell];
+        for (int cy = 0; cy < h / cell; cy++) for (int cx = 0; cx < w / cell; cx++) gap[cx][cy] = r.nextDouble();
+        for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) {
+            // GRBG at the colour block: G top-left, R top-right, B bottom-left, G bottom-right
+            final int phase = ((y / block) & 1) * 2 + ((x / block) & 1);
+            final int colour = phase == 1 ? 0 : phase == 2 ? 2 : 1;
+            final double[] rgb;
+            if (y < 200) rgb = new double[]{146, 350, 240};
+            else if (y < 500) rgb = new double[]{19, 45, 31};
+            else if (((x / 64) + (y / 64)) % 2 == 0)
+                rgb = gap[x / cell][y / cell] < 0.5 ? new double[]{2, 6, 4} : new double[]{12, 30, 20};
+            else rgb = new double[]{10, 24, 16};
+            final double signal = rgb[colour];
+            final long v = Math.round(pedestal + signal + Math.sqrt(0.133 + 0.0678 * signal) * r.nextGaussian());
+            s.put(y * w + x, (short) Math.max(0, Math.min(1023, v)));
+        }
+        return b;
+    }
+
+    @Test public void quadStreamWithoutItsPedestalInDaylightDropsTheBlackToItsDarkestSamples() throws Exception {
+        // P386: read as plain Bayer every channel of the Quad stream was green; a third of its blocks held a sample below 16 (the
+        // deep shade), the rest's floor was the open shade's green, ~24 DN - the shot's «data floor (24.0625)» - and every
+        // channel lost 24 DN: the photo teal. Each colour's own sites, P315's proof of the lost pedestal and its darkest samples
+        // (its block means still hold the twigs' light: ~6 DN of red) give the true black, ~0. The old code gave 23.7 here.
+        Parameters p = parameters();
+        p.refineBlackLevel(daylight(2, 0, 21), 1024, 768, 2);
+        for (float v : p.blackLevel) assertTrue("black " + v, v < 3f);
+        assertTrue(p.levelSources(), p.levelSources().contains("without its pedestal"));
+    }
+
+    @Test public void bayerStreamWithoutItsPedestalInDaylightDropsTheBlackToItsDarkestSamples() throws Exception {
+        // the same daylight on a plain Bayer stream: a quarter of the blocks below 16, P114's padding rule took the floor of the
+        // rest (the wall's red: 18.8 DN)
+        Parameters p = parameters();
+        p.refineBlackLevel(daylight(1, 0, 22), 1024, 768);
+        for (float v : p.blackLevel) assertTrue("black " + v, v < 3f);
+    }
+
+    @Test public void daylightWithItsPedestalKeepsIt() throws Exception {
+        // the same scenes with the 64 DN pedestal: nothing proves it lost, the darkest blocks sit on it
+        for (int block : new int[]{1, 2}) {
+            Parameters p = parameters();
+            p.refineBlackLevel(daylight(block, 64, 23 + block), 1024, 768, block);
+            for (float v : p.blackLevel) assertEquals("block " + block, 64f, v, 0f);
+            assertFalse(p.levelSources(), p.levelSources().contains("without its pedestal"));
+        }
+    }
+
+    @Test public void singleNoisySamplesAloneNeverDropTheBlack() throws Exception {
+        // P386 takes P315's proof (non-zero samples below black / 4 in >= 2 % of the blocks) only with the darkest block means
+        // below half the black: the OPPO night of noisyDarkFrameKeepsTheDriftCorrection (sigma 14 DN around 60) holds such samples
+        // in ~5 % of its blocks, its block means stay near 60, and the black stays P114's floor of the blocks without them
+        final int w = 1024, h = 768;
+        ByteBuffer b = ByteBuffer.allocateDirect(w * h * 2).order(ByteOrder.nativeOrder());
+        ShortBuffer s = b.asShortBuffer();
+        Random r = new Random(11);
+        for (int i = 0; i < w * h; i++) s.put(i, (short) Math.max(0, (int) Math.round(60 + 14 * r.nextGaussian())));
+        final Parameters.BlockScan scan = Parameters.BlockScan.of(b.duplicate().order(ByteOrder.nativeOrder()).asShortBuffer(), w,
+                w / 64, h / 64, 16f, true);
+        final int blocks = 4 * (w / 64) * (h / 64);
+        assertTrue("P315's proof alone would call it lost: " + scan.hits + " of " + blocks, scan.hits >= 0.02f * blocks);
+        assertTrue("and P114's would not", scan.padding <= blocks / 2);
+        Parameters p = parameters();
+        p.refineBlackLevel(b, w, h);
+        for (float v : p.blackLevel) assertTrue("black " + v, v > 52f && v < 62f);
+        assertFalse(p.levelSources(), p.levelSources().contains("without its pedestal"));
+    }
 }

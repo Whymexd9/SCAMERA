@@ -57,6 +57,7 @@ public final class DevKeys {
             "hybrid_la_threads", "hybrid_la_stream", "hybrid_la_scam", "hybrid_rgb_half", "worker_gpu_normal_priority",
             "isp_preview_off_always", "hybrid_isp_ccm", "hybrid_clip_flags", "dng_colour_jpeg",
             "dng_white_spec", // P370 (A1): the scene light and calibration weight of the shot's Parameters
+            "pedestal_memory", // P386: the black of the shot's Parameters (the lab replays it as measured at the shot)
             "hybrid_sharp_select", // P331: picks the frames of the saved burst at the shot
             // P306: no native Tetra merge is a night shot any more, nothing reads its night point
             "hybrid_mosaic_tetra_night_kernel_scale", "hybrid_mosaic_tetra_night_edge_scale", "hybrid_mosaic_tetra_night_flat_scale")));
@@ -188,6 +189,11 @@ public final class DevKeys {
         // kept on the screen while the shot's series is taken
         k.add(s(vf, "vf_fused", false, Lang.t("RAW-видоискатель: тон Why за один проход прямо из RAW-текстуры (без промежуточного кадра, сразу на экран, если нет фильтра и фокус-пикинга), две RAW-текстуры по очереди (выкл — прежние проходы P314)",
                 "RAW viewfinder: the Why tone in one pass straight from the RAW texture (no intermediate frame, straight to the screen without a lens filter or focus peaking), two RAW textures in turn (off: the passes of P314)")));
+        // P383: the RAW viewfinder's frames drawn against their own exposure; a per-frame trace for the phone's numbers
+        k.add(s(vf, "vf_ae_scene", true, Lang.t("RAW-видоискатель: каждый кадр по его собственной выдержке и ISO — шаг автоэкспозиции камеры не виден, плавно меняется только сцена (выкл — как до P383, для сравнения)",
+                "RAW viewfinder: each frame drawn by its own exposure time and ISO - a step of the camera's auto exposure does not show, only the scene eases (off: as before P383, for an A/B)")));
+        k.add(s(vf, "vf_ae_trace", false, Lang.t("RAW-видоискатель: 5 с после включения в журнал каждый кадр — выдержка, ISO, уровень кадра, усиление (для отладки плавности)",
+                "RAW viewfinder: for 5 s after it is switched on, every frame to the log - exposure, ISO, the frame's level, the gain (to debug smoothness)")));
         k.add(s(vf, "vf_series_hold", true, Lang.t("RAW-видоискатель: пока снимается серия, на экране последний RAW-кадр (до 2 с), без вспышки вида ISP (выкл — через 0.3 с показывается поток ISP)",
                 "RAW viewfinder: while the series is taken the last RAW frame stays on the screen (up to 2 s), no flash of the ISP look (off: the ISP stream shows after 0.3 s)")));
         // P212h (A6 = M11): the FULLRES viewfinder predicts the photo
@@ -315,12 +321,25 @@ public final class DevKeys {
         k.add(n(post, "hybrid_why_sat_light_warm_hi", "0.25", Lang.t("Тон с запасом Bento: цветной свет: тёплые оттенки, полное исключение", "Tone with Bento headroom: coloured light - warm hues fully left out")));
         k.add(n(post, "hybrid_why_fusion_guided_lo", "0.8", Lang.t("Тон: света выше белого через guided filter вместо пирамиды (без ореолов у тёмных предметов), начало (яркость x AE); нижняя = верхней — выкл.", "Tone: light above white through the guided filter instead of the pyramid (no halos round dark objects), start (luminance x AE); lo = hi: off")));
         k.add(n(post, "hybrid_why_fusion_guided_hi", "1.6", Lang.t("Тон: света через guided filter, полностью (яркость x AE)", "Tone: light through the guided filter, fully (luminance x AE)")));
+        k.add(n(post, "hybrid_why_fusion_edge_lo", "0.3", Lang.t("Тон: у резких границ (рама окна) guided filter вместо пирамиды (без ореола вдоль рамы), начало: отличие света пикселя от грубого уровня, EV; нижняя = верхней — выкл.", "Tone: at strong edges (a window frame) the guided filter instead of the pyramid (no glow along the frame), start: the pixel's light against the coarsest level, EV; lo = hi: off")));
+        k.add(n(post, "hybrid_why_fusion_edge_hi", "1.0", Lang.t("Тон: у резких границ guided filter полностью (EV)", "Tone: at strong edges the guided filter fully (EV)")));
+        k.add(n(post, "hybrid_why_fusion_edge_floor", "0.0078125", Lang.t("Тон: порог света (яркость x AE), ниже которого глубокие тени считаются одним уровнем (без доли на их шуме)", "Tone: the light floor (luminance x AE) under which the deep shadows count as one level (no share on their noise)")));
         k.add(n(post, "hybrid_why_sun_bloom", "1.0", Lang.t("Тон: ореол вокруг полностью клипнутого ядра (солнце на закате), 0 — выкл.", "Tone: glow round a fully clipped core (a setting sun), 0 = off")));
         k.add(n(post, "hybrid_why_sun_bloom_radius", "0.033", Lang.t("Тон: радиус ореола солнца, доля короткой стороны кадра", "Tone: radius of the sun glow, share of the frame's shorter side")));
         k.add(n(post, "hybrid_why_vibrance_hl", "1.0", Lang.t("Тон: насыщенность светлых тонов (небо на закате), яркость не меняется; 0 — выкл.", "Tone: vibrance of the light tones (a sunset sky), lightness kept; 0 = off")));
+        // P378: the WHY tone's sky term (WhySky / WhySkyMask; why/combine.glsl SKY)
+        k.add(n(post, "hybrid_why_sky", "1.0", Lang.t("Тон: небо (облака нейтральные, небо ниже и объёмнее, без белой пелены на облаках; в контровом свете яркость неба не меняется), сила; 0 — выкл., как раньше",
+                "Tone: the sky (neutral clouds, a lower and more modelled sky, no white veil on the clouds; a backlit sky keeps its brightness), strength; 0 = off, as before")));
+        k.add(n(post, "hybrid_why_sky_gain", "0.94", Lang.t("Тон, небо: множитель света неба (не в контровом свете)", "Tone, sky: gain of the sky's light (not in a backlit scene)")));
+        k.add(n(post, "hybrid_why_sky_macro", "0.91", Lang.t("Тон, небо: контраст полутонов в небе, доля от «Контраста»", "Tone, sky: midtone contrast in the sky, a share of “Contrast”")));
+        k.add(n(post, "hybrid_why_sky_top", "2.0", Lang.t("Тон, небо: запас плеча над белым в небе, x (без Bento)", "Tone, sky: room of the shoulder above white in the sky, x (without Bento)")));
         k.add(n(post, "hybrid_why_sat_light_level_lo", "0.25", Lang.t("Тон с запасом Bento: цветной свет: уровень света (x AE), с которого начинаются веса ядра", "Tone with Bento headroom: coloured light - light level (x AE) where the kernel's weights start")));
         k.add(n(post, "hybrid_why_sat_light_level_hi", "0.6", Lang.t("Тон с запасом Bento: цветной свет: уровень света полных весов ядра", "Tone with Bento headroom: coloured light - light level of the full kernel weights")));
         k.add(n(post, "hybrid_why_fusion_mono", "0.04", Lang.t("Тон: подъём слияния к монотонной огибающей (нет тёмного кольца у лампы)", "Tone: fusion lifted to its monotonic envelope (no dark ring round a lamp)")));
+        k.add(n(post, "hybrid_why_deep_floor", "2.0", Lang.t("Тон: глубокие тени берут яркий слой слияния (порог в сигмах под центром; комната под окном не уходит в чёрный); 0 — выкл.",
+                "Tone: deep shadows take the fusion's bright layer (threshold in sigmas under the centre; a room under a window is not crushed to black); 0 = off")));
+        k.add(n(post, "hybrid_why_macro_toe", "1", Lang.t("Тон: контраст ниже середины степенью, без сдвига чёрного (тени не обрезаются в чёрный); 0 — прямая, как раньше",
+                "Tone: contrast below the middle as a power, no black offset (shadows are not clipped to black); 0 = the line, as before")));
         k.add(n(post, "hybrid_why_hr_knee", "0.5", Lang.t("Тон, света Bento выше 4x: колено плеча (x верх)", "Tone, Bento highlights above 4x: shoulder knee (x top)")));
         k.add(n(post, "hybrid_why_hr_room", "0.4", Lang.t("Тон, света Bento выше 4x: запас плеча (x верх)", "Tone, Bento highlights above 4x: shoulder room (x top)")));
         k.add(n(post, "hybrid_why_hr_detail", "0.35", Lang.t("Тон, света Bento выше 4x: деталь светов", "Tone, Bento highlights above 4x: highlight detail")));
@@ -415,6 +434,9 @@ public final class DevKeys {
                 "The worker's result (the RGB and the clip flags) is read in place from its memory (memfd), without a copy into fresh buffers (up to 1 GB). Off: copied, as before P371")));
         k.add(s(post, "black_scan_bulk", true, Lang.t("Уровень чёрного по данным кадра: строки выборки копируются целиком (те же отсчёты, ~20 мс быстрее). Выкл — чтение по отсчёту, как до P371",
                 "The black level from the frame's data: the sampled rows copied whole (the same samples, ~20 ms faster). Off: a read per sample, as before P371")));
+        // P386: a stream proven without its black pedestal gives its floor to its frames without deep shade (PedestalMemory)
+        k.add(s(post, "pedestal_memory", true, Lang.t("Уровень чёрного по данным кадра: поток, пришедший без чёрного пьедестала (так показал кадр с глубокой тенью или RAW-видоискатель), отдаёт свой чёрный кадрам без глубокой тени (небо, фасад на солнце) до перезапуска приложения. Выкл — каждый кадр сам по себе, как до P386",
+                "The black level from the frame's data: a stream that came without its black pedestal (shown by a frame with deep shade or the RAW viewfinder) gives its black to frames without deep shade (the sky, a sunlit facade) until the app restarts. Off: each frame on its own, as before P386")));
         k.add(s(post, "thermal_async", true, Lang.t("Температурный статус после склейки запрашивается в фоне (вызов системы не задерживает обработку). Выкл — на потоке обработки, как до P371",
                 "The thermal status after the merge is read in the background (the system call does not hold the processing). Off: on the processing thread, as before P371")));
         // P242: the merge worker's GPU priority (A/B, WorkerSpawn.environment)

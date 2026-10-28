@@ -22,6 +22,9 @@ import java.util.Map;
  * sRGB with spektrafilm's output gamut compression, baked into a 3D LUT over the print's (slide's) densities by its own code.
  * Matches spektrafilm's output (spatial and stochastic effects off) within 0.003 of the encoded sRGB on 13 film / paper /
  * exposure / filter cases (FilmSpectralTest).
+ * P380 (owner, 2026-10-28: the pair with Unspektrawesome's SPEKTRA, whose recipe had the couplers at 0): the DIR couplers' amount
+ * as spektrafilm's dir_couplers.amount (couplers.py: the couplers matrix times the amount, the curves before the couplers
+ * computed with that matrix) - 1 (100 %) its default and ours before, bit for bit; 0 the curves as measured, no inhibition.
  */
 public final class FilmSpectral {
     private FilmSpectral() {}
@@ -127,8 +130,10 @@ public final class FilmSpectral {
         final boolean positive;
         final double[] m, tc, le, dc, cd, bd, dir, dcl;
         final int tcSize;
-        /** The curves above their minimum, before the couplers, their maxima. */
-        final double[] dcN = new double[N_LE * 3], dc0 = new double[N_LE * 3], dmaxN = new double[3];
+        /** The curves above their minimum, before the couplers (at the amount 1), their maxima. */
+        final double[] dcN = new double[N_LE * 3], dc0, dmaxN = new double[3];
+        /** P380: the curves before the couplers at other amounts (the amount's bits -> the curves). */
+        private final Map<Long, double[]> dcAt = new HashMap<>();
         @Nullable final Scan scan;
 
         Film(String id) throws IOException {
@@ -152,19 +157,42 @@ public final class FilmSpectral {
                 for (int i = 0; i < N_LE; i++) hi = Math.max(hi, dcN[i * 3 + c] = dc[i * 3 + c] - lo);
                 dmaxN[c] = hi;
             }
-            // compute_density_curves_before_dir_couplers
+            dc0 = curvesBefore(1.0);
+        }
+
+        /**
+         * compute_density_curves_before_dir_couplers with the couplers matrix times {@code couplers} (couplers.py: the amount
+         * scales the matrix before the curves are corrected). Above about 150 % the log exposure before the couplers stops rising on
+         * some stocks (the inversion is not single-valued): np.interp of such an xp is spektrafilm's answer, our bisection (xp[lo] <=
+         * x < xp[hi] kept) is spektrafilm-ofx's (makeDirCorrectedDensityCurves, interpLinearDensityCurve) - FilmSpectralTest checks
+         * 0 .. 150 % against spektrafilm.
+         */
+        private double[] curvesBefore(double couplers) {
+            final double[] out = new double[N_LE * 3];
             final double[] le0 = new double[N_LE], col = new double[N_LE];
             for (int c = 0; c < 3; c++) {
                 for (int i = 0; i < N_LE; i++) {
                     double amount = 0;
-                    for (int k = 0; k < 3; k++) amount += (positive ? dmaxN[k] - dcN[i * 3 + k] : dcN[i * 3 + k]) * dir[k * 3 + c];
+                    for (int k = 0; k < 3; k++) amount += (positive ? dmaxN[k] - dcN[i * 3 + k] : dcN[i * 3 + k]) * (dir[k * 3 + c] * couplers);
                     le0[i] = le[i] - amount;
                     col[i] = positive ? -dcN[i * 3 + c] : dcN[i * 3 + c];
                 }
                 for (int i = 0; i < N_LE; i++) {
                     final double v = interp(le[i], le0, col, 1, 0);
-                    dc0[i * 3 + c] = positive ? -v : v;
+                    out[i * 3 + c] = positive ? -v : v;
                 }
+            }
+            return out;
+        }
+
+        /** P380: the curves before the couplers at the amount {@code couplers} (1: the ones built with the film). */
+        double[] curvesAt(double couplers) {
+            if (couplers == 1.0) return dc0;
+            final long key = Double.doubleToLongBits(couplers);
+            synchronized (dcAt) {
+                double[] v = dcAt.get(key);
+                if (v == null) dcAt.put(key, v = curvesBefore(couplers));
+                return v;
             }
         }
 
@@ -179,14 +207,20 @@ public final class FilmSpectral {
             for (int c = 0; c < 3; c++) out[c] *= s;
         }
 
-        /** develop(): the curves (contrast {@code gamma}) and the DIR couplers. */
+        /** develop(): the curves (contrast {@code gamma}) and the DIR couplers at their default amount (1). */
         void develop(double[] logRaw, double gamma, double[] out) {
+            develop(logRaw, gamma, 1.0, out);
+        }
+
+        /** develop() with the couplers matrix times {@code couplers} (P380: spektrafilm's dir_couplers.amount). */
+        void develop(double[] logRaw, double gamma, double couplers, double[] out) {
             final double[] d = new double[3];
             for (int c = 0; c < 3; c++) d[c] = interp(logRaw[c] * gamma, le, dcN, 3, c);
+            final double[] before = curvesAt(couplers);
             for (int c = 0; c < 3; c++) {
                 double corr = 0;
-                for (int k = 0; k < 3; k++) corr += (positive ? dmaxN[k] - d[k] : d[k]) * dir[k * 3 + c];
-                out[c] = interp((logRaw[c] - corr) * gamma, le, dc0, 3, c);
+                for (int k = 0; k < 3; k++) corr += (positive ? dmaxN[k] - d[k] : d[k]) * (dir[k * 3 + c] * couplers);
+                out[c] = interp((logRaw[c] - corr) * gamma, le, before, 3, c);
             }
         }
 
@@ -332,19 +366,23 @@ public final class FilmSpectral {
         final Film film;
         @Nullable final Paper paper;
         final double ev, printExposure, gamma, factor;
+        /** P380: the DIR couplers' amount (1 spektrafilm's default). */
+        final double couplers;
         final double[] light;
 
         /**
          * @param ev film exposure (stops), @param printExposure the enlarger's exposure (linear), @param mShift / yShift the
-         * magenta / yellow filters over the neutral (Kodak CC), @param gamma the film's contrast (density_curve_gamma).
+         * magenta / yellow filters over the neutral (Kodak CC), @param gamma the film's contrast (density_curve_gamma),
+         * @param couplers the DIR couplers' amount (P380; 1 the default).
          */
-        Engine(Film film, @Nullable Paper paper, double ev, double printExposure, double mShift, double yShift, double gamma)
-                throws IOException {
+        Engine(Film film, @Nullable Paper paper, double ev, double printExposure, double mShift, double yShift, double gamma,
+               double couplers) throws IOException {
             this.film = film;
             this.paper = film.positive ? null : paper;
             this.ev = ev;
             this.printExposure = printExposure;
             this.gamma = gamma;
+            this.couplers = couplers;
             if (this.paper == null) {
                 light = null;
                 factor = 1;
@@ -395,7 +433,7 @@ public final class FilmSpectral {
             film.raw(r, g, b, raw);
             final double k = Math.pow(2, ev);
             for (int c = 0; c < 3; c++) lr[c] = Math.log10(Math.max(raw[c] * k, 0) + 1e-10);
-            film.develop(lr, gamma, d);
+            film.develop(lr, gamma, couplers, d);
         }
 
         /** The grain's density sigma per layer for a 1 um pixel at densities {@code d}. */
@@ -423,9 +461,15 @@ public final class FilmSpectral {
     /** An engine for a film id and a paper id (null paper: a slide is scanned; a negative without one: Portra Endura). */
     public static Engine engine(String filmId, @Nullable String paperId, double ev, double printEv, double mShift, double yShift,
                                 double gamma) throws IOException {
+        return engine(filmId, paperId, ev, printEv, mShift, yShift, gamma, 1.0);
+    }
+
+    /** P380: {@link #engine} with the DIR couplers' amount {@code couplers} (0 .. 2; 1 spektrafilm's default). */
+    public static Engine engine(String filmId, @Nullable String paperId, double ev, double printEv, double mShift, double yShift,
+                                double gamma, double couplers) throws IOException {
         final Film f = film(filmId);
         final Paper p = f.positive ? null : paper(paperId != null && indexOf(PAPERS, paperId) >= 0 ? paperId : "kodak_portra_endura");
-        return new Engine(f, p, ev, Math.pow(2, printEv), mShift, yShift, gamma);
+        return new Engine(f, p, ev, Math.pow(2, printEv), mShift, yShift, gamma, couplers);
     }
 
     // ───── helpers

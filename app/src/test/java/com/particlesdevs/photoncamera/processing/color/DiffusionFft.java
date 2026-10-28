@@ -144,10 +144,15 @@ public final class DiffusionFft {
      */
     @Nullable
     public static Plan plan(@Nullable String id, float strength, LensFilters.Tune tune, int w, int h, double longPx) {
+        return plan(id, DiffusionModel.scatter(id, strength), tune, w, h, longPx, DiffusionModel.FRAME_UM);
+    }
+
+    /** P380: the plan of filter {@code id} deflecting {@code p}, its PSF on a frame {@code frameUm} long (the film's diffusion). */
+    @Nullable
+    public static Plan plan(@Nullable String id, double p, LensFilters.Tune tune, int w, int h, double longPx, double frameUm) {
         final DiffusionModel.Family f = DiffusionModel.family(id);
-        final double p = DiffusionModel.scatter(id, strength);
-        if (f == null || p <= 0 || w < 2 || h < 2) return null;
-        final DiffusionModel.Shape s = DiffusionModel.shape(f, tune, longPx);
+        if (f == null || !(p > 0) || w < 2 || h < 2) return null;
+        final DiffusionModel.Shape s = DiffusionModel.shape(f, tune, longPx, frameUm);
         // the components and their per-channel weights (the PSF sums to 1 per channel)
         final java.util.List<double[]> comps = new java.util.ArrayList<>(); // {lambda, w_r, w_g, w_b}
         for (int k = 0; k < s.core[0].length; k++) comps.add(new double[]{s.core[0][k], s.wc * s.core[1][k], s.wc * s.core[1][k], s.wc * s.core[1][k]});
@@ -327,10 +332,15 @@ public final class DiffusionFft {
      * image), normalised per channel, the image reflect-padded, one FFT; out = (1 - p) E + p (K * E).
      */
     public static void reference(float[] rgb, int w, int h, @Nullable String id, float strength, LensFilters.Tune tune, double longPx) {
+        reference(rgb, w, h, id, DiffusionModel.scatter(id, strength), tune, longPx, DiffusionModel.FRAME_UM);
+    }
+
+    /** P380: the reference's convolution of filter {@code id} deflecting {@code p}, its PSF on a frame {@code frameUm} long. */
+    public static void reference(float[] rgb, int w, int h, @Nullable String id, double p, LensFilters.Tune tune, double longPx,
+                                 double frameUm) {
         final DiffusionModel.Family f = DiffusionModel.family(id);
-        final double p = DiffusionModel.scatter(id, strength);
-        if (f == null || p <= 0) return;
-        final DiffusionModel.Shape s = DiffusionModel.shape(f, tune, longPx);
+        if (f == null || !(p > 0)) return;
+        final DiffusionModel.Shape s = DiffusionModel.shape(f, tune, longPx, frameUm);
         double lmax = 0;
         for (double l : s.bloom[0]) lmax = Math.max(lmax, l);
         int r = (int) Math.ceil(Math.max(8 * lmax, 5));

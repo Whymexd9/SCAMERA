@@ -242,6 +242,12 @@ public class ScamLabFragmentTest {
         film.put(FilmSim.STRENGTH_KEY, "0");
         assertEquals(Collections.singletonMap(FilmSim.STRENGTH_KEY, "100"), ScamLabFragment.forced(FilmSim.GRAIN_KEY, film, tree));
         assertTrue(ScamLabFragment.forced(FilmSim.STRENGTH_KEY, film, tree).isEmpty());
+        // P380 review: the diffusion's grade on a shot without a film diffusion: Pro-Mist (pearl) on both sides, not two equal pictures
+        film.put(FilmSim.STRENGTH_KEY, "100");
+        assertEquals(Collections.singletonMap(FilmSim.DIFFUSION_KEY, com.particlesdevs.photoncamera.processing.color.LensFilters.PEARLESCENT),
+                ScamLabFragment.forced(FilmSim.DIFFUSION_STRENGTH_KEY, film, tree));
+        film.put(FilmSim.DIFFUSION_KEY, com.particlesdevs.photoncamera.processing.color.LensFilters.CINEBLOOM);
+        assertTrue(ScamLabFragment.forced(FilmSim.DIFFUSION_STRENGTH_KEY, film, tree).isEmpty());
     }
 
     @Test public void aLensFiltersTuneIsOnItsPage() {

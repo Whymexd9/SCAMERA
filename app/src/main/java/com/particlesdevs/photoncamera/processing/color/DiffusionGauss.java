@@ -63,10 +63,19 @@ public final class DiffusionGauss {
      */
     @Nullable
     public static Plan plan(@Nullable String id, float strength, LensFilters.Tune tune, int w, int h, double longPx) {
+        return plan(id, DiffusionModel.scatter(id, strength), tune, w, h, longPx, DiffusionModel.FRAME_UM);
+    }
+
+    /**
+     * P380: the plan of filter {@code id} deflecting the share {@code p}, its PSF on a frame {@code frameUm} micrometres long that
+     * is {@code longPx} pixels of this image - the film's diffusion (FilmSim.Settings.diffusionP on the format's frame,
+     * LensFilter.film); the lens filter's overload passes its strength's share and DiffusionModel.FRAME_UM, as before.
+     */
+    @Nullable
+    public static Plan plan(@Nullable String id, double p, LensFilters.Tune tune, int w, int h, double longPx, double frameUm) {
         final DiffusionModel.Family f = DiffusionModel.family(id);
-        final double p = DiffusionModel.scatter(id, strength);
-        if (f == null || p <= 0 || w < 2 || h < 2) return null;
-        final DiffusionModel.Shape s = DiffusionModel.shape(f, tune, longPx);
+        if (f == null || !(p > 0) || w < 2 || h < 2) return null;
+        final DiffusionModel.Shape s = DiffusionModel.shape(f, tune, longPx, frameUm);
         final List<double[]> comps = new ArrayList<>(); // {lambda, w_r, w_g, w_b}
         for (int k = 0; k < s.core[0].length; k++) comps.add(new double[]{s.core[0][k], s.wc * s.core[1][k], s.wc * s.core[1][k], s.wc * s.core[1][k]});
         final double[][] halo = new double[3][];

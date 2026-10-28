@@ -337,6 +337,11 @@ icon('settings_ic_layers', 'layers: three stacked sheets, the middle one in the 
 icon('settings_ic_list', 'list: three lines with accent bullets') \
     .a(circle(4.8, 6, 1.75), circle(4.8, 12, 1.75), circle(4.8, 18, 1.75)) \
     .b(capsule(9.2, 6, 20.2, 6, 2.6), capsule(9.2, 12, 20.2, 12, 2.6), capsule(9.2, 18, 20.2, 18, 2.6))
+# P385: the settings' own order - the editor's entry (a lifted accent card between two) and a row's drag grip (six dots)
+icon('settings_ic_arrange', 'arrange: three cards, the middle one lifted out of line in the accent') \
+    .b(rrect(2.8, 3.0, 13.4, 4.8, 2.4), rrect(2.8, 16.2, 13.4, 4.8, 2.4)).a(rrect(7.8, 9.6, 13.4, 4.8, 2.4))
+icon('settings_ic_grip', 'grip: six dots, the handle a row is dragged by') \
+    .b(circle(9, 6, 1.75), circle(15, 6, 1.75), circle(9, 12, 1.75), circle(15, 12, 1.75), circle(9, 18, 1.75), circle(15, 18, 1.75))
 icon('settings_ic_lock', 'lock: a padlock with a dark keyhole and an accent pin') \
     .b(arc(12, 10.6, 4.7, 2.6, 180, 360, caps=False), capsule(7.3, 10.6, 7.3, 11.6, 2.6), capsule(16.7, 10.6, 16.7, 11.6, 2.6),
        rrect(4.4, 10.4, 15.2, 11.2, 3.0)).h(circle(12, 15.6, 2.0)).a(circle(12, 15.6, 1.05))
@@ -626,6 +631,44 @@ icon('settings_ic_motion', '«Движение»: the subject moves, speed lines
 icon('settings_ic_focus', 'focus peaking: brackets and an accent ring').b(BRACKETS).a(ring(12, 12, 3.4, 2.0))
 icon('settings_ic_plus', 'add: a disc with an accent plus').b(circle(12, 12, 9.6)).h(circle(12, 12, 7.0)) \
     .a(capsule(12, 8.4, 12, 15.6, 2.4), capsule(8.4, 12, 15.6, 12, 2.4))
+
+# --- P384 (owner, 2026-10-28: «Сделай это меню красивым с плавными анимациями и красивыми иконками»): the camera modules on the
+# settings' main page - the per-module switch, the Camera ID rows, the vendor keys, the frame-rate check, a copy's crop, a hidden
+# button, the sensor mode (were the gear, the camera, a coloured circle, the sliders twice, the zoom glass and the phone)
+icon('settings_ic_lenses', 'modules: a camera island with three lenses, the main one in the accent') \
+    .b(rrect(2.4, 2.4, 19.2, 19.2, 5.6)) \
+    .h(circle(8.0, 8.0, 3.4), circle(8.0, 16.0, 3.4), circle(16.0, 12.0, 3.4)) \
+    .b(circle(8.0, 8.0, 1.6), circle(8.0, 16.0, 1.6)) \
+    .a(circle(16.0, 12.0, 2.3)).ah(circle(16.0, 12.0, 1.2))
+icon('settings_ic_id', 'camera ID: an ID card with an accent badge and two lines') \
+    .b(rrect(2.2, 4.8, 19.6, 14.4, 3.2)) \
+    .h(capsule(11.4, 10.0, 17.6, 10.0, 2.0), capsule(11.4, 14.2, 15.4, 14.2, 2.0)) \
+    .h(circle(7.4, 12.1, 3.1)).a(circle(7.4, 12.1, 2.2))
+icon('settings_ic_key', 'vendor key: a key, the bow in the accent') \
+    .a(ring(7.4, 12, 3.6, 2.6)) \
+    .b(capsule(10.6, 12, 20.8, 12, 2.6), capsule(17.2, 12, 17.2, 16.0, 2.4), capsule(20.4, 12, 20.4, 15.0, 2.2))
+_gauge = icon('settings_ic_fps', 'frame-rate check: a gauge with its scale and an accent needle').b(arc(12, 14.6, 8.4, 2.6, 180, 360))
+for _deg in (210, 240, 270, 300, 330):
+    _gauge.b(capsule(12 + 4.6 * math.cos(math.radians(_deg)), 14.6 + 4.6 * math.sin(math.radians(_deg)),
+                     12 + 5.4 * math.cos(math.radians(_deg)), 14.6 + 5.4 * math.sin(math.radians(_deg)), 1.5))
+_gauge.a(capsule(12, 14.6, 16.2, 9.6, 2.2)).b(circle(12, 14.6, 2.4), capsule(4.2, 19.8, 19.8, 19.8, 2.2))
+icon('settings_ic_crop', 'crop: two crop marks round an accent frame') \
+    .b(polyline([(6.6, 2.6), (6.6, 17.4), (21.4, 17.4)], 2.6), polyline([(2.6, 6.6), (17.4, 6.6), (17.4, 21.4)], 2.6)) \
+    .a(rrect(9.4, 9.4, 5.2, 5.2, 1.0))
+_almond = poly(*([(2.4 + 19.2 * t / 40, 12 - 6.6 * math.sin(math.pi * t / 40)) for t in range(41)]
+                 + [(21.6 - 19.2 * t / 40, 12 + 6.6 * math.sin(math.pi * t / 40)) for t in range(1, 40)]))
+icon('settings_ic_eye_off', 'hidden: the eye dimmed and crossed out').d(_almond).dh(circle(12, 12, 4.0)) \
+    .b(capsule(4.0, 4.0, 20.0, 20.0, 2.6))
+_die = icon('settings_ic_sensor', 'sensor mode: a sensor die of 2 x 2 pixel quads, one quad in the accent').b(rrect(3, 3, 18, 18, 3.4))
+for _r in range(2):
+    for _c in range(2):
+        _x, _y = 5.4 + _c * 7.0, 5.4 + _r * 7.0
+        _die.h(rrect(_x, _y, 6.2, 6.2, 1.2))
+        _cells = (rrect(_x + 0.9, _y + 0.9, 2.0, 2.0, 0.4), rrect(_x + 3.3, _y + 3.3, 2.0, 2.0, 0.4))
+        if (_r, _c) == (0, 1):
+            _die.a(*_cells)
+        else:
+            _die.b(*_cells)
 
 # --- the launcher shortcut «Настройки» (P140): the settings gear with fixed colours (a launcher resolves no app theme)
 SHORTCUT = Icon('shortcut_ic_gear', 'the gear of the «Настройки» shortcut, fixed coral (launchers apply no app theme)')

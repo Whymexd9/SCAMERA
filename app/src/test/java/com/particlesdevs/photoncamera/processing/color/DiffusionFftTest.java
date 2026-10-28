@@ -73,6 +73,44 @@ public class DiffusionFftTest {
         }
     }
 
+    /**
+     * P380: the film's diffusion on its format's frame (IMAX 70, Pro-Mist 2.0: the owner's pair) - the FFT level plan against the
+     * reference's single convolution, and the decays at 36 / 70.41 of the lens filter's (whose plan through the new overload is
+     * the old one).
+     */
+    @Test
+    public void theFilmsPlanOnItsFormatsFrame() {
+        // a crop of a 50 MP photo's scale (8160 px: the cores' decays on IMAX 70 at least 0.77 px, as the reference samples them)
+        final int w = 320, h = 240;
+        final double longPx = 8160;
+        for (String id : LensFilters.IDS) {
+            final LensFilters.Tune tune = LensFilters.Tune.defaults(id);
+            final double p = DiffusionModel.scatterAtGrade(id, 2.0);
+            final DiffusionFft.Plan lens = DiffusionFft.plan(id, 1f, tune, w, h, longPx);
+            final DiffusionFft.Plan same = DiffusionFft.plan(id, DiffusionModel.scatter(id, 1f), tune, w, h, longPx, DiffusionModel.FRAME_UM);
+            final DiffusionFft.Plan film = DiffusionFft.plan(id, p, tune, w, h, longPx, 70410);
+            assertEquals(Double.doubleToLongBits(lens.p), Double.doubleToLongBits(same.p));
+            double lensMax = 0, filmMax = 0;
+            for (int l = 0; l < lens.tiers.length; l++) {
+                org.junit.Assert.assertArrayEquals(lens.tiers[l].lambda, same.tiers[l].lambda, 0);
+                for (double v : lens.tiers[l].lambda) lensMax = Math.max(lensMax, v * (1 << l));
+            }
+            for (int l = 0; l < film.tiers.length; l++) for (double v : film.tiers[l].lambda) filmMax = Math.max(filmMax, v * (1 << l));
+            assertEquals(id + " the widest decay", lensMax * 36000 / 70410, filmMax, 1e-6 * lensMax);
+            final float[] base = scene(w, h), mine = base.clone(), ref = base.clone();
+            DiffusionFft.apply(mine, w, h, film);
+            DiffusionFft.reference(ref, w, h, id, p, tune, longPx, 70410);
+            double worst = 0, peak = 0;
+            for (int i = 0; i < base.length; i++) {
+                if (base[i] > 1f) continue;   // as the lens filter's: the glow (the scattered light) away from the lights' own pixels
+                peak = Math.max(peak, ref[i] - base[i] * (1 - p));
+                worst = Math.max(worst, Math.abs(mine[i] - ref[i]));
+            }
+            System.out.println(id + " film plan (IMAX 70) glow error " + worst + " of peak " + peak);
+            assertTrue(id + ": glow error " + worst + " of peak " + peak, worst < 0.02 * peak);
+        }
+    }
+
     @Test
     public void bigImagesAreTiled() {
         final DiffusionFft.Plan plan = DiffusionFft.plan(LensFilters.CINEBLOOM, .5f, LensFilters.Tune.defaults(LensFilters.CINEBLOOM),

@@ -10,4 +10,10 @@
     <item name="dcg14_button" type="id"/>
     <item name="full_res_button" type="id"/>
     <item name="full_res_200_button" type="id"/>
+    <!-- P384: the Preference a settings row is bound to (SettingsCardDecoration reads it, also while the row fades out) and the
+         rise animator of a row coming in (SettingsMotion.ItemAnimator) -->
+    <item name="settings_bound_preference" type="id"/>
+    <item name="settings_rise" type="id"/>
+    <!-- P385: the card background of a row of «Расположение» (its outline turns accent while it is dragged) -->
+    <item name="settings_layout_card" type="id"/>
 </resources>

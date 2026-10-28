@@ -41,7 +41,6 @@ import com.particlesdevs.photoncamera.processing.render.NoiseModelProfile;
 import com.particlesdevs.photoncamera.settings.PreferenceKeys;
 import com.particlesdevs.photoncamera.settings.SettingsManager;
 import com.particlesdevs.photoncamera.settings.TunablePreferenceGenerator;
-import com.particlesdevs.photoncamera.ui.camera.LensDiscoveryActivity;
 import com.particlesdevs.photoncamera.ui.settings.custompreferences.ResetPreferences;
 import com.particlesdevs.photoncamera.ui.settings.custompreferences.TunablePngPreference;
 import com.particlesdevs.photoncamera.util.Log;
@@ -144,26 +143,16 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
         
         String key = preferenceScreen.getKey();
         if (ScamLabFragment.SCREEN.equals(key)) { openLab(); return true; }
-        // P189: inside a module's group every page stays the module's (the sensor page is its slot's)
+        // P189: inside a module's group every page stays the module's (P384: its sensor is on its root page)
         String module = preferenceFragmentCompat instanceof SettingsFragment ? ((SettingsFragment) preferenceFragmentCompat).moduleProfile() : null;
         if (module != null) {
-            SettingsFragment next = ModulePageFilter.SENSOR_PAGE.equals(key)
-                    ? SettingsFragment.sensorPage(com.particlesdevs.photoncamera.settings.FullResProfiles.slotOf(module))
-                    : SettingsFragment.modulePage(module, key);
-            getSupportFragmentManager().beginTransaction()
-                    .setCustomAnimations(R.anim.animate_slide_left_enter, R.anim.animate_slide_left_exit
-                            , R.anim.animate_card_enter, R.anim.animate_slide_right_exit)
-                    .replace(R.id.settings_container, next, key).addToBackStack(key).commit();
+            slide(getSupportFragmentManager().beginTransaction())
+                    .replace(R.id.settings_container, SettingsFragment.modulePage(module, key), key).addToBackStack(key).commit();
             return true;
         }
-        if(ModulePageFilter.CAMERAS.equals(preferenceScreen.getKey())){
-            getSupportFragmentManager().beginTransaction().replace(R.id.settings_container,new ModuleSettingsFragment()).addToBackStack("modules").commit();return true;
-        }
         // Note: Tunable preferences are already generated in onPreferenceTreeClick before reaching here
-        
-        FragmentTransaction ft = getSupportFragmentManager().beginTransaction()
-                .setCustomAnimations(R.anim.animate_slide_left_enter, R.anim.animate_slide_left_exit
-                        , R.anim.animate_card_enter, R.anim.animate_slide_right_exit);
+
+        FragmentTransaction ft = slide(getSupportFragmentManager().beginTransaction());
         SettingsFragment fragment = new SettingsFragment();
         Bundle args = new Bundle();
         args.putString(PreferenceFragmentCompat.ARG_PREFERENCE_ROOT, preferenceScreen.getKey());
@@ -174,17 +163,16 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
         return true;
     }
 
+    /** The slide of the settings' pages (an XML page, a module's pages, the settings copy). */
+    static FragmentTransaction slide(FragmentTransaction ft) {
+        return ft.setCustomAnimations(R.anim.animate_slide_left_enter, R.anim.animate_slide_left_exit,
+                R.anim.animate_card_enter, R.anim.animate_slide_right_exit);
+    }
+
     /** P277: the lab («Лаборатория», «Гайд и лаборатория» before 2026-10-27; the root row and the search). */
     void openLab() {
         getSupportFragmentManager().beginTransaction().replace(R.id.settings_container, ScamLabFragment.list())
                 .addToBackStack(ScamLabFragment.SCREEN).commit();
-    }
-
-    /** P189: «Камеры и модули» with the modules' own settings, found by the search (P218: no longer from «Камеры и сенсоры»). */
-    void openModuleProfiles(String name) {
-        // P319: «Настройки по модулям» is a part of «Камеры и модули» now
-        getSupportFragmentManager().beginTransaction().replace(R.id.settings_container, new ModuleSettingsFragment())
-                .addToBackStack(name).commit();
     }
 
     /** A page with one row marked and scrolled to (the camera's links into the settings). */
@@ -199,8 +187,6 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
     }
 
     void openSearchResult(SettingsSearchFragment.Entry entry) {
-        // 2026-10-27: «Камеры и модули» (the modules and their own settings) is found by its row; it opens the group's page
-        if (ModulePageFilter.CAMERAS.equals(entry.key)) { openModuleProfiles("search_result"); return; }
         if (ScamLabFragment.SCREEN.equals(entry.page) || ScamLabFragment.SCREEN.equals(entry.key)) { openLab(); return; }
         SettingsFragment page = new SettingsFragment();
         Bundle args = new Bundle();
@@ -218,7 +204,6 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
 
     public static class SettingsFragment extends PreferenceFragmentCompat implements SharedPreferences.OnSharedPreferenceChangeListener, PreferenceManager.OnPreferenceTreeClickListener {
         private static final String KEY_MAIN_PARENT_SCREEN = "prefscreen";
-        private static final String SENSOR_PAGE = ModulePageFilter.SENSOR_PAGE;
         /** P189: argument of a page of a module's group: the module profile it shows and edits ("back2@full200"). */
         static final String ARG_MODULE = "module_profile";
         /** P189: the rows {@link ModulePageFilter} hid on this module page (applyAvailability keeps them hidden). */
@@ -228,17 +213,40 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
          * (it used to show every row it did not hide itself, on every change and resume).
          */
         private final java.util.Set<String> codeHidden = new java.util.HashSet<>();
-        /** Argument of the sensor page: the module it shows (a module page opens its own; the chip changes it). */
-        static final String ARG_SENSOR_SLOT = "sensor_slot";
+        /** Argument of a root page: the module whose sensor rows «Сенсор по модулям» shows (its chips change it; "" none). */
+        public static final String ARG_SENSOR_SLOT = "sensor_slot";
+        /**
+         * P384: argument of a module profile's root page: the profile the main settings held when it opened (the main page behind it
+         * shows that profile's values); back gives it back.
+         */
+        public static final String ARG_RETURN_PROFILE = "return_profile";
         private Activity activity;
         private com.particlesdevs.photoncamera.settings.SensorConfigPreferenceGenerator.ModuleSelection sensorSelection;
+        /** P384: the camera groups of a root page (the module cards, the Camera ID rows, the sensor chips). */
+        @Nullable private ModuleRows moduleRows;
+        /** P385: this page as built and the user's order on it (SettingsLayoutTree). */
+        @Nullable private SettingsLayoutTree.Snapshot layout;
+        private final ModuleRows.Host moduleHost = new ModuleRows.Host() {
+            @Override public Context context() { return requireContext(); }
+            @Override public void open(androidx.fragment.app.Fragment page, String name) {
+                slide(getParentFragmentManager().beginTransaction()).replace(R.id.settings_container, page).addToBackStack(name).commit();
+            }
+            @Override public void recreate() { if (getActivity() != null) getActivity().recreate(); }
+            @Nullable @Override public androidx.recyclerview.widget.RecyclerView list() { return getView() == null ? null : getListView(); }
+            @Override public Bundle args() { return requireArguments(); }
+            @Override public void headerChanged() { updateHeader(); }
+            @Override public void resetSensor(String slot) { askSensorReset(slot); }
+        };
 
-        /** The sensor settings and vendor keys of one module. */
+        /**
+         * One module's sensor settings and camera keys: P384 - the main page with that module chosen in «Сенсор по модулям» (was a
+         * page of its own).
+         */
         public static SettingsFragment sensorPage(String slot) {
             SettingsFragment page = new SettingsFragment();
             Bundle args = new Bundle();
-            args.putString(PreferenceFragmentCompat.ARG_PREFERENCE_ROOT, SENSOR_PAGE);
             args.putString(ARG_SENSOR_SLOT, slot);
+            args.putString("search_target", com.particlesdevs.photoncamera.settings.SensorConfigPreferenceGenerator.CATEGORY_PREFIX + slot);
             page.setArguments(args);
             return page;
         }
@@ -292,10 +300,18 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             takeProfile(module);
             mContext = requireContext();
             mSettingsManager = ScameraApp.getSettingsManagerStatic();
+            // P384: the root page keeps its open module card and chosen sensor module in its arguments (they survive a recreate)
+            if (getArguments() == null) setArguments(new Bundle());
             com.particlesdevs.photoncamera.settings.SettingsMigration.prepare(requireContext(), mSettingsManager.getDefaultPreferences());
             setPreferencesFromResource(R.xml.preferences, null);
             generateTunablePreferences();
-            generateSensorConfigPreferences();
+            if (rootKey == null) {
+                // P384 (owner, 2026-10-28: «Переместить эту группу настроек на главный экран»): the camera groups live on the root
+                // page; its rows open and close in place, so the list animates the difference (inner pages keep their full rebind)
+                generateSensorConfigPreferences();
+                moduleRows = ModuleRows.build(moduleHost, getPreferenceScreen(), module, sensorSelection);
+                getPreferenceManager().setPreferenceComparisonCallback(new PreferenceManager.SimplePreferenceComparisonCallback());
+            }
             // «Для разработчика»: the hidden scam_dev.txt lines (DevKeys), edited in the file itself
             DeveloperPreferences.populate(getPreferenceScreen(), getPreferenceManager().getContext());
             fullPreferenceScreen = getPreferenceScreen();
@@ -304,6 +320,9 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                 if (selected == null) throw new IllegalArgumentException("Unknown settings page: " + rootKey);
                 setPreferenceScreen(selected);
             }
+            // P385: the user's order of this page (before the module page's filter, which judges the groups as they end up)
+            layout = SettingsLayoutTree.snapshot(getPreferenceScreen());
+            if (layout != null) SettingsLayoutTree.apply(layout, SettingsLayoutTree.stored(mSettingsManager.getDefaultPreferences()));
             seedMissingListValues(fullPreferenceScreen);
             setupScalarInputs(getPreferenceScreen());
             // P17: the tele's smooth optical zoom exists on the Xiaomi 17 Ultra only
@@ -400,6 +419,8 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             // SIMPLE_UI §4: as the concept, the search is a pill under the root's header only; P189: a module page has none
             // (a hit would open the usual page)
             header = SettingsStyle.header(c, () -> requireActivity().getOnBackPressedDispatcher().onBackPressed(), null, this::resetPage);
+            // P385: the page's order (a module page shows the same pages filtered: arranged on the usual ones)
+            if (moduleProfile() == null && SettingsLayoutFragment.editable(layout)) SettingsStyle.arrangeDisc(c, header, this::openLayout);
             page.addView(header.view, new android.widget.LinearLayout.LayoutParams(-1, -2));
             boolean root = getArguments() == null || getArguments().getString(PreferenceFragmentCompat.ARG_PREFERENCE_ROOT) == null;
             if (root && moduleProfile() == null) {
@@ -431,6 +452,9 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             list.setVerticalScrollBarEnabled(false);
             // SIMPLE_UI §4: the rows of a group share one card (the concept's .card / .row)
             list.addItemDecoration(new SettingsCardDecoration(requireContext(), SettingsStyle::standalone));
+            // P384: the root page's module cards open and close in place: rows fade in with a small rise, the rows below glide
+            if (getArguments() == null || getArguments().getString(PreferenceFragmentCompat.ARG_PREFERENCE_ROOT) == null)
+                list.setItemAnimator(new SettingsMotion.ItemAnimator(requireContext()));
             return list;
         }
 
@@ -508,18 +532,8 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             header.subtitle.setVisibility(View.GONE);
             chipBox.removeAllViews();
             String chip = null;
-            boolean picker = false, modulePicker = false;
+            boolean modulePicker = false;
             String module = moduleProfile();
-            if (module == null) {
-                // P189: the row of «Камеры и модули» says whether the modules have their own settings now (2026-10-27: the
-                // separate «Настройки по модулям» row is gone; this page holds the modules' settings)
-                Preference cameras = findPreference(ModulePageFilter.CAMERAS);
-                if (cameras != null) cameras.setSummary(getString(R.string.prefs_camera_settings_screen_summary) + ". "
-                        + (PreferenceKeys.isPerLensSettingsOn()
-                        ? Lang.t(getContext(), "Каждый объектив и его снимки FULLRES 50 / 200 Мп со своими настройками",
-                                "Each lens and its FULLRES 50 / 200 MP shots with their own settings")
-                        : Lang.t(getContext(), "Сейчас у всех модулей общие настройки", "All modules share the settings now")));
-            }
             if (module != null) {
                 // P189: a page of the module's group: the profile it edits, fixed (no picker)
                 String slot = com.particlesdevs.photoncamera.settings.FullResProfiles.slotOf(module);
@@ -536,13 +550,6 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                                 + " · ID " + com.particlesdevs.photoncamera.settings.ModuleRegistry.camera(slot)
                         : Lang.t(getContext(), "Общие настройки: свои настройки модулей выключены", "Common settings: separate module settings are off");
             }
-            else if (screen != null && SENSOR_PAGE.equals(screen.getKey()) && sensorSelection != null) {
-                // Sensor settings always belong to one module, per-module profiles on or off. The chip names it and,
-                // with more than one module, is the module picker (the page has no picker row of its own).
-                chip = Lang.t(getContext(),"Настраивается: ","Editing: ") + sensorSelection.title(sensorSelection.selected());
-                picker = sensorSelection.slots().size() > 1;
-                if (picker) chip += "  ▾";
-            }
             else if (screen != null && PreferenceKeys.isPerLensSettingsOn() && SettingsStyle.hasModuleSettings(screen)) {
                 // P156 (owner: «Сделай так чтобы эта кнопка была интерактивна и мы могли менять модули тут для настройки»):
                 // the module whose profile is edited here; with more than one shown module the chip picks another one
@@ -556,8 +563,8 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                 android.widget.LinearLayout.LayoutParams lp = new android.widget.LinearLayout.LayoutParams(-2, -2);
                 lp.bottomMargin = SettingsStyle.dp(requireContext(), 4);
                 android.widget.TextView view = SettingsStyle.chip(requireContext(), chip);
-                if (picker || modulePicker) {
-                    view.setOnClickListener(picker ? v -> pickSensorModule() : v -> pickEditedModule());
+                if (modulePicker) {
+                    view.setOnClickListener(v -> pickEditedModule());
                     view.setFocusable(true);
                     view.setContentDescription(chip.replace("  ▾", "") + Lang.t(getContext(),". Выбрать другой модуль",". Choose another module"));
                 }
@@ -616,21 +623,6 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                         if (slot.equals(editing)) return;
                         PreferenceKeys.profiles().activate(slot);
                         if (getActivity() != null) getActivity().recreate();
-                    });
-        }
-
-        /** The module picker of the sensor page: shows another module's sensor settings; the camera stays as it is. */
-        private void pickSensorModule() {
-            if (sensorSelection == null) return;
-            java.util.List<String> slots = sensorSelection.slots();
-            CharSequence[] labels = new CharSequence[slots.size()], tags = new CharSequence[slots.size()];
-            for (int i = 0; i < slots.size(); i++) { labels[i] = sensorSelection.title(slots.get(i)); tags[i] = slots.get(i); }
-            SettingsStyle.optionSheet(requireContext(), Lang.t(getContext(),"Модуль камеры","Camera module"), labels, tags,
-                    slots.indexOf(sensorSelection.selected()), SettingsStyle.accent(requireContext()), i -> {
-                        sensorSelection.select(slots.get(i));
-                        // kept in the arguments, so a reset (it recreates the activity) comes back to this module
-                        if (getArguments() != null) getArguments().putString(ARG_SENSOR_SLOT, slots.get(i));
-                        updateHeader();
                     });
         }
 
@@ -832,13 +824,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             }
             Log.d("SettingsFragment", "onCreate with rootKey: " + rootKey);
             
-            if ("pref_sensor_config_submenu".equals(rootKey)) {
-                Log.d("SettingsFragment", "This is the sensor config submenu fragment, generating preferences now");
-                generateSensorConfigPreferences();
-                SettingsStyle.apply(getPreferenceScreen());
-            }
-            
-            // Generators add ListPreferences after onCreatePreferences() ran, so re-run the
+// Generators add ListPreferences after onCreatePreferences() ran, so re-run the
             // guard over whatever the tree looks like now.
             seedMissingListValues(getPreferenceScreen());
 
@@ -905,11 +891,15 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                 }
                 Log.d("SettingsActivity", "Target PreferenceScreen: " + screen.getKey() + " (count before: " + screen.getPreferenceCount() + ")");
 
+                // P384: the module chosen before (the chips, a recreate) or asked for (sensorPage), else a module page's own, else none
                 String preferred = getArguments() == null ? null : getArguments().getString(ARG_SENSOR_SLOT);
-                sensorSelection = com.particlesdevs.photoncamera.settings.SensorConfigPreferenceGenerator.generatePreferences(mContext, screen, preferred);
+                if ((preferred == null || preferred.isEmpty()) && moduleProfile() != null)
+                    preferred = com.particlesdevs.photoncamera.settings.FullResProfiles.slotOf(moduleProfile());
+                if (preferred != null && preferred.isEmpty()) preferred = null;
+                sensorSelection = com.particlesdevs.photoncamera.settings.SensorConfigPreferenceGenerator.generatePreferences(mContext, screen,
+                        preferred, () -> { if (moduleRows != null) moduleRows.sync(); }, this::askSensorReset);
 
                 Log.d("SettingsActivity", "Generated sensor config preferences (count after: " + screen.getPreferenceCount() + ")");
-                addSensorConfigResetButton();
                 Log.d("SettingsActivity", "=== generateSensorConfigPreferences completed (final count: " + screen.getPreferenceCount() + ") ===");
             } catch (Exception e) {
                 Log.e("SettingsActivity", "ERROR in generateSensorConfigPreferences", e);
@@ -917,39 +907,20 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             }
         }
 
-        private void addSensorConfigResetButton() {
-            try {
-                PreferenceScreen submenu = findPreference("pref_sensor_config_submenu");
-                if (submenu == null) {
-                    Log.w("SettingsActivity", "PreferenceScreen is null, cannot add sensor config reset button");
-                    return;
-                }
-
-                Preference resetButton = new Preference(mContext);
-                resetButton.setKey("pref_reset_sensor_config_settings");
-                resetButton.setTitle(Lang.t(getContext(),"Сбросить настройки выбранного модуля","Reset the selected module settings"));
-                resetButton.setSummary(Lang.t(getContext(),"Остальные модули сохранят свои значения","Other modules keep their values"));
-                resetButton.setIcon(R.drawable.settings_ic_reset);
-                resetButton.setOrder(9999); // Force to the end
-
-                resetButton.setOnPreferenceClickListener(preference -> {
-                    String slot=sensorSelection!=null?sensorSelection.selected():com.particlesdevs.photoncamera.settings.ModuleRegistry.active();
-                    DialogStyle.builder(mContext)
-                        .setTitle(Lang.t(getContext(),"Сбросить настройки модуля?","Reset the module settings?"))
-                        .setMessage(com.particlesdevs.photoncamera.settings.ModuleRegistry.label(slot)+" · ID "+com.particlesdevs.photoncamera.settings.ModuleRegistry.camera(slot))
-                        .setNegativeButton(Lang.t(getContext(),"Отмена","Cancel"),null)
-                        .setPositiveButton(Lang.t(getContext(),"Сбросить","Reset"),(d,w)->{
-                            com.particlesdevs.photoncamera.settings.ModuleSensorSettings.reset(slot);
-                            if(getActivity()!=null)getActivity().recreate();
-                        }).show();
-                    return true;
-                });
-
-                submenu.addPreference(resetButton);
-                Log.d("SettingsActivity", "Added sensor config reset button (preferenceCount after: " + submenu.getPreferenceCount() + ")");
-            } catch (Exception e) {
-                Log.e("SettingsActivity", "Error adding sensor config reset button", e);
-            }
+        /**
+         * P384 «Сбросить сенсор «X»» (one row per module now, was the sensor page's one row): asked first, then the module's sensor
+         * settings reset; the settings are built again (the open card and the chosen module stay, in the page's arguments).
+         */
+        void askSensorReset(String slot) {
+            if (mContext == null) return;
+            DialogStyle.builder(mContext)
+                .setTitle(Lang.t(getContext(),"Сбросить настройки модуля?","Reset the module settings?"))
+                .setMessage(com.particlesdevs.photoncamera.settings.ModuleRegistry.label(slot)+" · ID "+com.particlesdevs.photoncamera.settings.ModuleRegistry.camera(slot))
+                .setNegativeButton(Lang.t(getContext(),"Отмена","Cancel"),null)
+                .setPositiveButton(Lang.t(getContext(),"Сбросить","Reset"),(d,w)->{
+                    com.particlesdevs.photoncamera.settings.ModuleSensorSettings.reset(slot);
+                    if(getActivity()!=null)getActivity().recreate();
+                }).show();
         }
 
         @Override
@@ -958,9 +929,24 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             mRootView = view;
             setupToolbar();
             setDivider(null);
+            // P384: a module profile's root page: back gives the main settings the profile they held before it opened (the main page
+            // behind it shows that one's values; was ModuleProfilesFragment's), or the camera's
+            if (moduleProfile() != null && (getArguments() == null || getArguments().getString(PreferenceFragmentCompat.ARG_PREFERENCE_ROOT) == null))
+                requireActivity().getOnBackPressedDispatcher().addCallback(getViewLifecycleOwner(), new androidx.activity.OnBackPressedCallback(true) {
+                    @Override public void handleOnBackPressed() {
+                        String ret = getArguments() == null ? null : getArguments().getString(ARG_RETURN_PROFILE);
+                        if (ret != null && PreferenceKeys.isPerLensSettingsOn()) PreferenceKeys.profiles().activate(ret);
+                        else com.particlesdevs.photoncamera.settings.ModuleRegistry.syncProfile();
+                        setEnabled(false);
+                        requireActivity().getOnBackPressedDispatcher().onBackPressed();
+                    }
+                });
             String target = getArguments() == null ? null : getArguments().getString("search_target");
             if (target != null && findPreference(target) != null) {
                 Preference found = findPreference(target);
+                // P384: a row of a folded module card, or of a module not chosen in «Сенсор по модулям», is shown first - once:
+                // after a recreate the page's arguments hold what the user opened or chose since
+                if (moduleRows != null && savedInstanceState == null) moduleRows.reveal(found);
                 android.text.SpannableString highlighted = new android.text.SpannableString(found.getTitle());
                 highlighted.setSpan(new android.text.style.ForegroundColorSpan(com.particlesdevs.photoncamera.circularbarlib.ui.AccentPalette.color(requireContext())), 0,
                         highlighted.length(), android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
@@ -985,6 +971,12 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             if (takeProfile(moduleProfile())) { requireActivity().recreate(); return; }
             // Update toolbar title when fragment resumes (e.g., after navigating back)
             setupToolbar();
+            if (moduleRows != null) moduleRows.sync();   // P384: a module changed on another page or in the camera
+            // P385: back from «Расположение» (or an order imported meanwhile): the page takes the order now stored
+            if (layout != null) {
+                String order = SettingsLayoutTree.stored(mSettingsManager.getDefaultPreferences());
+                if (!order.equals(layout.applied)) SettingsLayoutTree.apply(layout, order);
+            }
             updateSettingsAvailability();
             showFileNamePreview();
             refreshProfiles();   // P246: a config put into the folder meanwhile shows up
@@ -1157,6 +1149,15 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             } catch (RuntimeException ignored) { }
             state.editing200(on200);
             applyAvailability(getPreferenceScreen(), state);
+            if (layout != null) SettingsLayoutTree.hideEmpty(layout);   // P385: a group that gave its rows away
+        }
+
+        /** P385: «Расположение» of this page. */
+        private void openLayout() {
+            if (layout == null || !isAdded()) return;
+            PreferenceScreen screen = getPreferenceScreen();
+            slide(getParentFragmentManager().beginTransaction()).replace(R.id.settings_container,
+                    SettingsLayoutFragment.of(layout, screen == null ? null : screen.getTitle())).addToBackStack("settings_layout").commit();
         }
         @SuppressWarnings({"unchecked", "rawtypes"})
         private void applyAvailability(PreferenceGroup group, com.particlesdevs.photoncamera.settings.SettingsAvailability state) {
@@ -1172,7 +1173,8 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                 if (key == null) continue;
                 // Rows of a photo format that is not chosen are hidden, not explained (SettingsAvailability.hidden).
                 // P189: shared rows stay off module pages; 2026-10-27: a row the page's code hid stays hidden
-                boolean hidden = state.hidden(key) || moduleHidden.contains(key) || codeHidden.contains(key);
+                boolean hidden = state.hidden(key) || moduleHidden.contains(key) || codeHidden.contains(key)
+                        || (moduleRows != null && moduleRows.hides(key));
                 if (p.isVisible() == hidden) p.setVisible(!hidden);
                 String reason = state.reason(key);
                 if (p.getClass() != Preference.class) p.setEnabled(reason == null);
@@ -1262,7 +1264,8 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                 }
             }
             
-            if (key.equals(PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue)) {
+            // P384: the main page's switch and its question rebuild the page themselves (ModuleActions.perLensSwitch)
+            if (key.equals(PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue) && !ModuleActions.writingPerLens) {
                 if (PreferenceKeys.isPerLensSettingsOn()) {
 
                     restartActivity();
@@ -1408,12 +1411,12 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                 ((SettingsActivity) activity).openLab();
                 return true;
             }
-            if ("module_copy_settings".equals(preference.getKey())) {
-                getParentFragmentManager().beginTransaction().replace(R.id.settings_container, new ModuleCopyFragment()).addToBackStack("module_copy").commit();
+            if ("settings_layout_editor".equals(preference.getKey())) {
+                openLayout();
                 return true;
             }
-            if ("lens_discovery".equals(preference.getKey())) {
-                getParentFragmentManager().beginTransaction().replace(R.id.settings_container, new ModuleLensFragment()).addToBackStack("modules").commit();
+            if ("module_copy_settings".equals(preference.getKey())) {
+                slide(getParentFragmentManager().beginTransaction()).replace(R.id.settings_container, new ModuleCopyFragment()).addToBackStack("module_copy").commit();
                 return true;
             }
             if ("pref_noise_model_import_key".equals(preference.getKey())) {
@@ -1431,18 +1434,8 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                 return true;
             }
             
-            // Keep the exact navigation behaviour from SCAMERA-26788:
-            // only dynamically generated pages are handled here. Static pages
-            // such as ACES must fall through to PreferenceFragmentCompat,
-            // otherwise some AndroidX/vendor combinations dispatch them twice.
-            if ("pref_sensor_config_submenu".equals(preference.getKey())) {
-                Log.d("SettingsFragment", "Submenu clicked, navigating: " + preference.getKey());
-                if (preference instanceof PreferenceScreen && activity instanceof SettingsActivity) {
-                    ((SettingsActivity) activity).onPreferenceStartScreen(this, (PreferenceScreen) preference);
-                    return true;
-                }
-            }
-            
+            // Static pages such as ACES fall through to PreferenceFragmentCompat (SCAMERA-26788: handled here, some AndroidX / vendor
+            // combinations dispatched them twice)
             // Return false to allow default handling (like opening other subscreens)
             return super.onPreferenceTreeClick(preference);
         }

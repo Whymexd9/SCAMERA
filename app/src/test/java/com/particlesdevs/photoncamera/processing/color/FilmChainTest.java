@@ -133,6 +133,48 @@ public class FilmChainTest {
         assertNotEquals("the display chain's keys are another family", FilmChain.current(base, "", 1f).key, k);
     }
 
+    /**
+     * P380: the DIR couplers' amount is the table key's 8th field - the settings' value round-trips through the chain's key and the
+     * scene key, the chain's table is built at it (not at the default), the film's diffusion (an effect) leaves both keys.
+     */
+    @Test
+    public void theCouplersAmountRoundTripsThroughTheKeys() {
+        final String g = SettingsManager.SCOPE_GLOBAL;
+        manager.set(g, FilmSim.DIR_KEY, "35");
+        manager.set(g, FilmSim.DIFFUSION_KEY, LensFilters.PEARLESCENT);
+        manager.set(g, FilmSim.DIFFUSION_STRENGTH_KEY, "200");
+        final FilmSim.Settings sim = FilmSim.current();
+        assertEquals(.35f, sim.couplers, 1e-6f);
+        assertEquals(LensFilters.PEARLESCENT, sim.diffusion);
+        assertEquals(2f, sim.diffusionGrade, 0f);
+        final FilmChain.State st = FilmChain.current();
+        assertTrue(st.key, st.key.startsWith(FilmChain.PREFIX + sim.lutKey() + "|1.00|"));
+        assertEquals(11, st.key.substring(FilmChain.PREFIX.length()).split("\\|", -1).length);
+        final FilmSim.Settings back = FilmSim.Settings.forLut(sim.lutKey(), sim.strength);
+        assertEquals(sim.lutKey(), back.lutKey());
+        assertEquals(.35f, back.couplers, 1e-6f);
+        // the chain's table is the one of its couplers' amount
+        final FilmLut lut = FilmChain.lut(context, st.key);
+        assertNotNull(lut);
+        final FilmLut want = FilmChain.compose(FilmSim.lut(sim, FilmLooks.SIZE), sim.strength, null, 0f);
+        assertArrayEquals(want.rgb, lut.rgb, 0f);
+        final FilmSim.Settings full = new FilmSim.Settings(sim.stock, sim.print, sim.format, sim.grain, sim.halation, sim.softness, sim.exposure,
+                sim.printEv, sim.tone, sim.printM, sim.printY, sim.strength, sim.diffusion, sim.diffusionGrade, 1f);
+        final float[] other = FilmChain.compose(FilmSim.lut(full, FilmLooks.SIZE), 1f, null, 0f).rgb;
+        double diff = 0;
+        for (int i = 0; i < other.length; i++) diff = Math.max(diff, Math.abs(other[i] - lut.rgb[i]));
+        assertTrue("35 % is not 100 %: " + diff, diff > .02);
+        // the scene key: the couplers in, the diffusion out
+        assertNotEquals(FilmChain.sceneKey(full, "", 1f), FilmChain.sceneKey(sim, "", 1f));
+        final FilmSim.Settings plain = new FilmSim.Settings(sim.stock, sim.print, sim.format, sim.grain, sim.halation, sim.softness, sim.exposure,
+                sim.printEv, sim.tone, sim.printM, sim.printY, sim.strength, "", .5f, sim.couplers);
+        assertEquals(FilmChain.sceneKey(plain, "", 1f), FilmChain.sceneKey(sim, "", 1f));
+        assertEquals(FilmChain.current(plain, "", 1f).key, st.key);
+        // the defaults: the key of before P380 with "|1.00" after it (today's table)
+        manager.set(g, FilmSim.DIR_KEY, "100");
+        assertTrue(FilmSim.current().lutKey().endsWith("|0.00|0.00|1.00"));
+    }
+
     @Test
     public void theSceneTableHasItsOwnCache() {
         final FilmSim.Settings sim = FilmSim.current();

@@ -39,6 +39,7 @@ public final class ShotLook {
 
     @Override
     public String toString() {
-        return "film " + (film == null ? "none" : film.stock.id) + ", LUT " + (lut.isEmpty() ? "none" : lut + " " + lutStrength);
+        // P380: the whole recipe (a diffusion or the couplers changed meanwhile shows too)
+        return "film " + (film == null ? "none" : film.recipe()) + ", LUT " + (lut.isEmpty() ? "none" : lut + " " + lutStrength);
     }
 }

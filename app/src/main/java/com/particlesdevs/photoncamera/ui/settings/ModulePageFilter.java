@@ -3,11 +3,12 @@ package com.particlesdevs.photoncamera.ui.settings;
 import androidx.preference.Preference;
 import androidx.preference.PreferenceGroup;
 
+import com.particlesdevs.photoncamera.R;
 import com.particlesdevs.photoncamera.capture.VivoSdkFullRes;
 import com.particlesdevs.photoncamera.settings.FullResProfiles;
 import com.particlesdevs.photoncamera.settings.ModuleProfiles;
 import com.particlesdevs.photoncamera.settings.ModuleRegistry;
-import com.particlesdevs.photoncamera.util.Lang;
+import com.particlesdevs.photoncamera.settings.SensorConfigPreferenceGenerator;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -21,13 +22,18 @@ import java.util.Set;
  * the shared ones (format, quality, sounds, grid, watermark...) stay on the usual pages.
  */
 final class ModulePageFilter {
-    /** «Камеры и модули»: its row (and its search hit) opens the group's page; SENSOR_PAGE is a module's sensor page. */
-    static final String CAMERAS = "camera_settings_screen", SENSOR_PAGE = "pref_sensor_config_submenu";
+    /**
+     * P384: «Сенсор по модулям» of the main page - on a module's root page its own sensor category only (the generated rows are the
+     * module's by their key, not by ModuleProfiles: the group counts as a value and is not visited).
+     */
+    static final String SENSOR_GROUP = SensorConfigPreferenceGenerator.GROUP_KEY;
     /**
      * SIMPLE_UI §4: the groups a module page never shows (the root is now groups of rows): «Система» has per-module rows by
-     * name only; the app's and the about rows are shared.
+     * name only; the app's and the about rows are shared. P384: the module cards and the Camera ID rows are every module's, not one
+     * profile's.
      */
-    static final List<String> NOT_MODULE = Collections.unmodifiableList(Arrays.asList("adv_system", "root_app", "root_about"));
+    static final List<String> NOT_MODULE = Collections.unmodifiableList(Arrays.asList("adv_system", "root_app", "root_about",
+            ModuleRows.GROUP, ModuleRows.IDS));
 
     private ModulePageFilter() { }
 
@@ -44,7 +50,7 @@ final class ModulePageFilter {
         int values = 0;
         for (int i = 0; i < group.getPreferenceCount(); i++) {
             Preference p = group.getPreference(i);
-            if (SENSOR_PAGE.equals(p.getKey())) { values++; continue; } // the module's sensor page: generated on its own page
+            if (SENSOR_GROUP.equals(p.getKey())) { values++; continue; } // the module's sensor: shown by its own category
             if (NOT_MODULE.contains(p.getKey())) { hide(p, hidden); continue; }
             if (p instanceof PreferenceGroup) {
                 int n = visit((PreferenceGroup) p, profile, hidden);
@@ -74,22 +80,15 @@ final class ModulePageFilter {
         if (p.getKey() != null) hidden.add(p.getKey());
     }
 
-    /** «Камеры и сенсоры» of a module is its sensor and RAW; the sensor page is the module's (shared with its FULLRES shots). */
+    /** P384: the sensor group of a module's root page is that module's sensor (shared with its FULLRES shots). */
     private static void retitle(PreferenceGroup page, String profile) {
         android.content.Context c = page.getContext();
-        Preference cameras = CAMERAS.equals(page.getKey()) ? page : page.findPreference(CAMERAS);
-        if (cameras != null) {
-            cameras.setTitle(Lang.t(c, "Сенсор и RAW", "Sensor and RAW"));
-            cameras.setSummary(Lang.t(c, "Сенсор модуля, уровни RAW, модель шума", "The module's sensor, RAW levels, noise model"));
-        }
-        Preference sensor = page.findPreference(SENSOR_PAGE);
+        Preference sensor = SENSOR_GROUP.equals(page.getKey()) ? page : page.findPreference(SENSOR_GROUP);
         if (sensor != null) {
-            sensor.setTitle(Lang.t(c, "Сенсор этого модуля", "This module's sensor"));
+            sensor.setTitle(c.getString(R.string.module_sensor_this));
             String slot = FullResProfiles.slotOf(profile);
-            if (FullResProfiles.isVariant(profile) || !FullResProfiles.variants(slot).isEmpty()) {
-                String name = ModuleRegistry.label(slot);
-                sensor.setSummary(Lang.t(c, "Общие для «" + name + "» и его снимков FULLRES", "Shared by “" + name + "” and its FULLRES shots"));
-            }
+            if (FullResProfiles.isVariant(profile) || !FullResProfiles.variants(slot).isEmpty())
+                sensor.setSummary(c.getString(R.string.module_sensor_shared, ModuleRegistry.label(slot)));
         }
     }
 }

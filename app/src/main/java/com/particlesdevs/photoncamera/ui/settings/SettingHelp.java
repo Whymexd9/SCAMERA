@@ -42,6 +42,7 @@ public final class SettingHelp {
         FAMILIES.put(Pattern.compile("pref_scam_hybrid_dn_(luma|chroma)_t\\d_revert"), R.string.help_nr_table_revert);
         FAMILIES.put(Pattern.compile("pref_scam_hybrid_dn_(luma|chroma)_t\\d_outlier"), R.string.help_nr_table_outlier);
         EXACT.put("pref_camera_sounds_all", R.string.help_sounds);
+        EXACT.put("settings_layout_editor", R.string.help_settings_layout);
         EXACT.put("pref_live_viewfinder_raw_key", R.string.help_live_viewfinder_raw);
         EXACT.put("pref_photo_format", R.string.help_photo_format);
         EXACT.put("pref_film_lut", R.string.help_film_lut);
@@ -86,6 +87,21 @@ public final class SettingHelp {
         EXACT.put("focus_screen", R.string.help_focus);
         EXACT.put("pref_af_mode_key", R.string.help_af_mode);
         EXACT.put("pref_show_afdata_key", R.string.help_info_overlay);
+        // P384 (owner, 2026-10-28: «Переместить эту группу настроек на главный экран»): the camera groups of the main page; each
+        // text names the old place, so the search still finds the old words
+        EXACT.put("root_modules", R.string.help_modules_group);
+        EXACT.put("expert_module_ids", R.string.help_module_ids);
+        EXACT.put("expert_module_sensor", R.string.help_module_sensor);
+        EXACT.put("module_sensor_picker", R.string.help_module_sensor);
+        EXACT.put("module_row_per_lens", R.string.help_module_profile);
+        FAMILIES.put(Pattern.compile("module_card_\\w+"), R.string.help_module_card);
+        FAMILIES.put(Pattern.compile("module_row_(name|button)_\\w+"), R.string.help_module_card);
+        FAMILIES.put(Pattern.compile("module_row_zoom_\\w+"), R.string.help_module_zoom);
+        FAMILIES.put(Pattern.compile("module_row_(crop|copy|delete)_\\w+"), R.string.help_module_crop);
+        EXACT.put("module_row_add_copy", R.string.help_module_crop);
+        FAMILIES.put(Pattern.compile("module_row_profile_.+"), R.string.help_module_profile);
+        FAMILIES.put(Pattern.compile("module_row_id_\\w+"), R.string.help_module_ids);
+        FAMILIES.put(Pattern.compile("pref_sensorconfig_\\w+_sensormoderow"), R.string.help_sensor_mode);
     }
 
     /** The help text of {@code key}, 0 without one of its own. */
@@ -98,8 +114,12 @@ public final class SettingHelp {
         return 0;
     }
 
-    /** Whether a long press on {@code p} opens its help: a keyed row (a page too), not a category header. */
+    /**
+     * Whether a long press on {@code p} opens its help: a keyed row (a page too; P384: a module card's header), not a category
+     * header.
+     */
     static boolean helps(@Nullable Preference p) {
+        if (p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.ModuleSection) return p.getKey() != null;
         return p != null && p.getKey() != null && !(p instanceof PreferenceCategory)
                 && !(p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.TunableCheckBoxPreference);
     }
@@ -115,7 +135,9 @@ public final class SettingHelp {
         body.addView(paragraph(c, text, SettingsStyle.TEXT, 15));
         final CharSequence value = value(c, p);
         if (value != null) body.addView(paragraph(c, Lang.t(c, "Сейчас: ", "Now: ") + value, SettingsStyle.MUTED, 13));
-        if (p instanceof PreferenceGroup)
+        if (p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.ModuleSection)
+            body.addView(paragraph(c, Lang.t(c, "Нажатие открывает и закрывает модуль.", "A tap opens and closes the module."), SettingsStyle.MUTED, 13));
+        else if (p instanceof PreferenceGroup)
             body.addView(paragraph(c, Lang.t(c, "Нажатие открывает раздел.", "A tap opens the section."), SettingsStyle.MUTED, 13));
         SettingsStyle.sheet(c, body).show();
     }

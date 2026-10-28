@@ -142,6 +142,51 @@ public class PageResetTest {
         assertFalse(prefs.contains("pref_tunable_test_value"));
     }
 
+    /**
+     * P384: the main page's reset changes the rows it shows - the chosen module's sensor rows, not those of the modules not
+     * chosen (hidden categories), nor the rows of a folded module card until it is opened.
+     */
+    @Test
+    public void hiddenAndFoldedRowsAreNotReset() {
+        final Context c = RuntimeEnvironment.getApplication();
+        final PreferenceManager pm = new PreferenceManager(c);
+        final SharedPreferences prefs = pm.getSharedPreferences();
+        prefs.edit().clear().commit();
+        final PreferenceScreen screen = pm.createPreferenceScreen(c);
+        pm.setPreferences(screen);
+        final androidx.preference.PreferenceCategory shown = new androidx.preference.PreferenceCategory(c);
+        final androidx.preference.PreferenceCategory hidden = new androidx.preference.PreferenceCategory(c);
+        final com.particlesdevs.photoncamera.ui.settings.custompreferences.ModuleSection card =
+                new com.particlesdevs.photoncamera.ui.settings.custompreferences.ModuleSection(c, "back2");
+        shown.setKey("pref_category_sensor_back1");
+        hidden.setKey("pref_category_sensor_back0");
+        screen.addPreference(shown);
+        screen.addPreference(hidden);
+        screen.addPreference(card);
+        hidden.setVisible(false);
+        final String[] keys = {"pref_tunable_test_shown", "pref_tunable_test_hidden", "pref_tunable_test_folded"};
+        final androidx.preference.PreferenceGroup[] groups = {shown, hidden, card};
+        for (int i = 0; i < keys.length; i++) {
+            final TunableSeekBarPreference t = new TunableSeekBarPreference(c);
+            t.setKey(keys[i]);
+            t.setDefaultValue(1f);
+            groups[i].addPreference(t);
+        }
+        final SharedPreferences.Editor e = prefs.edit();
+        for (String key : keys) e.putFloat(key, 3f);
+        e.commit();
+        assertFalse(card.isExpanded());
+        assertEquals("the shown category's slider only", 1, PageReset.reset(c, screen));
+        assertFalse(prefs.contains(keys[0]));
+        assertEquals("a module not chosen keeps its value", 3f, prefs.getFloat(keys[1], 0f), 0f);
+        assertEquals("a folded card keeps its value", 3f, prefs.getFloat(keys[2], 0f), 0f);
+        card.setExpanded(true);
+        assertEquals("the opened card's row", 1, PageReset.reset(c, screen));
+        assertFalse(prefs.contains(keys[2]));
+        assertTrue(prefs.contains(keys[1]));
+        assertEquals(0, PageReset.reset(c, screen));
+    }
+
     /** Audit 2026-10-27: the page reset and a slider's default are this device's factory values, as after the full reset. */
     @Test
     public void deviceDefaultsAreTheResetTarget() throws Exception {

@@ -8355,7 +8355,7 @@ Owner, same day: «сделай гпу выравнивание и дай воз
   the merge's sharpness); the viewfinder's brightness with the boost (ISP: display gain; RAW: its own meter); the photo's noise with
   ETTR on / off in the same scene.
 
-### P378 - the sky's tone like the reference app's (owner, 2026-10-28: «Добавь в план, исправить тонмапинг чтобы у нас небо было схожее с фото с Арк камеры. при этом чтобы в остальных сценариях ничего не сломалось»; zip 44dcd82c-xx.zip): OPEN (planned)
+### P378 - the sky's tone like the reference app's (owner, 2026-10-28: «Добавь в план, исправить тонмапинг чтобы у нас небо было схожее с фото с Арк камеры. при этом чтобы в остальных сценариях ничего не сломалось»; zip 44dcd82c-xx.zip): DONE in code (host), not tried on a phone
 - The zip holds two of our photos only (SCA_20261028_113851 / _114230, OPPO Find X8 Ultra, ISO 100, 1/3100 and 1/3900 s, 8.67 mm,
   an overcast autumn sky over a block of flats; the second with the ES / L stamp «ES ✗ align», «L ✓3»). Then (same day): the
   reference app's photo beside ours of the same view, a sun shot of ours, SCAMERA-debug_2.txt (build f118c571, OPPO PKJ110 = Find X8
@@ -8383,8 +8383,83 @@ Owner, same day: «сделай гпу выравнивание и дай воз
   balance and the matrix on near-clipped cloud whites, see the opposed-highlight path of P368 / P376), the blue gaps' saturation;
   and «ES ✗ align» checked on this shot (why the ultrashort frames did not reach the merge on a bright sky - the sky's highlights
   then come from the N frames alone).
+- Owner, 2026-10-28 (a constraint): «Не забывай что у нас наш тонмапинг не должен затемнять небо в контровых сценах» - in a
+  backlit scene (the sun or a bright sky behind the subject: the sun / clipped core in the sky, a large WHY deficit, the subject
+  darker than the sky) the sky term must not lower the sky's tone; there it may only neutralise the cloud cast and give the clouds
+  their modelling at the sky's present brightness (and the sun ring of the sensor-floor shots). A backlit gate in the sky term,
+  with backlit references (sun in the frame, a window behind a person, the owner's sun shot) in the gate set.
 - Gate: nothing changes without a detected sky (the mask empty: the tone bit-identical on the lab's non-sky references - night,
   indoor, lamps, portraits, film on); the lab's before / after on sky shots; check_tone_ops and the WHY host checks.
+- Understand round (a workflow: tone pipeline, host tooling, cloud colour, the pair measured region by region; synthesis checked
+  against HEAD). Causes by evidence: (1) the cream / lavender clouds are the vibrance stages, not the white balance or the
+  highlight paths - combine.glsl's light-tone vibrance (P341, why_vibrance_hl 1.0) gates neutrals off only below OKLab chroma 0.008
+  (a slightly tinted cloud x2.1 - 2.4) and the sky vibrance (vibrance_sky 0.40) turns the grey-blue bases lavender; cloud C* 4.55 vs
+  the reference's 2.65; the clouds are not clipped (no flags, G p99.9 0.53 in the burst); (2) the mid sky +0.22 stops (median Y 0.597
+  vs 0.506; macro contrast 1.1 pivoting at L 0.40 adds +18 % at L 0.9); the blue gaps too light, not too pale (×0.86 gives the
+  reference's L* 68 / C* 23); (3) the top squeezed and the clouds flat (ours tops out at Y 0.82 - 0.85 vs 0.95; local contrast 1.3x
+  lower in the sky, 1.8x in the tops): the no-Bento ceiling 1.35 + roll-off cap the output ~234 codes, the P291 headroom weights,
+  the guided share above I 0.8, the detail cuts toward white, the highlight landing's glow; (4) the ground +0.25 - 0.41 stops darker
+  on the mids (the overflow cut of ae, nf 0.724, one bright layer, macro 1.1); (5) the sun ring: after the white balance the
+  channels clip G < B < R over 1.2 EV, the opposed reconstruction keeps that band warm (the P376 neutral core starts only at 0.85 of
+  the last channel's clip) and the landing paints it at its own colour; vibrance doubles it. Also a global +0.9 a* (magenta) offset
+  at every lightness (white balance, by elimination; no log of those shots).
+- The owner's burst (Drive) is a window view from a dark room (overcast, the sun clipped mid-window): a backlit reference (its sky
+  must not go down), not the darkening target - the darkening target is the flats pair (JPEG, measured at the output).
+- Design (to build): a soft sky mask at whyLow size, built once in WhyFusion (cells: absolute EV >= ~10 from ISO / shutter /
+  aperture, 2+ stops over the frame's median, low texture, no saturated light; flood fill from the photo's top edge; empty below 5 %
+  of the frame: no define, no texture, the tone bit-identical), a backlit gate (a clipped / sun core touching the sky, a subject in
+  shade); terms under SKY: C1 the vibrance neutral gate (0.015 / 0.03) in the sky (backlit too), L2 the sky level (macro 1.0 + gain
+  ~0.92, not backlit), L3 the top (ceiling / headroom weights, not backlit), M1 cloud modelling (guided share, detail cuts), L4 the
+  landing's glow off in clouds; why_sky master key (0 = as before). Gates: token streams (check_vf_fused, check_colour_output),
+  the WHY / highlight / film / HDR GPU checks, host renders md5 with an empty mask, the lab on the phone.
+- Owner's answers (2026-10-28): the ground stays as it is - only the sky changes («Нет, только небо»); the sun ring is fixed
+  everywhere a light clips without ultrashort frames (lamps, «Движение»), checked on the earlier lamp references; no new burst -
+  work from the JPEG pair (the darkening target) and the Drive burst (the backlit reference). Open: the global magenta offset.
+- Part A, the sun ring (branches p378-ring, then p378-ring2 on the merged p378): the visible ring is the light's own warm glow
+  beside the clipped core (the zone where G alone clipped and ~1/3 of it outside the flags: JPEG 42fa2189, r 160 - 220 px from
+  the sun (255, 210 - 213, 175 - 180), OKLab chroma 0.063 - 0.069) that the P154 / P163 landing paints at full brightness - not
+  the clip band (that is neutral after ScamRgb since the first round: two channels at their clips and the channel left as bright,
+  eased in from 0.85 of the second clip; the ease also takes a measured colour with G alone clipped and R / B 0.8 - 1.4 just below
+  B's clip towards neutral, R / B 1.2: chroma 0.026 -> 0.000 at worst - part of the neutral ramp, no step at that clip). Round 2:
+  ScamRgb's map of the lights «Inpaint opposed» rebuilds (suncore MODE 2: a channel at 0.987 of its clip and no ultrashort content,
+  with the flags or without them - cpu-single; per block of ~1/192 of the whole frame's shorter side, a lab fragment's too, weight
+  1 from 15 % of a block, none for an LED's dots; MODE 1's max-gaussian, radius 0.033 of the shorter side, ~6.3 blocks at any
+  size); none when the landing is off (why_hl_soft 0, a film at 100 %) or no block is filled (one small read-back): no define. In
+  the landing (HL_OPPOSED) near such a light a low-saturation light lands on white - the more saturated of the pixel's own colour
+  and P163's, white up to 0.62, its colour from 0.75 - and a pixel whose own colour is neutral (a blown core) on white. Host, the
+  shot's chain (ae 1.985, clip 4, em, LSC x3, whole-frame sigma, 16 px blocks; tools/check_highlight_opposed.py owner_ring, which
+  fails on p378-ring~1 and on the first round): the ring 0.069 -> 0.000 (p95 0.003), the glow's chroma rising from the core to the
+  sky's 0.036 (r 220 0.009, r 260 0.025, r 300 0.033), the far sky unchanged; orange lamps 1 - 3 blocks wide at 16 / 32 px blocks
+  keep their rims (x1.00) and land their blown cores on white from 32 px wide (the 39 px lamp 0.032 -> 0.000 at blocks 2, 16, 32);
+  a red sunset band / rim and a saturated red LED letter unchanged. Limits: a core of a few px (a lamp 16 px wide) still lands on
+  its rim's colour (the colour source cannot tell it from an LED's dot, P163); a pale glow next to such a light (a bright mild sky
+  beside a clipped lamp) lands whiter within ~R; the viewfinder has no landing (no change there). Not tried on a phone.
+- Part B, the sky term (p378-sky, p378-sky2): WhySkyMask decides on whyLow's cells (why/skycells) - bright, low texture, grey or
+  blue, joined to the photo's top edge, over the subject - and why/skymask spreads it; why/combine SKY: the clouds neutral (C1), the
+  sky's level lowered (L2 / L3, the clouds' tops fading out), modelled (M1), the landing's glow kept out of the clear sky (L4); a
+  backlit sky (a clipped core touching it, a dim room under it) keeps its level. The viewfinder decides on the meter's quads
+  (LiveSky eases it per frame); Ultra HDR keeps the term (why/skyratio scales the scene plane). check_why_sky: the owner's flats in
+  kind - mid sky x0.868, the clouds' chroma x0.48, the gaps x0.87, the ground bit for bit, the viewfinder within 0.05.
+- Review round 3 (owner: «закончи всё что можешь без агентов») - ring: (1) a pixel counted with ONE channel at its clip (a blue sky
+  with G clipped whitened, a white stripe on a red band's edge): now every channel; (2) the per-pixel saturation cut-off drew white
+  rings round coloured lamps (orange -> white -> orange): decided per light now - MODE 2 measures the glow beside the core (no
+  channel clipped, from 0.6 of the clip) in the render's colour, MODE 3 takes each block's nearest glow (a neighbour's brighter glow
+  farther away does not decide it) to a gate (white below 0.74 of 1 - min / max, the colour kept from 0.80: suns' aureoles R/G 1.25 -
+  1.35 measure 0.46 - 0.73, orange lamps 0.81 - 0.83), MODE 1 carries the nearest light's gate; (3) the check now has the G-clipped
+  sky, the band's edge, the lamp's glow ring by ring to 220 px, aureoles 1.3 - 1.4, a warm lamp alone, p10 in every colour guard.
+  Sky: (1) a sun without ultrashort frames behind a wire / branch or with a theta^-2 aureole was darkened: the rings' level is
+  the mean down to 0.5 stop under their median, a round fully clipped core (9 cells and more) with its first ring 0.25 stop over
+  the sky is a light whatever the rings past it do, its blob judged by that core's shape (up to 15 % of the frame); (2) the dim
+  room's hard gate (EV 7.5, 5 stops): a ramp - the lowering's share (Mask.keep) from none under EV 9 to all from 10.5, x 3.5 - 4.5
+  stops; (3) the viewfinder now finds the same cores (no ceiling needed); (4) LiveSky resamples the shown sky onto a new grid (a
+  pinch zoom set it back to none: +15 % in a frame); (5) a sky over ~75 % of the height got no term: the subject's level is the
+  median of the far half's cells unlike sky (few: its 20th percentile) when what that takes in has clouds' structure (0.15 stop;
+  a white wall over the frame is smooth); (6) bluish snow in shade: a coloured joined region is cut too unless the sky's other
+  coloured cells have its colour; (7) a light tower rising to the top edge: a region on the top edge with straight sides and the
+  sky 0.25 stop brighter beside them is cut (from ~2 cells wide; a 1-cell spire stays in); (8) the Ultra HDR ratio's two targets
+  RGBA8 (halved) and none above 100 MP. Host: check_highlight_opposed, check_highlight_landing, check_why_sky with every review
+  scene (wire, branch, K 4 / 16 / 40, rooms EV 7 - 8.5, snow, towers 36 / 60 px, skies over 60 - 90 %), WhySkyMaskTest (a dim
+  room's ramp), LiveSkyTest (a pinch zoom's grids), the full host check list.
 
 ### P379 - Mali: every GPU pass of Adreno on the GPU too, the same result (owner, 2026-10-28: «По поводу обработки на мали, всё что работает на адрено на гпу, на мали тоже должно работать на гпу. При этом чтобы никто из них не пострадал и результат не ухудшился»): DONE in code (host), not tried on a phone
 - Audit: no vendor or SoC gate sends a stage to the CPU. The worker's renderer branches (scam-hybrid.h) chose GPU variants only:
@@ -8415,3 +8490,234 @@ Owner, same day: «сделай гпу выравнивание и дай воз
   refused by this session's permissions). Phone: the X200 Pro's log - «compile cells», then «own-quad cells off on this build» once;
   the X300 Pro's - blend0 - blend4 compiled; «hybrid_profile 1» per-pass times before / after on both.
 
+
+### P380 - the film simulation against Unspektrawesome's SPEKTRA (owner, 2026-10-28: «Займись симуляцией плёнки, она у нас не работает как должна. вот тебе парный пример, снято на нашу камеру и на unspektrawesome на одинаковых настройках симуляции пленки»; https://github.com/EkinStrop/Unspektrawesome-Releases/releases; after P378 and the window burst; delivered with P378): DONE in code (host), not shot on a phone
+- The pair (a cabin: ceiling light top left, a map and a muster list on a beige wall, a black chair): ours (0973434c) crisp and
+  contrasty, the lamp a hard clipped patch, saturated digital colour; theirs (0a5c263a) a film look - a wide halation / bloom around
+  the lamp and the bright paper, softer micro-contrast (diffusion), a creamier, more muted palette, gentler highlight roll-off.
+- Unspektrawesome: an Android camera app (1.2.4 - 1.2.6, Oct) with «SPEKTRA» film controls (diffusion among them); no source on the
+  releases page. To do: what SPEKTRA models (its controls, the APK's assets / strings), our FilmSim chain on the same settings
+  (stock, print, format, effects - halation, diffusion, grain), and why ours renders so close to the digital photo.
+- Research round (three readers + a synthesis; scratchpad/film380/): our spectral engine is not the cause - our crop inverted
+  through our print and re-rendered on their recipe (read from their JPEG: Portra 160, Endura Premier, IMAX 70, Pro-Mist 2.0,
+  halation and softness 0, DIR couplers 0) through our own FilmSpectral comes within ΔE76 2.8 / RMS 7.7 of theirs (with their -1.8 EV
+  lens vignette and +0.9 EV centre fitted; as shot ΔE 9.4, fine detail 2 - 2.8x theirs). What we lack: (1) diffusion in the film
+  recipe (our only diffusion is the lens filter, off by default and sized for 36 mm; DiffusionModel is already spektrafilm's
+  diffusion.py), (2) the print in the tray (P381) and Endura Premier was not chosen, (3) a coupler amount (fixed at 100 %), (4) 65 mm /
+  IMAX 70 formats and the grain blur growing with the format (11.8 µm x (format / 35)^0.62).
+- Decisions (ours): diffusion becomes the film's own effect (Нет / Glimmerglass / Black Pro-Mist / Pro-Mist / CineBloom, a strength
+  0 - 2, default 0.5), sized by the film's format, after the lens filter and before the halation; a lens filter on too stacks with it;
+  a «Цветоразделение (DIR)» slider 0 - 100 % (review) with the default 100 % (today's colours; their app's recipe had 0 %); 65 mm and IMAX 70;
+  the format's grain blur; the full recipe in the photo's EXIF description; licence notices for the spektrafilm parts (GPL-3.0);
+  nothing from the Unspektrawesome app. Not film: their vignette (their lens shading) and their brighter capture exposure.
+- Done (branch p380-film): FilmSim's DIFFUSION_KEY ("" / glimmer / bpm / pearl = Pro-Mist / cinebloom), DIFFUSION_STRENGTH_KEY (the
+  grade x 100, 0 - 200, 50) and DIR_KEY (%, 0 - 200, 100) in KEYS (the lab's rows, the backups, the page's and P382's tab reset);
+  Settings.diffusionP = DiffusionModel.scatterAtGrade x the simulation's strength, diffusionFrameUm = the format's long edge (36 mm
+  without one). LensFilter.film: the node "FilmDiffusion" (the lens filter's Gaussian plan and passes, no shader change, sized
+  over FilmHalation.filmLongPx) between the lens filter and FilmHalation (PostPipeline.lightNodes); FilmEffects.light shows it
+  in the settings' preview; LiveLensFilter draws it on both viewfinders, combined with a lens diffusion filter
+  (DiffusionModel.combine: the level pairs' Gaussians in quadrature, refitted by nnls). DiffusionModel / DiffusionGauss take a
+  frame (the lens filter's overloads pass FRAME_UM: its plan unchanged blur for blur). Formats 65 mm (52.48) and IMAX 70 (70.41),
+  the default found by id; the reference stocks' grain blur 11.8 um x (format / 35)^0.62 (FilmGrain, FilmEffects; our B&W grain
+  unchanged). FilmSpectral's couplers' amount (couplers.py: the matrix and the curves before the couplers at the amount), the
+  table key's 8th field (a 7-field key reads 100 %), FilmChain's index 8. The film page («Эффекты»: «Диффузия» chips, «Сила
+  фильтра» 0 - 2 shown when one is chosen, «Цветоразделение (DIR)» for the measured colour stocks; «Формат» lists the two) and
+  the tray's chip row (Диффузия, Сила фильтра, Цветоразделение (DIR)); ParamHelp texts; Parameters.filmRecipe ->
+  "\n Film=<recipe>" in every file's EXIF description only with a film (ParseExif.describeFilm after takeFilm); ShotLook's log
+  line carries the recipe. Licences: DiffusionModel's Javadoc (spektrafilm diffusion.py, GPL-3.0), assets/film/
+  NOTICE-spektrafilm-ofx.txt and the About credit (formats and grain blur scale from spektrafilm-ofx, GPL-3.0).
+- Checks: film off - FilmGatesTest node list, check_film_sim --strict, check_film_lut, check_colour_output --shader --strict PASS,
+  no shader touched; 100 % = today: 181 tables (every stock x print: scene 17^3, display 9^3, grain 9^3; the default 41^3 scene
+  tables) of the old FilmSim / FilmSpectral and the new one md5-identical. FilmSpectralTest against spektrafilm (refs.py with
+  dir_couplers.amount): the 13 cases unchanged (max 0.0033), 0 / 50 / 150 % (7 cases) max 0.0022. Above about 150 % some stocks'
+  log exposure before the couplers stops rising: np.interp and spektrafilm-ofx's bisection (ours) then differ - no case there.
+  Unit tests (DiffusionModel / Gauss / Fft, FilmSim, FilmSpectral, FilmChain, FilmGates, LutTray) pass, each new one fails on a
+  mutation of what it pins (except the Gaussian-vs-FFT consistency case); related suites 73 / 73.
+- Host check research/filmsim/pair380.py (SceneDump.java on the compiled classes: the shipped tables and the FilmDiffusion plan):
+  their recipe + diffusion + vignette + capture fit (EV +0.90, R/G +0.06, B/G -0.16) RMS 7.8 / dE76 2.80 (PASS <= 8 / 3); their
+  recipe + Pro-Mist 2.0 at IMAX 70, no fit, half scale: detail 0.80 .. 1.21 x theirs (the list's finest band 1.21; spektrafilm's
+  analytic PSF gives 1.15 there - our plan's sub-pixel taps), full size 0.55 .. 1.20 (the map's < 0.7 px band; 0.79 .. 1.13
+  without it): the 0.8 .. 1.2 acceptance missed by 0.01 at its edges. Panels scratchpad/film380/after/.
+- Phone: a film shot with the diffusion (Pro-Mist 2.0, IMAX 70) against the settings' preview and both viewfinders; GPU time of
+  FilmDiffusion at 50 MP; the recipe in the gallery's EXIF; the tray's new chips.
+- Review (correctness) and its fixes: the DIR range ends at 100 % - from ~148 % the exposure before the couplers stopped rising in
+  14 of the 20 colour stocks (greys blue / orange, tones inverted; FilmSpectralTest now walks every colour stock at 0 - 100 %: greys
+  rise and stay within 0.06 of 100 %); FilmDiffusion freed its textures only at the end (Pro-Mist at IMAX 70: 15 - 23 full-size
+  textures, 6 - 9 GB at 50 MP) - each now goes once no later pass reads it (the lens filter gains too); the lab's grade A/B on a shot
+  without a family takes Pro-Mist; DiffusionGaussTest pins the lens filter's plans of before P380 (hashes), not a call against itself.
+
+### P381 - the tray's film tab: «Печать» and «Формат» (owner, 2026-10-28: «Ты не добавил в наше подменю вот эти пункты выделенные на скриншоте»; the film page's chips «Плёнка · Печать · Формат · Эффекты» with «Печать» and «Формат» circled): DONE in code (host), not tried on a phone
+- The tray's film tab (P375) has the stock and the effects' parameters; add the print (paper) and format choices the film page has.
+
+### P382 - a double tap on a tray tab resets it (owner, 2026-10-28: «Сделай чтобы при двойном нажатии на LUT, Фильтр и тд все параметры в этом пункте сбрасывались»): DONE in code (host), not tried on a phone
+- A double tap on «LUT», «Фильтр», «Плёнка», «Цвет» puts every parameter of that tab back to its default (as P357's DoubleTapReset
+  and PageReset do for rows and pages), with the tray's own feedback.
+
+### P383 - the viewfinder's exposure changes in steps, not smoothly (owner, 2026-10-28: «У нас что-то с видоискателем, экспозиция меняется не плавно, а ступенчато, займись этим сам»; before the push, delivered with P378): DONE in code (host), not tried on a phone
+- Owner: «экспозиция меняется ступенчато без ETTR, не думаю что это связано» - ETTR off, plain auto.
+- Lead: the X200 Ultra's viewfinder is the RAW one (logs: VF_RAW, LiveWhyTone "viewfinder SMART_HDR (per pixel ...)", vf_why POINT);
+  LiveWhyTone meters every AE_EVERY = 4 drawn frames and eases aeShown / filmAeShown by AE_SMOOTH = 0.35 per meter run, not per
+  frame (10 - 30 toned frames/s: 2.5 - 7.5 jumps a second, the first a third of the change), while the fused curve and the AGX / clip
+  uniforms jump to each new meter result at once.
+- To do: every step source in plain auto (the RAW tone's meter cadence and easing, whether a RAW frame is drawn against its own
+  exposure when the HAL's AE moves, the own AEs, the ISP viewfinder of the other phones); smooth per drawn frame without slowing
+  the AE's settling or changing the photo.
+- The owner's screen recording (17:08, ArkCam then SCAMERA, ETTR off) measured per frame: ours a step every 4th frame (-0.139,
+  -0.122, -0.115, -0.118, -0.089, -0.052 EV) and nothing between, ArkCam 0.02 - 0.09 EV every frame (lag-1 autocorrelation of |Δ|:
+  ours 0.07, ArkCam 0.78).
+- DONE: (1) ToneEase - the shown ae, film ae, exposures, curve and AgX / clip values move every drawn frame, by time (a critically
+  damped pair of lags, TAU 0.12 s each, exact in dt, dt capped at 0.1 s: 6 % of a gap in the first frame at 30 a second, at most
+  ~10 % a frame, 90 % after ~0.47 s; the old law 35 % at once every 4th frame). (2) FrameExposure - each RAW frame drawn against its
+  own exposure (SENSOR_EXPOSURE_TIME x ISO up to the analog cap, plumbed through LiveRawFrame.Meta / Frame, only from the frame's own
+  result): the ease runs in the scene's terms, a move of the camera's AE (or ours, or a hand-set one: the photo's WhyAe meters those
+  away too) is cancelled in its own frame - before, every HAL move showed in full and the two AEs overshot together (host model of a
+  +2 EV window: 0.59 EV a frame and 0.43 EV past the end at 30 a second, now 0.21 and none); a reported move over 0.5 EV is taken only
+  when the RAW's level follows (the V2502A's ISO 8019 -> 22698 -> 8328 glitch), taken ones the level did not follow are counted as
+  suspect. (3) vf_why 1 meters every 2nd new frame >= 50 ms apart (was every 4th). (4) A session change starts over. scam_dev
+  vf_ae_scene (0 = without (2), for an A/B) and vf_ae_trace (5 s of per-frame lines). Review round (two lenses): the gain's guard
+  had floored a 0.1 «Мин. затемнение» at 0.25 (now 0.05 - 32), the meter's 66 ms fell to every 2.5th frame with jitter, hand-set
+  frames were not followed, the mosaic preview's older result - all fixed. Tests ToneEaseTest (11), FrameExposureTest (6).
+- Needs the phone: vf_ae_trace on the X200 Ultra (the HAL's per-frame shape, suspect / refused counts, does the RAW follow ISO up to
+  the declared analog cap), a new screen recording of the same pan; at 10 - 15 toned frames a second a meter change still moves
+  0.2 - 0.29 of its gap a frame (the two-pass path reuses the toned image between RAW frames).
+
+### P384 - cameras and modules on the settings' main page, a simpler and nicer menu (owner, 2026-10-28, three screenshots: «Камеры и объективы → Камеры и модули» (lens buttons, per-module settings, RAW and the sensor), a module's page «0.8× · ID 4» (Основное: Название, Зум и кроп на сенсоре, Кнопка в видоискателе; Копия модуля: Кроп копии, Сделать копию с кропом, Удалить копию; Для опытных: Camera ID and «Сенсор и вендорные ключи» crossed out), the module's sensor page (Режим сенсора (SensorModeTable), vivo.control.forceSensorMode, Проверить частоты кадров, Добавить vendor tag); «Переместить эту группу настроек на главный экран, переделай это меню по-своему чтобы им было очень легко и просто пользоваться и чтобы в нём было легко разобраться. Предлагаю сделать отдельную группу где можно будет вписывать айди модулей, отдельную группу для настроек с второго скриншота. А то что на третьем скриншоте сделать как отдельную группу настроек на главной странице разделенную по модулям. Всё решения по реорганиции и смены стиля этих настроек принимай сам. Сделай это меню красивым с плавными анимациями и красивыми иконками»; before the push): DONE in code (host), not tried on a phone
+- The main page holds the camera groups itself (ModuleRows builds them on the root page; no page in between):
+  - «Модули камеры» (root_modules, after «Съёмка»): one card per module (ModuleSection: the zoom badge, the kind and «Сейчас в
+    камере» / hidden / ID, a chevron), back modules by zoom then the front; filler slots left out, hidden ones dimmed. One card open
+    at a time (the open one kept in the page's arguments, modules_open); its rows (ModuleRowPreference, nested fill): Название,
+    Зум и кроп на сенсоре, Кнопка в видоискателе, a copy's Кроп копии / Удалить копию, Сделать копию с кропом, Свои настройки
+    снимка (+ the FULLRES profiles), FULLRES: пробы режимов. Under the cards: Добавить кнопку с кропом, Свои настройки для каждого
+    модуля, Копировать настройки между модулями.
+  - «Для опытных» → «Camera ID модулей» (expert_module_ids): a row per module (ID / Авто / the copy's source / not on the phone);
+    a tap opens CameraIdSheet: Авто (or the source's camera for a copy), the phone's cameras (facing, focal length, a logical
+    camera's physical ones as "L-P"), «Ввести Camera ID вручную» with a check while typing (CameraIdCheck: empty, not an id, a
+    listed / described camera, a physical camera saved through its logical one, unknown - saved only with «Сохранить всё равно»).
+  - «Для опытных» → «Сенсор по модулям» (expert_module_sensor): module chips (a pill gliding to the chosen one, a dot on a module
+    with values of its own, a hint until one is chosen; no camera switch), then that module's category (Режим сенсора, OIS,
+    session type, ISP stream, RAW frame rate, black / white levels, the frame-rate check, its camera keys, Добавить ключ камеры,
+    Сбросить сенсор «…» - asks first). A module profile's root shows its own module's sensor only.
+  - «Камеры и объективы» lost the «Камеры и модули» row: «Камера и RAW» starts with «RAW и сенсор» (capture_settings_screen).
+- Deleted: ModuleSettingsFragment (the «Камеры и модули» hub), ModuleProfilesFragment (a module's page), ModuleLensFragment (its
+  sensor page); the module copy catalog (ModuleCopyFragment) keeps a «Сенсор по модулям» page of its own.
+- Keys: every stored key and value as before - module_name_ / module_label_ (zoom) / module_visible_ / module_crop_ /
+  module_id_ / user_camera_ids / hidden_camera_ids, the copies (ModuleRegistry.duplicate / remove), pref_save_per_lens_settings,
+  the profiles (FullResProfiles, module_profile_v2_*), pref_sensorconfig_<slot>_* and their tunable keys, the FULLRES trial keys;
+  only the rows that write them moved (ModuleRowsTest.rowsWriteTheSameKeys, noValueChanges: opening and browsing writes nothing).
+- Motion (SettingsMotion; TrayMotion's springs and curves copied, not shared): the list diffs its rows on root pages
+  (SimplePreferenceComparisonCallback), the rows below glide (320 ms, decelerating), new rows fade in with a 6 dp rise to their own
+  resting alpha a little into the glide (they no longer wait for the whole glide: an opened card stood empty for 320 ms), rows that
+  go fade out (120 ms), the chevron turns, the badge's ring cross-fades, the chips' pill glides on a spring with the text colours,
+  a chip gives under the finger, an opened card that ends below the screen scrolls into view. Everything on ValueAnimator /
+  ViewPropertyAnimator: the system's animator scale and «remove animations» apply. The card decoration (SettingsCardDecoration)
+  follows the rows' translation and fade, keeps one card through a swap (a title not yet faded in, rows under rows gliding past).
+- Icons (tools/make_ui_icons.py, same glyph style): settings_ic_lenses, _id, _key, _fps, _crop, _eye_off, _sensor.
+- Fixed on the way: the sensor mode row was added twice after a camera key change (refreshTunableKeys left it); its title said
+  «Режим сенсора (SensorModeTable)» and its summary repeated the value, and it took a new session without saying so (SessionKeys
+  now counts <slot>_sensormoderow: the restart pill, a camera beside the settings got the old mode); the session type row showed
+  «—» and its value twice; camera key names broke inside a word (now after their dots, shown only); a recycled row kept a warning
+  title colour; dimmed rows faded in to full; PageReset reset the rows of hidden module categories and folded cards; the copy
+  catalog's note pointed at the deleted page; «1× от 1×· свободных мест» (resource spaces trimmed); search finds rows in folded
+  cards and unchosen modules and opens / chooses them.
+- Tests: ModuleRowsTest (15: order without fillers, kind / summary texts en + ru, accordion, same keys, ID states, search into
+  folded rows, the diff, no value changes, chip dots, bound row texts, renders), CameraIdCheckTest (5), SessionKeysTest (+ the
+  sensor mode row), PageResetTest (+ hidden / folded rows); updated with the same strength for the new layout: ModuleProfilesPageTest,
+  SettingsMenuTest, SettingsDialogsTest. Renders (Robolectric, xhdpi, ru / en): build/reports/module-concept/p384-*.png - the
+  main page, the modules group closed / open, a copy's card, the Camera ID rows and sheets (list, manual unknown / invalid, a
+  copy's), the sensor chips none / 3×, its keys, a module profile's root, the copy catalog, and frames of a card opening and a
+  chip change.
+- Not tried on a phone: the animations' feel at 120 Hz, the sheet over the keyboard, TalkBack on the cards and chips.
+
+### P385 - the user arranges the settings himself (owner, 2026-10-28: «Добавляем возможность в настройках приложения менять расположение настроек так как захочет пользователь, сделай это меню удобным в использовании и понятным»; before the push): DONE in code (host), not tried on a phone
+- The settings' order (groups on the main page and rows inside a group) is the user's to change: a clear edit mode (drag handles,
+  long press, move up / down, hide / show where safe, reset to the default order), stored per key and robust to settings added or
+  removed by an update (P279's ItemOrder rules: new items after the known ones, gone ones dropped). Built on P384's main page
+  (after it, same delivery); search, PageReset, the P373 layout and every key kept; smooth animations; Lang / resources.
+- Owner: «Учитывай что это должно сохраняться и в конфигах при импорте/экспорте» - the arrangement is part of the config: saved by
+  the config export (BackupRestoreUtil / ConfigXml), restored by the import (an old config without it keeps the default order, a
+  config from a build with other settings follows ItemOrder's rules), cleared by «Сбросить всё»; a test round-trips it.
+- Done: one main setting settings_layout (SettingsLayout: «container=item,...;...», a settings_ key - shared by every module, in
+  the config's main settings, cleared by «Сбросить настройки»), only the containers that differ from the app's order. A page's
+  containers are the page and its groups; rows move between the groups of a page except into / out of root_app, root_about,
+  adv_system (ModulePageFilter.NOT_MODULE: a module page hides them whole) and the module cards' group (built by code, moves as a
+  whole). An unknown row (newer build, generated here only) keeps its place after the row it follows in the app's order, a gone
+  one is dropped; a group left without shown rows is hidden while it stays so (SettingsLayoutTree). Applied to the page as built,
+  before the module page's filter; again on resume when the stored order changed. «Расположение» (SettingsLayoutFragment): the
+  root's row in «Приложение» and a header button on every page with something to arrange (not on module pages); «Группы» (group
+  cards: their first rows by name) and «Пункты» (rows under their group's title, into another group, an empty group's drop place);
+  drag by the grip or after a long press (lift, haptics), «Выше» / «Ниже» for TalkBack; saved on every drop; the header's reset puts
+  the page back. Hiding rows was left out (a hidden setting still acts and could not be found). Tests: SettingsLayoutTest,
+  SettingsLayoutPageTest (renders p385-*.png), SettingsLayoutConfigTest (export / import on this and another phone).
+
+### P386 - a green photo from the 2.4x tele (owner, 2026-10-28, X200 Ultra build 31136, «исправь»: the final JPEG teal / green all over - a brick block of flats teal, the trees yellow-green, the sky pale cyan; diagnostics SCAM-20261028-153831-124-1bbb40b9.zip from Drive 1ZveZz5IoFm-UXwxdkM1tje2L9F2FeroP): DONE in code (host), not tried on a phone
+- The zip: camera 5 (the 88 mm tele), ISO 100, 3.4 ms, 20 normal frames, a native mosaic (block 2) merge; colourSource=ISP_CST_PLACEHOLDER
+  (the DNG forward matrices are the sRGB -> XYZ placeholder), neutral [0.415, 1, 0.715], the result's CST [1.734 -0.656 -0.078;
+  -0.164 1.727 -0.563; 0.109 -0.789 1.680], sceneCct 6870 (the DNG estimate), AWB 5714 K. 02-after-ivst green (no WB: expected);
+  03-ScamRgb already teal in the mid tones with a near-neutral sky; 03-WhyCombine teal / yellow-green.
+- Root cause (diagnose round, three readers + a fixer + a reviewer): not the colour route - the BLACK. This camera-5 stream (4096x3072
+  GRBG, Quad block 2) came without its 64 DN pedestal (true black ~0 - 2 DN: the grey patches' log R/G spread 0.661 at black 24, 0.06
+  at 2); Parameters.refineBlackLevel's BlockScan reads plain-Bayer sites - on a block-2 stream all four "channels" land in the green
+  quad - so the loss test missed it and the black became the darkest green block's mean, 24.06 DN («data floor (24.0625)»). Red and
+  blue lost ~24 DN (71 % of the merged red negative), x2.41 white balance and the CST made the mid tones teal. The CFA phase, the
+  neutral (within 2 - 3.5 %) and the CST are right. The native chroma median ran on the over-subtracted data (the shadows' speckle).
+- First fix (local branch p386-green): a block-aware scan, the viewfinder's P315 loss test in the photo, the black = the lower of the
+  block floor and the smallest non-zero samples; host replay of the owner's shot: grey patches 18 - 30 % chroma -> 2 - 3 %. Review:
+  a lost pedestal without deep shade still gives 7 - 40 DN, the samples' floor under-subtracts a partly lost pedestal (magenta), a
+  non-zero strip would read as a loss.
+- Round 2 (DONE): PedestalMemory - a proven loss and its floor per stream (MosaicStream's key, in memory only: P114's loss went with a
+  restart), fed by the photo and by the RAW viewfinder's PedestalFloor (which sees the session's frames before the shot); a frame
+  without deep shade takes the stream's floor while its darkest blocks stay under 0.75 x the declared black, a frame back at it
+  clears it; the samples' floor only when <= 3 DN (x white / 1023) and >= 3 blocks hold 1/16 of their samples there; whole edge
+  block rows / columns all low with a lit line inward are left out. Probe table (true black / old / now / now after a shaded frame of
+  the stream): sky + wall lost 0 / 18.8 - 44.5 / 18.7 / 1.0, facade lost 0 / 39.6 - 64 / 39.6 / 1.0, partial read 5: 20 / 19.9 /
+  19.9, kept + a 1..4 strip 64 / 64 / 64, drift to 60: 64 everywhere. Replay of the owner's shot: worst grey patch 29.8 % -> 2.4 - 3.8 %.
+  Tests ParametersPedestalLossTest, PedestalMemoryTest, ScamProcessorBlackFloorTest, ParametersBlackFloorTest / BlockScanTest,
+  PedestalFloorTest. Needs the phone: a camera-5 re-shot (the shadows' colour after a correct merge), whether it always loses the
+  pedestal; the single-RAW DNG save still scans as plain Bayer.
+
+### P387 - a black 1-px column at the photo's left edge (found by P380's research, 2026-10-28: both build-31136 photos of the pair have a black 1-px left column): DONE in code (host), not tried on a phone
+- Every portrait photo: also the OPPO X8U's 42fa2189 (column 0 mean 0.3 against 67). RotateWatermark/addwatermark_rotate.glsl read
+  texSize - x / texSize - y (size itself, outside the texture: texelFetch gives 0) - rotate 3 (a 90 degree photo) lost the sensor's
+  first row and drew a black column; 270 / 180 and the mirrored 0 / 270 / 180 the same at their edges. ultrahdr/sceneluma.glsl
+  copies the transform (the gain map's plane): both now read size - 1 - x. tools/check_rotate.py (in CI): every rotation, mirrored
+  or not, gives each input pixel once (no 0), a rotation of the input, and the scene plane on the same texel - fails on the old
+  shaders (rotate 3: 7 black pixels of a 5 x 7 output).
+
+### P388 - RAW10 by default on every module of the OPPO Find X8 Ultra (owner, 2026-10-28: «у оппо x8 ultra по дефолту на всех модулях должен быть Raw10 чтобы не было проблем с уровнем чёрного»): DONE in code (host), not tried on a phone
+- Found: DeviceDefaults v2 (2026-10-06) put pref_raw_stream_format raw10 into the main settings and the module profiles of that
+  day only; the owner's log of 2026-10-27 (build 31132) opened cameras 2 and 4 at «auto» (RAW16) until RAW10 was chosen by hand.
+  The X8U's RAW16 streams lose the black pedestal (P114 / P315); its modules declare white 1023, so RAW10 loses nothing (P365's
+  raw10Fits holds).
+- DONE: DeviceDefaults v8 - RAW10 on the X8U once more, in the main settings and every module profile (and the profiles' baseline),
+  once (a later choice stays); PreferenceKeys.getRawStreamFormat's default where nothing is stored is the phone's factory value
+  (DeviceDefaults.rawStreamDefault: RAW10 on the X8 / X7 Ultra, else auto) - a module profile without the key, a reset. Tests:
+  DeviceDefaultsTest (the X8U on v6 / v7 gets RAW10 on every module, once; the default per phone).
+
+
+### P389 - the window burst's artifacts (owner, 2026-10-28: «Займись также бурстом с окна, у нас там артефакты»; the OPPO burst through a window with the sun, the room 5-7 EV under the glass): the tone's four DONE in code (host), not tried on a phone; the merge's four diagnosed, not changed
+- Survey: 8 classes. Tone side (WHY, fixed here): a dark trench beside bright edges, a black room under the window, a glow inside
+  the glass along every frame bar; merge side (worker, diagnosed only): a Nyquist checker on twigs and the insect screen (Sabre
+  6.1), rainbow moiré arcs on the screen (kHybReject), a row offset in the dark room, a green lens ghost under the sun, violet
+  fringes.
+- DONE (sharpening): why/sharp_compose's guided-filter detail is bounded below by the pixel (c - q >= -c): on the dark side of a
+  bright edge the radius-8 base is several times the pixel and the term took 78-98 % of it (a 5-12 px trench). Guard:
+  check_why_sharpen 4b (fails on the old shader).
+- DONE (crushed room): import_why_fusion deepFloorU (why_deep_floor 2 sigma) - far under the fusion's centre every layer's weight
+  was ~equal and a deep shadow took the four layers' average (x1.47 of the bright layer's x2.61); FusedCurve.DEEP_FLOOR keeps the
+  viewfinder's curve the shader's (FusedCurveTest). why/combine MACRO_TOE (why_macro_toe 1): the macro contrast below its pivot
+  0.40 as a power, no black offset (the line took 0.04 L off every shadow, black below L 0.036); check_why_sky compiles it.
+- DONE (window halo): why/lpyr MODE 6 builds the guide's log light down to the coarsest level; MODE 5 takes the guided filter's
+  band blend where a pixel differs from it by 0.3..1.0 EV (why_fusion_edge_lo / _hi, floor 2^-7 x AE) - Mertens' halo of every
+  strong edge (P349 had it only above white). edgeMixU is set on every shot (a linked program keeps its uniforms). Guard:
+  tools/check_why_pyramid_edge.py (CI): window glass / bars within 0.01 of the guided filter (pyramid 0.03-0.07), the horizon
+  halo 0.032 / 57 rows -> 0.005 / 2, P310 cores and low-contrast texture unchanged, unset share = the pyramid bit for bit.
+- Not changed (worker, every photo's merge; proposals in the session's scratch, host replays only):
+  - Sabre 6.1 checker: the base widening tests a fixed 4 accepted donors, 22-donor bursts in wind keep the point kernel;
+    s61WidenShare 0.5 (threshold = half the donors) removes most of it on twigs, partly on the mesh. kD.x also feeds the rim /
+    chroma passes' tDem - needs a phone A/B.
+  - Moiré arcs: the rejection reads the CFA alias as motion and drops the anti-phase donors; damping the colour part of D2 by the
+    Gr-Gb step departure removes ~92 % here, replays unchanged with it off; phone GPU cost unknown.
+  - Row offset in the dark room: a per-row pedestal (rowpedestal.diff) - worker, not replay-verified on other bursts.
+  - Green ghost: a lens reflection of the sun (in every raw frame, moves against the scene); SunGhost (fit + subtract before WB)
+    dE 19.8 -> 2.5 on this burst; a new stage, held for a phone check.
+  - Violet fringes: a numpy prototype only.

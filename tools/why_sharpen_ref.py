@@ -83,7 +83,9 @@ def luma_compose(L, usm_base, ab, bil_base, s):
         tot += (c - bil_base) * bil_amount
     gfd = 0
     if abs(gf_lc) > 1e-3:
-        gfd = (c - (ab[0] * c + ab[1])) * gf_lc
+        # SCAMERA (not WhyCam): the detail is bounded below by the pixel itself (c - q >= -c), as why/sharp_compose.glsl - on
+        # the linear G_CLEAN guide the radius-8 base of a dark frame beside a bright pane is several times the pixel
+        gfd = np.maximum(c - (ab[0] * c + ab[1]), -c) * gf_lc
     # sobel / edge thinning: amount 0 on X8U
     tot = tot + gfd
     ef = smoothstep(0.15, 0.40, lc); med = 0.30 + (0.0 - 0.30) * halo

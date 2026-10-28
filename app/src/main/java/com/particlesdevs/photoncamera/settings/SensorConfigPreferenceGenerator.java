@@ -5,9 +5,10 @@ import android.content.SharedPreferences;
 import android.text.InputType;
 import androidx.preference.EditTextPreference;
 import androidx.preference.ListPreference;
+import androidx.annotation.Nullable;
 import androidx.preference.PreferenceCategory;
+import androidx.preference.PreferenceGroup;
 import androidx.preference.PreferenceManager;
-import androidx.preference.PreferenceScreen;
 
 import com.google.gson.Gson;
 import com.particlesdevs.photoncamera.api.VendorTagUtils;
@@ -29,41 +30,60 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Consumer;
 
 /**
  * Automatically generates per-module sensor preference UI from {@code @SensorConfig} annotations.
- * One category per module; only the selected module's category is shown. The module is chosen by the
- * page (the module chip, or the module page that opened it), not by a row on the page: see {@link ModuleSelection}.
+ * One category per module; only the selected module's category is shown. P384 (owner, 2026-10-28: «А то что на третьем скриншоте
+ * сделать как отдельную группу настроек на главной странице разделенную по модулям»): the categories live in «Сенсор по модулям»
+ * ({@link #GROUP_KEY}) of the settings' main page, the module is chosen by its chips (ModuleRows, ModuleChipsPreference) - none at
+ * first, so the page stays short - or by the module profile page that shows it; see {@link ModuleSelection}.
  */
 public class SensorConfigPreferenceGenerator {
     private static final String TAG = "SensorConfigPrefGen";
 
-    private static final String SUBMENU_KEY = "pref_sensor_config_submenu";
+    /** P384: «Сенсор по модулям» of the main page (was the page pref_sensor_config_submenu). */
+    public static final String GROUP_KEY = "expert_module_sensor";
+    /** The key prefix of a module's category. */
+    public static final String CATEGORY_PREFIX = "pref_category_sensor_";
     /** Rows in this order: RAW levels, stabilization, session; unknown fields after them. */
     private static final List<String> FIELD_ORDER = java.util.Arrays.asList(
             "blackLevelOverride", "whiteLevelOverride", "oisMode", "sessionType");
+    /** P384: the icons of the generated list and text rows by field (the sliders keep theirs). */
+    private static final Map<String, Integer> FIELD_ICONS = new HashMap<>();
+
+    static {
+        FIELD_ICONS.put("oismode", com.particlesdevs.photoncamera.R.drawable.settings_ic_motion);
+        FIELD_ICONS.put("sessiontype", com.particlesdevs.photoncamera.R.drawable.settings_ic_chip);
+        FIELD_ICONS.put("ispsurface", com.particlesdevs.photoncamera.R.drawable.settings_ic_layers);
+        FIELD_ICONS.put("rawviewfinder", com.particlesdevs.photoncamera.R.drawable.settings_ic_eye);
+    }
 
     private SensorConfigPreferenceGenerator() {}
 
     /**
-     * The module whose sensor settings the page shows. Choosing another one only changes what the page shows: it
+     * The module whose sensor settings the page shows, or none. Choosing another one only changes what the page shows: it
      * neither switches the camera nor writes a preference.
      */
     public static final class ModuleSelection {
         private final List<String> slots;
         private final Map<String, PreferenceCategory> categories;
-        private String selected;
+        /** P384: the camera each category was built for (ModuleRows rebuilds a category whose module changed its camera). */
+        private final Map<String, String> cameras = new HashMap<>();
+        @Nullable private String selected;
 
-        ModuleSelection(List<String> slots, Map<String, PreferenceCategory> categories, String selected) {
+        ModuleSelection(List<String> slots, Map<String, PreferenceCategory> categories, @Nullable String selected) {
             this.slots = new ArrayList<>(slots);
             this.categories = categories;
+            for (String slot : slots) cameras.put(slot, cameraOf(slot));
             select(selected);
         }
 
         /** The modules the page can show, in zoom-bar order. */
         public List<String> slots() { return Collections.unmodifiableList(slots); }
 
-        public String selected() { return selected; }
+        /** The module shown, null when none is. */
+        @Nullable public String selected() { return selected; }
 
         /** «1× · ID 3»: the title of the module's category. */
         public String title(String slot) {
@@ -71,60 +91,111 @@ public class SensorConfigPreferenceGenerator {
             return category != null && category.getTitle() != null ? category.getTitle().toString() : slot;
         }
 
-        public void select(String slot) {
-            if (slot == null || !categories.containsKey(slot)) slot = selected != null ? selected : slots.get(0);
+        @Nullable public PreferenceCategory category(String slot) { return categories.get(slot); }
+
+        /** P384: the camera the module's category was built for. */
+        @Nullable public String camera(String slot) { return cameras.get(slot); }
+
+        /** Show {@code slot}'s category only; null (or a module not listed) shows none. */
+        public void select(@Nullable String slot) {
+            if (slot != null && !categories.containsKey(slot)) slot = null;
             selected = slot;
-            for (Map.Entry<String, PreferenceCategory> entry : categories.entrySet())
-                entry.getValue().setVisible(slot.equals(entry.getKey()));
+            for (Map.Entry<String, PreferenceCategory> entry : categories.entrySet()) {
+                boolean shown = entry.getKey().equals(slot);
+                if (entry.getValue().isVisible() != shown) entry.getValue().setVisible(shown);
+            }
+        }
+
+        /** P384: a module's category added (ModuleRows.sync: a new copy), the modules kept in {@code order}. */
+        public void put(String slot, PreferenceCategory category, List<String> order) {
+            categories.put(slot, category);
+            cameras.put(slot, cameraOf(slot));
+            if (!slots.contains(slot)) slots.add(slot);
+            order(order);
+            category.setVisible(slot.equals(selected));
+        }
+
+        /** P384: a module's category gone (a deleted copy). */
+        public void remove(String slot) {
+            categories.remove(slot);
+            cameras.remove(slot);
+            slots.remove(slot);
+            if (slot.equals(selected)) selected = null;
+        }
+
+        /** P384: the modules in {@code order} (zoom order after a zoom change). */
+        public void order(List<String> order) {
+            slots.sort(java.util.Comparator.comparingInt(s -> order.indexOf(s) < 0 ? Integer.MAX_VALUE : order.indexOf(s)));
+        }
+
+        static String cameraOf(String slot) {
+            try {
+                return ModuleRegistry.slots().contains(slot) ? ModuleRegistry.camera(slot) : slot;
+            } catch (RuntimeException e) {
+                return slot;
+            }
         }
     }
 
-    /** Generate the per-module sensor rows; the page starts at the active module. */
-    public static ModuleSelection generatePreferences(Context context, PreferenceScreen preferenceScreen) {
-        return generatePreferences(context, preferenceScreen, null);
+    /**
+     * P384: the modules of the settings' main page (cards, Camera ID rows, sensor categories): every slot but the untouched filler
+     * slots (a free place for a copy, P148), the back ones by zoom, then the front ones; a hidden module stays at its place.
+     * {@code keep} is listed even when it is a filler (a module profile page shows its own module).
+     */
+    public static List<String> moduleSlots(@Nullable String keep) {
+        List<String> slots = new ArrayList<>(ModuleRegistry.slots());
+        slots.removeIf(slot -> !slot.equals(keep) && ModuleRegistry.freeSlot(slot));
+        slots.sort(java.util.Comparator.comparing((String slot) -> slot.startsWith("front")).thenComparingDouble(ModuleRegistry::zoom));
+        return slots;
+    }
+
+    /** A category of one module (pref_category_sensor_&lt;slot&gt;). */
+    public static boolean isModuleCategory(@Nullable androidx.preference.Preference p) {
+        return p instanceof PreferenceCategory && p.getKey() != null && p.getKey().startsWith(CATEGORY_PREFIX);
+    }
+
+    /** Generate the per-module sensor rows; no module is shown at first. */
+    public static ModuleSelection generatePreferences(Context context, PreferenceGroup root) {
+        return generatePreferences(context, root, null);
+    }
+
+    /** As {@link #generatePreferences(Context, PreferenceGroup, String, Runnable, Consumer)} without callbacks. */
+    public static ModuleSelection generatePreferences(Context context, PreferenceGroup root, String preferred) {
+        return generatePreferences(context, root, preferred, null, null);
     }
 
     /**
-     * Generate and add per-module sensor preferences to the preference screen.
+     * Generate and add per-module sensor preferences to «Сенсор по модулям» of {@code root}.
      *
-     * @param preferred the module to show first (a module page opens its own settings), null for the active module
+     * @param preferred the module shown at first (a module profile page shows its own), null for none
+     * @param onChange  run after a camera key was added, edited, deleted or switched (the main page's chips and summaries)
+     * @param onReset   asked to reset a module's sensor settings (the fragment confirms, resets and recreates)
      * @return the module selection of the page, null when nothing was generated
      */
-    public static ModuleSelection generatePreferences(Context context, PreferenceScreen preferenceScreen, String preferred) {
-        PreferenceScreen submenu = preferenceScreen.findPreference(SUBMENU_KEY);
-        if (submenu == null) {
-            Log.w(TAG, "Sensor config submenu not found! Preferences will not be generated.");
+    public static ModuleSelection generatePreferences(Context context, PreferenceGroup root, String preferred,
+                                                      @Nullable Runnable onChange, @Nullable Consumer<String> onReset) {
+        PreferenceGroup group = GROUP_KEY.equals(root.getKey()) ? root : root.findPreference(GROUP_KEY);
+        if (group == null) {
+            Log.w(TAG, "Sensor group not found! Preferences will not be generated.");
             return null;
         }
 
         try {
-            List<String> physicalIds = new ArrayList<>(ModuleRegistry.slots());
-            // P21: the modules the zoom bar shows (and the active one); hidden filler slots only cluttered the list
-            String activeSlot = ModuleRegistry.active();
-            physicalIds.removeIf(slot -> !ModuleRegistry.visible(slot) && !slot.equals(activeSlot) && !slot.equals(preferred));
-            physicalIds.sort(java.util.Comparator.comparing((String slot) -> slot.startsWith("front")).thenComparingDouble(ModuleRegistry::zoom));
+            List<String> physicalIds = moduleSlots(preferred);
             if (physicalIds.isEmpty()) physicalIds = getSortedPhysicalIds();
-            for(String slot:physicalIds) ModuleSensorSettings.ensure(slot);
-            submenu.setTitle(Lang.t(context, "Настройки сенсоров по модулям", "Sensor settings per module"));
-            submenu.setSummary(Lang.t(context, "Уровни RAW, стабилизация, сессия и вендорные ключи каждого модуля",
-                    "RAW levels, stabilization, session and vendor keys of each module"));
             if (physicalIds.isEmpty()) {
                 Log.w(TAG, "No camera ids found, cannot generate sensor config preferences.");
-                addNoSensorsPreference(context, submenu);
+                addNoSensorsPreference(context, group);
                 return null;
             }
-
-            List<TunableFieldInfo> fields = scanFields();
-            if (fields.isEmpty()) {
+            if (scanFields().isEmpty()) {
                 Log.w(TAG, "No @SensorConfig fields found - UI will not be generated!");
                 return null;
             }
-
-            Map<String, CameraLensData> lensMap = getCameraLensMap();
-            Map<String, PreferenceCategory> categories = createCategories(context, submenu, physicalIds, lensMap, fields);
-            String selected = physicalIds.contains(preferred) ? preferred
-                    : physicalIds.contains(activeSlot) ? activeSlot : physicalIds.get(0);
-            Log.d(TAG, "Generated sensor config preferences for " + physicalIds.size() + " sensors, " + fields.size() + " fields");
+            Map<String, PreferenceCategory> categories = new LinkedHashMap<>();
+            for (String slot : physicalIds) categories.put(slot, addModuleCategory(context, group, slot, onChange, onReset));
+            String selected = physicalIds.contains(preferred) ? preferred : null;
+            Log.d(TAG, "Generated sensor config preferences for " + physicalIds.size() + " sensors");
             return new ModuleSelection(physicalIds, categories, selected);
         } catch (Exception e) {
             Log.e(TAG, "ERROR in generatePreferences: " + Log.getStackTraceString(e));
@@ -132,27 +203,56 @@ public class SensorConfigPreferenceGenerator {
         }
     }
 
-    private static Map<String, PreferenceCategory> createCategories(Context context, PreferenceScreen submenu,
-                                                                    List<String> physicalIds, Map<String, CameraLensData> lensMap,
-                                                                    List<TunableFieldInfo> fields) {
-        Map<String, PreferenceCategory> categories = new LinkedHashMap<>();
-        for (String physicalId : physicalIds) {
-            PreferenceCategory category = findOrCreateCategory(context, submenu, physicalId, lensMap.get(physicalId));
-            for (TunableFieldInfo info : fields) {
-                addPreference(context, category, physicalId, info);
-            }
-            addTunableKeySection(context, category, physicalId);
-            categories.put(physicalId, category);
-        }
-        return categories;
+    /**
+     * P384: one module's category under {@code group} (built, or the existing one): its {@code @SensorConfig} rows, the sensor mode
+     * of the camera's table, its camera keys, the frame-rate check, adding a key and its reset.
+     */
+    public static PreferenceCategory addModuleCategory(Context context, PreferenceGroup group, String slot,
+                                                       @Nullable Runnable onChange, @Nullable Consumer<String> onReset) {
+        if (ModuleRegistry.slots().contains(slot)) ModuleSensorSettings.ensure(slot);
+        PreferenceCategory category = findOrCreateCategory(context, group, slot, getCameraLensMap().get(slot));
+        for (TunableFieldInfo info : scanFields()) addPreference(context, category, slot, info);
+        addTunableKeySection(context, category, slot, onChange);
+        addResetRow(context, category, slot, onReset);
+        return category;
     }
 
-    private static void addTunableKeySection(Context context, PreferenceCategory category, String physicalId) {
-        Runnable refresh = () -> refreshTunableKeys(context, category, physicalId);
+    /** P384: a module's category gone (a deleted copy, or rebuilt for another camera). */
+    public static void removeModuleCategory(PreferenceGroup group, String slot) {
+        androidx.preference.Preference category = group.findPreference(CATEGORY_PREFIX + slot);
+        if (category != null && category.getParent() != null) category.getParent().removePreference(category);
+    }
+
+    /** P384 (was the sensor page's one reset row): «Сбросить сенсор «X»» at the end of the module's rows, asked first by the fragment. */
+    private static void addResetRow(Context context, PreferenceCategory category, String slot, @Nullable Consumer<String> onReset) {
+        String key = "pref_reset_sensor_config_settings_" + slot;
+        if (category.findPreference(key) != null) return;
+        androidx.preference.Preference reset = new androidx.preference.Preference(context);
+        reset.setKey(key);
+        reset.setLayoutResource(com.particlesdevs.photoncamera.R.layout.preference_card);
+        reset.setTitle(context.getString(com.particlesdevs.photoncamera.R.string.module_sensor_reset,
+                ModuleRegistry.slots().contains(slot) ? ModuleRegistry.label(slot) : slot));
+        reset.setSummary(context.getString(com.particlesdevs.photoncamera.R.string.module_sensor_reset_summary));
+        reset.setIcon(com.particlesdevs.photoncamera.R.drawable.settings_ic_reset);
+        reset.setOrder(20000);
+        reset.setOnPreferenceClickListener(preference -> {
+            if (onReset != null) onReset.accept(slot);
+            return true;
+        });
+        category.addPreference(reset);
+    }
+
+    private static void addTunableKeySection(Context context, PreferenceCategory category, String physicalId,
+                                             @Nullable Runnable onChange) {
+        // P384: the list is rebuilt only after a key was added, edited or deleted in its sheet (a switch updates its row in place)
+        Runnable refresh = () -> {
+            refreshTunableKeys(context, category, physicalId, onChange);
+            if (onChange != null) onChange.run();
+        };
 
         List<VendorTagUtils.TunableKey> keys = TunableKeyManager.loadKeys(context, physicalId);
         for (int i = 0; i < keys.size(); i++) {
-            TunableKeyPreference keyPref = new TunableKeyPreference(context, physicalId, i, refresh);
+            TunableKeyPreference keyPref = new TunableKeyPreference(context, physicalId, i, refresh, onChange);
             keyPref.setOrder(100 + i);
             category.addPreference(keyPref);
         }
@@ -165,7 +265,7 @@ public class SensorConfigPreferenceGenerator {
         probe.setLayoutResource(com.particlesdevs.photoncamera.R.layout.preference_card);
         probe.setTitle(Lang.t(context, "Проверить частоты кадров", "Check the frame rates"));
         probe.setSummary(fpsProbeSummary(context, physicalId));
-        probe.setIcon(com.particlesdevs.photoncamera.R.drawable.settings_ic_sliders);
+        probe.setIcon(com.particlesdevs.photoncamera.R.drawable.settings_ic_fps);
         probe.setOrder(9999);
         probe.setOnPreferenceClickListener(preference -> {
             com.particlesdevs.photoncamera.capture.FpsProbe.request(context, physicalId);
@@ -177,9 +277,9 @@ public class SensorConfigPreferenceGenerator {
         androidx.preference.Preference addButton = new androidx.preference.Preference(context);
         addButton.setKey("pref_sensorconfig_" + physicalId + "_add_tunablekey");
         addButton.setLayoutResource(com.particlesdevs.photoncamera.R.layout.preference_card);
-        addButton.setTitle(Lang.t(context, "Добавить vendor tag", "Add vendor tag"));
-        addButton.setSummary(Lang.t(context, "Ключ камеры для этого модуля: имя, тип и значение. Переключатель у ключа включает и выключает его",
-                "A camera key for this module: name, type and value. The switch next to a key turns it on and off"));
+        // P384: the plain name first, «vendor tag» only in the description
+        addButton.setTitle(context.getString(com.particlesdevs.photoncamera.R.string.module_key_add));
+        addButton.setSummary(context.getString(com.particlesdevs.photoncamera.R.string.module_key_add_summary));
         addButton.setIcon(com.particlesdevs.photoncamera.R.drawable.settings_ic_plus);
         addButton.setOrder(10000);
         addButton.setOnPreferenceClickListener(preference -> {
@@ -205,6 +305,11 @@ public class SensorConfigPreferenceGenerator {
             return;
         }
         if (rows.isEmpty()) return;
+        category.addPreference(sensorModeRow(context, slot, rows));
+    }
+
+    /** The «Режим сенсора» row of {@code slot} for the rows of its camera's table (P384: built apart for its bind test). */
+    public static ListPreference sensorModeRow(Context context, String slot, java.util.List<int[]> rows) {
         final String[] entries = new String[rows.size() + 1], values = new String[rows.size() + 1];
         entries[0] = Lang.t(context, "Авто (по умолчанию)", "Auto (default)");
         values[0] = "-1";
@@ -219,22 +324,18 @@ public class SensorConfigPreferenceGenerator {
         pick.setEntries(entries);
         pick.setEntryValues(values);
         pick.setDefaultValue("-1");
-        pick.setIcon(com.particlesdevs.photoncamera.R.drawable.settings_ic_sliders);
+        pick.setIcon(com.particlesdevs.photoncamera.R.drawable.settings_ic_sensor);
         pick.setOrder(99);
         // P316 (settings audit): the ISP stream stays out only with «Поток ISP» Auto (or Off); on OPPO / OnePlus / realme a picked
         // row's shots come from the ring alone (P315 SensorModePick.seriesAllowed), which the row says
-        final String hint = Lang.t(context, "Режим сенсора из таблицы камеры: RAW-поток его размера, ключ режима в сессии и запросах, без потока ISP (при «Поток ISP» Авто). "
-                        + "Если камера откажет — модуль вернётся в «Авто». Применяется при следующем открытии камеры.",
-                "A sensor mode of the camera's table: a RAW stream of its size, the mode key on the session and the requests, no ISP stream (with “ISP stream” Auto). "
-                        + "If the camera refuses it the module goes back to Auto. Applied the next time the camera opens.")
+        // P384: the picked row is the value on the right (it was the summary's first line too, and the title said SensorModeTable);
+        // the restart pill says when it applies (SessionKeys: a new session)
+        final String hint = context.getString(com.particlesdevs.photoncamera.R.string.module_sensor_mode_hint)
                 + (com.particlesdevs.photoncamera.capture.SensorModePick.pickTakesRingOnly() ? " " + Lang.t(context,
                         "OPPO / OnePlus / realme: снимок только из буфера — без кадров светов и теней, ручной длинной выдержки и подстройки под мерцание ламп.",
                         "OPPO / OnePlus / realme: the shot comes from the ring only - no highlight or shadow frames, no manual long shutter, no lamp-flicker timing.") : "");
-        pick.setSummaryProvider(p -> {
-            final CharSequence e = ((ListPreference) p).getEntry();
-            return (e == null ? entries[0] : e) + "\n" + hint;
-        });
-        category.addPreference(pick);
+        pick.setSummaryProvider(p -> hint);
+        return pick;
     }
 
     /** The probe's row: asked (runs on the camera), the last result, or what it does. */
@@ -248,22 +349,25 @@ public class SensorConfigPreferenceGenerator {
                 "Each rate for a second: what the camera really delivers and which sensor mode it picks");
     }
 
-    private static void refreshTunableKeys(Context context, PreferenceCategory category, String physicalId) {
+    private static void refreshTunableKeys(Context context, PreferenceCategory category, String physicalId,
+                                           @Nullable Runnable onChange) {
         List<androidx.preference.Preference> toRemove = new ArrayList<>();
         for (int i = 0; i < category.getPreferenceCount(); i++) {
             androidx.preference.Preference p = category.getPreference(i);
+            // P384: the sensor mode row too - the section adds it again (a second row of one key after each key edit)
             if (p instanceof TunableKeyPreference || ("pref_sensorconfig_" + physicalId + "_add_tunablekey").equals(p.getKey())
-                    || ("pref_sensorconfig_" + physicalId + "_fpsprobe").equals(p.getKey())) {
+                    || ("pref_sensorconfig_" + physicalId + "_fpsprobe").equals(p.getKey())
+                    || com.particlesdevs.photoncamera.capture.SensorModePick.prefKey(physicalId).equals(p.getKey())) {
                 toRemove.add(p);
             }
         }
         for (androidx.preference.Preference p : toRemove) {
             category.removePreference(p);
         }
-        addTunableKeySection(context, category, physicalId);
+        addTunableKeySection(context, category, physicalId, onChange);
     }
 
-    private static void addNoSensorsPreference(Context context, PreferenceScreen submenu) {
+    private static void addNoSensorsPreference(Context context, PreferenceGroup submenu) {
         try {
             androidx.preference.Preference info = new androidx.preference.Preference(context);
             info.setKey("pref_sensor_config_no_sensors");
@@ -271,7 +375,7 @@ public class SensorConfigPreferenceGenerator {
             info.setSummary(Lang.t(context, "Камеры ещё не определены. Откройте видоискатель и вернитесь в это меню.",
                     "Cameras are not detected yet. Open the viewfinder and come back to this menu."));
             info.setSelectable(false);
-            submenu.addPreference(info);
+            if (submenu.findPreference(info.getKey()) == null) submenu.addPreference(info);
         } catch (Exception e) {
             Log.e(TAG, "Failed to add no-sensors message: " + Log.getStackTraceString(e));
         }
@@ -370,8 +474,8 @@ public class SensorConfigPreferenceGenerator {
         }
     }
 
-    private static PreferenceCategory findOrCreateCategory(Context context, PreferenceScreen screen, String sensorId, CameraLensData lens) {
-        String categoryKey = "pref_category_sensor_" + sensorId;
+    private static PreferenceCategory findOrCreateCategory(Context context, PreferenceGroup screen, String sensorId, CameraLensData lens) {
+        String categoryKey = CATEGORY_PREFIX + sensorId;
 
         for (int i = 0; i < screen.getPreferenceCount(); i++) {
             if (screen.getPreference(i) instanceof PreferenceCategory) {
@@ -385,6 +489,9 @@ public class SensorConfigPreferenceGenerator {
         PreferenceCategory category = new PreferenceCategory(context);
         category.setKey(categoryKey);
         category.setTitle(buildCategoryTitle(sensorId, lens));
+        // P384: the chosen module's caption under the chips, not a group title of the page
+        category.setLayoutResource(com.particlesdevs.photoncamera.R.layout.preference_subcategory_layout);
+        category.setIconSpaceReserved(false);
         screen.addPreference(category);
 
         return category;
@@ -542,11 +649,21 @@ public class SensorConfigPreferenceGenerator {
         float defaultValue = getFieldDefaultValue(info);
         Class<?> fieldType = info.fieldType;
 
-        EditTextPreference editText = new EditTextPreference(context);
+        // P384: the value on the right is the one the camera uses - the default while none is stored (it showed «—» there and
+        // the value again under the description)
+        final String shownDefault = formatDefault(defaultValue, fieldType);
+        EditTextPreference editText = new EditTextPreference(context) {
+            @Override public String getText() {
+                String text = super.getText();
+                return text == null ? shownDefault : text;
+            }
+        };
         editText.setKey(prefKey);
         editText.setTitle(ModuleSensorSettings.title(annotation.title()));
         editText.setDialogTitle(ModuleSensorSettings.title(annotation.title()));
         editText.setIconSpaceReserved(false);
+        Integer icon = FIELD_ICONS.get(info.fieldName.toLowerCase(Locale.ROOT));
+        if (icon != null) editText.setIcon(icon);
 
         int inputType;
         if (fieldType == float.class || fieldType == Float.class
@@ -579,11 +696,7 @@ public class SensorConfigPreferenceGenerator {
         });
 
         String description = ModuleSensorSettings.description(annotation.description());
-        editText.setSummaryProvider(preference -> {
-            String value = editText.getText();
-            String display = value != null ? value : formatDefault(defaultValue, fieldType);
-            return description.isEmpty() ? display : description + "\n" + display;
-        });
+        editText.setSummaryProvider(preference -> description.isEmpty() ? editText.getText() : description);
 
         category.addPreference(editText);
     }
@@ -627,6 +740,8 @@ public class SensorConfigPreferenceGenerator {
         }
         listPref.setDefaultValue(defaultValue);
         listPref.setSummaryProvider(ListPreference.SimpleSummaryProvider.getInstance());
+        Integer icon = FIELD_ICONS.get(info.fieldName.toLowerCase(Locale.ROOT));
+        if (icon != null) listPref.setIcon(icon);
 
         category.addPreference(listPref);
         if (listPref.getValue() == null && defaultValue != null) {

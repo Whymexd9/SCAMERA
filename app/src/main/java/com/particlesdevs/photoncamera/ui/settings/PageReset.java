@@ -53,6 +53,11 @@ public final class PageReset {
             final Preference p = page.getPreference(i);
             if (p instanceof PreferenceScreen) continue;
             if (p instanceof PreferenceGroup) {
+                // P384: only what the page shows - not a hidden group's rows (the sensor categories of the modules not chosen were
+                // reset with the shown one), nor a folded module card's (they are not on the page while it is closed)
+                if (!p.isVisible()) continue;
+                if (p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.ModuleSection
+                        && !((com.particlesdevs.photoncamera.ui.settings.custompreferences.ModuleSection) p).isExpanded()) continue;
                 changed += reset(context, (PreferenceGroup) p);
                 continue;
             }
@@ -99,6 +104,15 @@ public final class PageReset {
             return true;
         }
         return false;
+    }
+
+    /**
+     * The value a page reset puts back for {@code key} (its android:defaultValue, this device's factory value where there is one);
+     * {@code fallback} for a key without one. P382: the LUT tray's tab reset gives the same values.
+     */
+    public static String defaultOf(Context context, String key, String fallback) {
+        final String v = defaults(context).get(key);
+        return v == null ? fallback : v;
     }
 
     /**

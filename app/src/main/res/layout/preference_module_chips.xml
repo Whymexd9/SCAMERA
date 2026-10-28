@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- P384: the module chips of «Сенсор по модулям» (ModuleChipsPreference) - one pill per module in a row that scrolls sideways, the
+     chosen one's accent pill gliding behind the chips, and a hint while none is chosen. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingTop="10dp"
+    android:paddingBottom="2dp">
+    <HorizontalScrollView
+        android:id="@+id/settings_chips_scroll"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:clipToPadding="false"
+        android:fadingEdgeLength="28dp"
+        android:overScrollMode="never"
+        android:requiresFadingEdge="horizontal"
+        android:scrollbars="none">
+        <FrameLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content">
+            <View
+                android:id="@+id/settings_chips_pill"
+                android:layout_width="0dp"
+                android:layout_height="40dp"
+                android:importantForAccessibility="no" />
+            <LinearLayout
+                android:id="@+id/settings_chips"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal" />
+        </FrameLayout>
+    </HorizontalScrollView>
+    <TextView
+        android:id="@+id/settings_chips_hint"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="6dp"
+        android:layout_marginTop="8dp"
+        android:text="@string/module_sensor_pick_hint"
+        android:textColor="@color/settings_muted"
+        android:textSize="12.5sp" />
+</LinearLayout>

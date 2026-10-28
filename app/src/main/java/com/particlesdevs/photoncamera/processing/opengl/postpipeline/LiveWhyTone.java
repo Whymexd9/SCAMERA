@@ -52,18 +52,31 @@ import java.util.concurrent.Executors;
  * filter, peaking or smaller tone size needs its target). scam_dev vf_fused 0: the two passes of P314. Any failure turns the fused
  * pass off for the context ({@link #fusedFailed()}): the passes of P314 draw instead (then the viewfinder's own look, then the
  * ISP picture, as before).
+ *
+ * <p>P378 review (P301: «Результат должен совпадать с итоговым фото»; the photo's sky term had no counterpart here): vf_why 1 takes
+ * the photo's sky term too - every meter run decides the sky on the meter's own quads (WhySkyMask.Cells.ofQuads, the photo's
+ * decision), every drawn frame eases the shown cells, levels and backlit share towards it in the scene's terms (LiveSky, as the
+ * shown tone of P383), and why/combine SKY 1 takes them as its WhySky cells with the pixel's own gate in the shader. Not with a
+ * film (the photo has none then), nor with vf_why 2.
  */
 public final class LiveWhyTone {
     private static final String TAG = "LiveWhyTone";
     private static final String VS = "#version 310 es\nin vec4 vPosition;\nvoid main() {\n    gl_Position = vPosition;\n}\n";
     /** The AE runs again every this many frames (WhyAe on the CPU cells, or on a factor-8 whyLow read back with vf_why 2). */
     static final int AE_EVERY = 4;
+    /**
+     * P383: vf_why 1 meters every METER_FRAMES-th new frame once METER_NS passed since the last run - every 2nd frame at 30 and at 10
+     * frames a second (the shown tone follows the scene with half the old delay: 0.2 s instead of 0.4 s at 10 frames a second; at
+     * most 20 runs a second, ~2x the old cost, not every frame while a merge holds the GPU at 8 - 14 frames a second).
+     */
+    static final long METER_NS = 50_000_000L;
+    static final int METER_FRAMES = 2;
+    /** P383: scam_dev vf_ae_trace - every new frame's exposure and gain logged for this long after it is switched on. */
+    static final long TRACE_MS = 5000;
     /** P314: scam_dev.txt vf_why - the viewfinder's own look, the photo's tone per pixel (the default), the guided-filter chain. */
     public static final int OWN = 0, POINT = 1, LOCAL = 2;
     /** P314: the viewfinder's AE line (WhyAe.describe, as the photo's SMART_HDR line) is logged at most this often. */
     static final long AE_LOG_MS = 5000;
-    /** The viewfinder's AE follows a new value this fast (per AE run), so the picture does not pump. */
-    static final float AE_SMOOTH = 0.35f;
     /** Settings, colour look and LUT are read again at most this often. */
     static final long SETTINGS_MS = 500;
 
@@ -150,20 +163,55 @@ public final class LiveWhyTone {
             .put(new float[]{-1, -1, 1, -1, -1, 1, 1, 1});
     private FloatBuffer aePixels;
     private WhyAe.Result ae;
-    private float aeShown;
     /**
-     * P369: the film's exposure (WhyAe.filmAe: the meter before the highlight overflow's cut) eased as {@link #aeShown} is, so a
-     * cut that comes and goes with a bright window does not pump the film's grey while ours eases in.
+     * P383: the tone shown, one drawn frame closer to {@link #ae} each time (ToneEase: before, it moved once per AE run - steps every
+     * fourth frame). P369: the film's exposure (WhyAe.filmAe: the meter before the highlight overflow's cut, {@link #filmAeTarget})
+     * eases as ours does, so a cut that comes and goes with a bright window does not pump the film's grey while ours eases in.
      */
-    private float filmAeShown;
+    private final ToneEase shown = new ToneEase();
+    private float filmAeTarget;
+    private float[] emTarget;
+    private long easedAtNs;
+    /**
+     * P383: the drawn frames' exposure (FrameExposure.Track), the session and frame it saw last, the exposure of the frame the last
+     * AE result metered, when that ran, and whether a new session's first frame meters at once.
+     */
+    private final FrameExposure.Track track = new FrameExposure.Track();
+    private int trackedSession = -1, trackedVersion = -1, sinceMeter;
+    private double meteredLogP;
+    private long meterAtNs;
+    private boolean meterNow;
+    /** P383: scam_dev vf_ae_scene (the frames drawn against their own exposure; 0: as before, for an A/B) and vf_ae_trace. */
+    private boolean aeScene = true, aeTrace;
+    private long traceUntilMs;
     private int frames;
-    /** P314: the fusion's curve (vf_why 1): its texture (R32F FusedCurve.SIZE x 1), values, and the AE result it was filled for. */
+    /**
+     * P314: the fusion's curve (vf_why 1): its texture (R32F FusedCurve.SIZE x 1), the AE result's values (P383: the shown ones ease
+     * towards them, {@link #shown}), and the AE result it was filled for.
+     */
     private int curveTex;
     private final float[] curve = new float[FusedCurve.SIZE];
     private FloatBuffer curveBuffer;
     private WhyAe.Result curveOf;
     /** P314: the CPU AE of vf_why 1. */
     private final com.particlesdevs.photoncamera.processing.LiveWhyMeter meter = new com.particlesdevs.photoncamera.processing.LiveWhyMeter();
+    /**
+     * P378 review: the sky term (vf_why 1): its shown state (LiveSky), its cells' texture (RGBA16F in the tone's orientation, unit
+     * SKY_UNIT), whether the settings want it, the lens' f-number for the absolute EV, the logP its texture was made for and the
+     * last decision's line for the AE log.
+     */
+    private final LiveSky sky = new LiveSky();
+    static final int SKY_UNIT = 11;
+    private int skyTex, skyTexW, skyTexH;
+    private boolean skyWanted;
+    private float aperture = 1.8f;
+    private double skyLogP = Double.NaN;
+    private String skyLog = "";
+    /** P378 review: the cells' upload, reused (~48 KB a frame while the sky eases). */
+    private float[] skyData;
+    private FloatBuffer skyBuffer;
+    /** P378 review: this draw takes the sky term (SKY 1; chosen before the program, from the sky shown at the last frame). */
+    private boolean skyOnDraw;
     private long aeLogAt = -AE_LOG_MS;
     private long settingsAt = -SETTINGS_MS;
     // settings snapshot
@@ -217,6 +265,14 @@ public final class LiveWhyTone {
         frames = 0;
         curveTex = 0;
         curveOf = null;
+        shown.reset();
+        easedAtNs = 0;
+        track.reset();
+        trackedSession = trackedVersion = -1;
+        meterAtNs = 0;
+        sky.reset();
+        skyTex = skyTexW = skyTexH = 0;
+        skyLogP = Double.NaN;
     }
 
     public boolean failed() {
@@ -246,11 +302,15 @@ public final class LiveWhyTone {
             refreshSettings();
             if (mode() != LOCAL) {
                 // P314: the photo's tone per pixel - the AE on the CPU from the RAW frame (no readback), then one pass of why/combine
-                if (ae == null || frames++ % AE_EVERY == 0) {
-                    if (!runAePoint(frame.get())) return fail("ae");
+                final com.particlesdevs.photoncamera.processing.LiveWhyMeter.View view = frame.get();
+                if (meterDue(observe(view))) {
+                    if (!runAePoint(view)) return fail("ae");
                 }
                 if (curveOf != ae) fillCurve(ae);
-                combine(ae, aeShown, outFbo, w, h, true);
+                final float aeNow = easeShown(true);
+                // P378 review: the sky shown now, its cells in the tone's orientation
+                skyOnDraw = uploadSky(view);
+                combine(ae, aeNow, outFbo, w, h, true);
                 int error = GLES20.glGetError();
                 if (error != GLES20.GL_NO_ERROR) return fail("GL error 0x" + Integer.toHexString(error));
                 return true;
@@ -268,17 +328,20 @@ public final class LiveWhyTone {
             set(p, "factorU", 2);
             draw(low);
             // the AE every few frames, on a factor-8 whyLow
-            if (ae == null || frames++ % AE_EVERY == 0) {
+            final com.particlesdevs.photoncamera.processing.LiveWhyMeter.View drawnView = frame.get();
+            observe(drawnView);
+            if (ae == null || meterNow || frames++ % AE_EVERY == 0) {
                 // the drawn frame's ISO, the analog ceiling and its noise model
-                final com.particlesdevs.photoncamera.processing.LiveWhyMeter.View v = frame.get();
+                final com.particlesdevs.photoncamera.processing.LiveWhyMeter.View v = drawnView;
                 final com.particlesdevs.photoncamera.processing.LiveRawFrame.Frame f = v == null ? null : v.frame;
                 if (!runAe(w, h, f == null ? 100 : f.iso, f == null ? 6400 : f.maxAnalogIso, f == null ? 0 : f.noiseS, f == null ? 0 : f.noiseO))
                     return fail("ae");
             }
             final WhyAe.Result r = ae;
-            final float aeNow = aeShown;
+            final float aeNow = easeShown(false);
+            skyOnDraw = false;
             // the fusion, as WhyFusion (no bracket denoise: a single frame has no data above the clip)
-            final float[] em = WhyAe.exposures(r);
+            final float[] em = shown.em;
             final int hw = (lw2 + 1) / 2, hh = (lh2 + 1) / 2;
             for (int mode = 0; mode < 3; mode++) {
                 target(means[mode], hw, hh, GLES30.GL_RGBA32F, GLES20.GL_NEAREST);
@@ -324,9 +387,9 @@ public final class LiveWhyTone {
      * P365: vf_why 1 in one pass - why/combine with POINT_FUSED 1 and RAW_SOURCE 1 into {@code outFbo} at the viewport {@code x},
      * {@code y}, {@code w} x {@code h} (MainRenderer: the screen's own viewport when the tone size is the viewport and no filter or
      * peaking pass follows, else the tone target at 0, 0), the RAW frame bound by {@code raw}. The AE, the fusion's curve, the
-     * settings, the colour look and the film LUT as {@link #draw}; the AE counts new frames only (a redraw of the same frame draws
-     * the same tone). The default framebuffer and the viewport are put back. False: nothing drawn - no frame, or the fused pass
-     * failed ({@link #fusedFailed()}: off for the context).
+     * settings, the colour look and the film LUT as {@link #draw}; the AE counts new frames only (P383: a redraw of the same frame
+     * still eases the shown tone on). The default framebuffer and the viewport are put back. False: nothing drawn - no frame, or
+     * the fused pass failed ({@link #fusedFailed()}: off for the context).
      */
     public boolean drawFused(RawSource raw, int outFbo, int x, int y, int w, int h) {
         if (failed || fusedFailed) return false;
@@ -337,19 +400,25 @@ public final class LiveWhyTone {
             refreshSettings();
             final FilmLut lut = lutNow();
             final boolean lutOn = lutTex != 0 && lut != null;
+            // P378 review: the sky term with the sky shown at the last frame (a sky coming in or going out is at a weight of ~0 then)
+            skyOnDraw = skyWanted && sky.shown() && skyTex != 0;
             final int p = program("why/combine", combineDefines(lutOn, lutShownScene, true, true));
             GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, outFbo);
             GLES20.glViewport(x, y, w, h);
             if (!raw.bind(p)) return false;
-            if (ae == null || raw.fresh() && frames++ % AE_EVERY == 0) {
-                if (!runAePoint(raw.view())) return fusedFail("ae");
+            final com.particlesdevs.photoncamera.processing.LiveWhyMeter.View view = raw.view();
+            if (meterDue(observe(view))) {
+                if (!runAePoint(view)) return fusedFail("ae");
             }
             if (curveOf != ae) fillCurve(ae);
+            final float aeNow = easeShown(true);
+            // P378 review: the shown sky's cells (a sky shown first here takes the SKY program from the next frame)
+            uploadSky(view);
             use(p);
             // the textures of P314's linear frame are not read with RAW_SOURCE 1: the 2 x 2 placeholder on their units
             final String[] inputs = {"InputBuffer", "WhyLow", "WhyColour", "WhyFused", "WhyDetailRef", "WhyLumaS"};
             for (int unit = 0; unit < inputs.length; unit++) texture(p, inputs[unit], unit, ones);
-            combineUniforms(p, ae, aeShown, true, lutOn, lut);
+            combineUniforms(p, ae, aeNow, true, lutOn, lut);
             GLES20.glUniform2i(loc(p, "vpOriginU"), x, y);
             GLES20.glUniform2i(loc(p, "vpSizeU"), w, h);
             raw.draw();
@@ -414,6 +483,10 @@ public final class LiveWhyTone {
         settingsAt = now;
         settings = WhyTone.settings();
         settings.bentoHeadroom = false;     // a single frame: no Bento data above the clip
+        aeScene = PreferenceKeys.scamDevSwitch("vf_ae_scene", true);
+        final boolean trace = PreferenceKeys.scamDevSwitch("vf_ae_trace", false);
+        if (trace && !aeTrace) traceUntilMs = now + TRACE_MS;
+        aeTrace = trace;
         // P320: a DCG session's frames take the photo's DCG rules: the night factor reads the gain (the reported ISO over the
         // mode's range scale), a bright scene keeps its exposure
         final android.hardware.camera2.CameraCharacteristics camera = com.particlesdevs.photoncamera.capture.CaptureController.mCameraCharacteristics;
@@ -441,6 +514,9 @@ public final class LiveWhyTone {
         clarity = WhyTone.value("clarity", 0f);
         flatProtect = WhyTone.value("flat_protect", 0f);
         vibHl = WhyTone.vibranceHl();
+        // P378 review: the lens' f-number (the sky's absolute EV), as Parameters reads it
+        float[] apertures = camera != null ? camera.get(android.hardware.camera2.CameraCharacteristics.LENS_INFO_AVAILABLE_APERTURES) : null;
+        aperture = apertures != null && apertures.length > 0 && apertures[0] > 0f ? apertures[0] : 1.8f;
         try {
             final float userStrength = PreferenceKeys.filmLutStrength();
             final String user = userStrength > 0f ? PreferenceKeys.filmLut() : "";
@@ -480,6 +556,11 @@ public final class LiveWhyTone {
             lutStrength = 0f;
             filmNow = null;
             filmStrength = 0f;
+        } finally {
+            // P378 review: the sky term as the photo has it - on (hybrid_why_sky), never with a film; vf_why 1 only
+            skyWanted = WhyTone.sky() > 0f && filmNow == null && mode() == POINT;
+            meter.keepQuads = skyWanted;
+            if (!skyWanted) sky.decided(null, 0f, 0.0);
         }
     }
 
@@ -515,9 +596,9 @@ public final class LiveWhyTone {
         aePixels.position(0);
         mergedNoise(noiseS, noiseO);
         final WhyAe.Result r = WhyAe.smartHdr(aePixels, 4, aw, ah, settings, iso, maxIso);
-        final float filmAe = WhyAe.filmAe(r);
-        filmAeShown = ae == null ? filmAe : filmAeShown + (filmAe - filmAeShown) * AE_SMOOTH;
-        aeShown = ae == null ? r.ae : aeShown + (r.ae - aeShown) * AE_SMOOTH;
+        filmAeTarget = WhyAe.filmAe(r);
+        emTarget = WhyAe.exposures(r);
+        metered();
         ae = r;
         return true;
     }
@@ -559,26 +640,175 @@ public final class LiveWhyTone {
         mergedNoise(f.noiseS, f.noiseO);
         final WhyAe.Result r = meter.measure(v, inScale, settings, f.iso, f.maxAnalogIso);
         if (r == null) return ae != null;
-        final float filmAe = WhyAe.filmAe(r);
-        filmAeShown = ae == null ? filmAe : filmAeShown + (filmAe - filmAeShown) * AE_SMOOTH;
-        aeShown = ae == null ? r.ae : aeShown + (r.ae - aeShown) * AE_SMOOTH;
+        filmAeTarget = WhyAe.filmAe(r);
+        emTarget = WhyAe.exposures(r);
+        metered();
         ae = r;
+        if (skyWanted) decideSky(v, r);
         final long now = SystemClock.uptimeMillis();
         if (now - aeLogAt >= AE_LOG_MS) {
             aeLogAt = now;
             Log.d(TAG, "viewfinder SMART_HDR (per pixel, " + v.width + "x" + v.height + " of " + f.width + "x" + f.height + (f.cellMean ? " cell means" : "")
-                    + ", shown ae=" + aeShown + "): " + r.describe());
+                    + ", shown ae=" + (shown.on() ? shown.aeFor(track.logP()) : r.ae) + ", exposure 2^" + String.format(java.util.Locale.ROOT,
+                    "%.2f", track.logP()) + ", moves refused " + track.takeRefused() + " suspect " + track.takeSuspect() + "): " + r.describe()
+                    + (skyWanted ? "; sky: " + skyLog : ""));
         }
         return true;
     }
 
-    /** P314: the fusion's curve of an AE result (FusedCurve, the current fusion settings) into its R32F texture (unit 8). */
+    /**
+     * P378 review: the sky of the metered frame - the meter's quads (LiveWhyMeter.keepQuads) as the photo's cells, the frame's
+     * absolute EV (its ISO, exposure time, the lens' f-number, inScale), the photo's top edge now (the gravity's rotation of the
+     * sensor, the front mirror) and the AE's ceiling; into LiveSky in the scene's terms of the metered frame.
+     */
+    private void decideSky(com.particlesdevs.photoncamera.processing.LiveWhyMeter.View v, WhyAe.Result result) {
+        final float[] quads = meter.lastQuads();
+        final int[] grid = meter.lastGrid();
+        final com.particlesdevs.photoncamera.processing.LiveRawFrame.Frame f = v.frame;
+        if (quads == null || grid[0] < 2 || grid[1] < 2) {
+            sky.decided(null, 0f, 0.0);
+            skyLog = "none (no quads)";
+            return;
+        }
+        // the metered result's own ceiling (the decision's, as the photo's: not a shown value)
+        final float ceiling = Math.max(result.clip, result.hr);
+        final WhySkyMask.Cells cells = WhySkyMask.Cells.ofQuads(quads, grid[0], grid[1], WhySkyMask.CLIP_LEVEL * ceiling);
+        final float ev = WhySkyMask.evOffset(f.iso, f.exposureNs / 1e9, aperture, inScale);
+        final WhySkyMask.Decision d = WhySkyMask.decide(cells, new WhySkyMask.Scene(ev, WhySkyMask.topEdge(cameraRotation(), frontMirror()), ceiling));
+        sky.decided(d.mask, WhyTone.sky(), meteredLogP);
+        skyLog = d.log;
+    }
+
+    /** The rotation a photo taken now gets (CaptureController: the gravity's turn of the sensor), 0 without a camera. */
+    private static int cameraRotation() {
+        try {
+            final android.hardware.camera2.CameraCharacteristics c = com.particlesdevs.photoncamera.capture.CaptureController.mCameraCharacteristics;
+            final Integer sensor = c != null ? c.get(android.hardware.camera2.CameraCharacteristics.SENSOR_ORIENTATION) : null;
+            return ScameraApp.getGravity().getCameraRotation(sensor != null ? sensor : 0);
+        } catch (RuntimeException e) {
+            return 0;
+        }
+    }
+
+    /** Whether a photo taken now is mirrored (Parameters: the front camera). */
+    private static boolean frontMirror() {
+        final android.hardware.camera2.CameraCharacteristics c = com.particlesdevs.photoncamera.capture.CaptureController.mCameraCharacteristics;
+        final Integer facing = c != null ? c.get(android.hardware.camera2.CameraCharacteristics.LENS_FACING) : null;
+        return facing != null && facing == android.hardware.camera2.CameraCharacteristics.LENS_FACING_FRONT;
+    }
+
+    /**
+     * P378 review: the shown sky's cells into their texture (unit SKY_UNIT) when they moved or the drawn frame's exposure did:
+     * LiveSky.texture in the tone's orientation of the view; false when nothing is shown.
+     */
+    private boolean uploadSky(com.particlesdevs.photoncamera.processing.LiveWhyMeter.View v) {
+        if (!skyWanted || !sky.shown() || v == null) return false;
+        final double logP = track.logP();
+        if (skyTex != 0 && !sky.dirty() && logP == skyLogP) return true;
+        final int[] size = new int[2];
+        final float[] data = sky.texture(v.rotation, v.mirror, com.particlesdevs.photoncamera.processing.LiveWhyMeter.cover(v), logP, size, skyData);
+        if (data == null) return false;
+        skyData = data;
+        final int n = 4 * size[0] * size[1];
+        if (skyBuffer == null || skyBuffer.capacity() < n) skyBuffer = ByteBuffer.allocateDirect(n * 4).order(ByteOrder.nativeOrder()).asFloatBuffer();
+        skyBuffer.clear();
+        skyBuffer.put(data, 0, n).flip();
+        final FloatBuffer b = skyBuffer;
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0 + SKY_UNIT);
+        if (skyTex == 0 || skyTexW != size[0] || skyTexH != size[1]) {
+            if (skyTex != 0) GLES20.glDeleteTextures(1, new int[]{skyTex}, 0);
+            int[] t = new int[1];
+            GLES20.glGenTextures(1, t, 0);
+            skyTex = t[0];
+            skyTexW = size[0];
+            skyTexH = size[1];
+            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, skyTex);
+            GLES30.glTexStorage2D(GLES20.GL_TEXTURE_2D, 1, GLES30.GL_RGBA16F, skyTexW, skyTexH);
+            params(GLES20.GL_TEXTURE_2D, GLES20.GL_LINEAR);
+        } else {
+            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, skyTex);
+        }
+        GLES20.glTexSubImage2D(GLES20.GL_TEXTURE_2D, 0, 0, 0, skyTexW, skyTexH, GLES20.GL_RGBA, GLES20.GL_FLOAT, b);
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
+        skyLogP = logP;
+        return true;
+    }
+
+    /** P314: the fusion's curve of an AE result (FusedCurve, the current fusion settings); P383: the shown one eases towards it. */
     private void fillCurve(WhyAe.Result r) {
+        FusedCurve.DEEP_FLOOR[0] = WhyTone.deepFloor();
         FusedCurve.fill(curve, WhyAe.exposures(r), lw, center, smooth, gammaInv, toe, mono);
+        curveOf = r;
+    }
+
+    /**
+     * P383: the shown tone one drawn frame closer to the last AE result, by the time since the last drawn frame (ToneEase: the same
+     * speed at 10 and 30 frames a second; a redraw of the same RAW frame moves it too, so the picture keeps easing on the screen);
+     * {@code point}: the fused curve too, into its texture when it moved.
+     */
+    private float easeShown(boolean point) {
+        final long now = System.nanoTime();
+        final long dt = easedAtNs == 0 ? 0 : now - easedAtNs;
+        easedAtNs = now;
+        shown.toward(ae, filmAeTarget, emTarget, meteredLogP, dt);
+        // P378 review: the sky's cells and levels as the tone, per drawn frame
+        sky.ease(dt);
+        if (point) {
+            shown.curveToward(curve, dt);
+            if (shown.curveMoved() || curveTex == 0) uploadCurve(shown.curve);
+        }
+        // P383: the drawn frame at its own exposure (FrameExposure): a move of the camera's exposure is cancelled in its frame
+        return shown.aeFor(track.logP());
+    }
+
+    /**
+     * P383: the drawn frame's exposure into the track (a new frame once); a new session starts the track and the shown tone over
+     * (scene terms do not carry from one camera to another) and meters its first frame. True for a frame not seen before.
+     */
+    private boolean observe(com.particlesdevs.photoncamera.processing.LiveWhyMeter.View v) {
+        final com.particlesdevs.photoncamera.processing.LiveRawFrame.Frame f = v == null ? null : v.frame;
+        if (f == null) return false;
+        if (f.session != trackedSession) {
+            trackedSession = f.session;
+            trackedVersion = -1;
+            track.reset();
+            shown.reset();
+            sky.reset();
+            skyLogP = Double.NaN;
+            meterNow = true;
+        }
+        if (f.version == trackedVersion) return false;
+        trackedVersion = f.version;
+        sinceMeter++;
+        final double reported = FrameExposure.log2Product(f), level = FrameExposure.log2Level(f);
+        track.next(reported, level, aeScene);
+        if (aeTrace && SystemClock.uptimeMillis() < traceUntilMs)
+            Log.d(TAG, String.format(java.util.Locale.ROOT, "vf ae trace: t=%d exp=%d iso=%d auto=%b logP=%.3f level=%.3f drawnP=%.3f"
+                            + " target=%.3f shown=%.3f ae=%.3f", f.publishedNanos / 1_000_000, f.exposureNs, f.iso, f.autoExposure, reported,
+                    level, track.logP(), shown.on() ? shown.targetLogAe() : Double.NaN, shown.on() ? shown.logAe() : Double.NaN,
+                    shown.on() ? shown.aeFor(track.logP()) : Double.NaN));
+        return true;
+    }
+
+    /** P383: vf_why 1's meter runs on every METER_FRAMES-th new frame, METER_NS after the last run (at once: the first, a new session). */
+    private boolean meterDue(boolean fresh) {
+        return ae == null || meterNow || fresh && sinceMeter >= METER_FRAMES && System.nanoTime() - meterAtNs >= METER_NS;
+    }
+
+    /** P383: a new AE result: the exposure of the frame it metered, and when. */
+    private void metered() {
+        meteredLogP = track.logP();
+        meterAtNs = System.nanoTime();
+        meterNow = false;
+        sinceMeter = 0;
+    }
+
+    /** P314: a fusion curve into its R32F texture (unit 8). */
+    private void uploadCurve(float[] values) {
         if (curveBuffer == null)
             curveBuffer = ByteBuffer.allocateDirect(FusedCurve.SIZE * 4).order(ByteOrder.nativeOrder()).asFloatBuffer();
         curveBuffer.clear();
-        curveBuffer.put(curve).flip();
+        curveBuffer.put(values).flip();
         GLES20.glActiveTexture(GLES20.GL_TEXTURE8);
         if (curveTex == 0) {
             int[] t = new int[1];
@@ -592,7 +822,6 @@ public final class LiveWhyTone {
         }
         GLES20.glTexSubImage2D(GLES20.GL_TEXTURE_2D, 0, 0, 0, FusedCurve.SIZE, 1, GLES30.GL_RED, GLES20.GL_FLOAT, curveBuffer);
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
-        curveOf = r;
     }
 
     /** The colour chain of why/low and why/combine for the linear-sRGB input: identity matrices, neutral white. */
@@ -615,6 +844,7 @@ public final class LiveWhyTone {
         set(p, "gammaInvU", gammaInv);
         set(p, "toeU", toe);
         set(p, "monoU", mono);
+        set(p, "deepFloorU", WhyTone.deepFloor());
     }
 
     /** The separable box of WhyFusion (radius r) in place: t -> tmp -> t. */
@@ -687,7 +917,7 @@ public final class LiveWhyTone {
         set(p, "signedColourU", 0);
         set(p, "signedHueU", WhyTone.signedHue() ? 1 : 0); // P370 (B2): the photo's hue of a colour outside sRGB
         set(p, "aeU", aeNow);
-        set(p, "clipU", r.clip);
+        set(p, "clipU", shown.clip); // P383: the shown (eased) values, as aeNow
         set(p, "toeU", toe);
         set(p, "gammaInvU", gammaInv);
         set(p, "macroU", macro);
@@ -701,8 +931,8 @@ public final class LiveWhyTone {
         set(p, "sharpToneU", 1f);
         set(p, "deltaChromaU", deltaChroma);
         set(p, "filmToeU", filmToe);
-        GLES20.glUniform4f(loc(p, "agxAU"), r.slope, r.sp, r.tp, r.sat);
-        GLES20.glUniform4f(loc(p, "agxBU"), r.minEv, r.maxEv, r.ev, toneOp == ToneCurve.AGX ? (float) r.look : 0f);
+        GLES20.glUniform4f(loc(p, "agxAU"), shown.slope, shown.sp, shown.tp, shown.sat);
+        GLES20.glUniform4f(loc(p, "agxBU"), shown.minEv, shown.maxEv, shown.ev, toneOp == ToneCurve.AGX ? (float) r.look : 0f);
         if (toneOp != ToneCurve.AGX) {
             set(p, "toneOpU", toneOp);
             float[] aces = WhyTone.acesUniform();
@@ -718,6 +948,16 @@ public final class LiveWhyTone {
         set(p, "hlWhiteU", hlWhite);
         // P369 (viewfinder-vibhl): the light-tone vibrance, as the photo (P301 parity)
         set(p, "vibHlU", vibHl);
+        if (skyOnDraw) {
+            // P378 review: the photo's sky term (WhyCombine) on the shown cells - the level share eased (0 backlit), the tops in this
+            // frame's log2 Y
+            final float strength = WhyTone.sky();
+            final float[] tone = WhyTone.skyTone(), tops = sky.tops(track.logP());
+            texture(p, "WhySky", SKY_UNIT, skyTex);
+            GLES20.glUniform4f(loc(p, "skyU"), sky.level(), tone[0], tone[1], tone[2]);
+            GLES20.glUniform4f(loc(p, "skyMU"), strength, strength, strength * WhyTone.SKY_GLOW, WhyTone.SKY_VIBRANCE);
+            GLES20.glUniform2f(loc(p, "skyTopU"), tops[0], tops[1]);
+        }
         if (colourOn) {
             float[] skin = look.skinUniform(), vibL = look.vibUniform(), monoF = look.monoUniform();
             GLES20.glUniform3f(loc(p, "skinU"), skin[0], skin[1], skin[2]);
@@ -735,7 +975,7 @@ public final class LiveWhyTone {
             // P369: the photo's film feed (WhyCombine): the film's strength, its exposure over the shown ae (the meter before the
             // highlight overflow's cut, eased as the shown ae, at the film's mid grey) and the log grid
             GLES20.glUniform2f(loc(p, "lutU"), filmStrength, (float) lut.size);
-            set(p, "filmExpU", filmAeShown / Math.max(aeNow, 1e-6f) * com.particlesdevs.photoncamera.processing.color.FilmSim.METER_TO_FILM);
+            set(p, "filmExpU", shown.filmOverAe() * com.particlesdevs.photoncamera.processing.color.FilmSim.METER_TO_FILM);
             GLES20.glUniform2f(loc(p, "filmLogU"), com.particlesdevs.photoncamera.processing.color.FilmSim.LOG_LO,
                     com.particlesdevs.photoncamera.processing.color.FilmSim.LOG_SPAN);
         } else if (lutOn) {
@@ -800,13 +1040,21 @@ public final class LiveWhyTone {
      * {@code fused}: from the RAW frame in one pass; P369 {@code scene}: the table is a film's scene table).
      */
     private String[][] combineDefines(boolean lutOn, boolean scene, boolean point, boolean fused) {
+        return combineDefines(lutOn, scene, point, fused, skyOnDraw);
+    }
+
+    /** {@link #combineDefines(boolean, boolean, boolean, boolean)} with the sky term ({@code withSky}: SKY 1, vf_why 1 only). */
+    private String[][] combineDefines(boolean lutOn, boolean scene, boolean point, boolean fused, boolean withSky) {
         ArrayList<String[]> defs = new ArrayList<>();
         if (point) defs.add(new String[]{"POINT_FUSED", "1"});
+        if (WhyTone.macroToe()) defs.add(new String[]{"MACRO_TOE", "1"});
         if (point && fused) defs.add(new String[]{"RAW_SOURCE", "1"});
         if (colourOn) defs.add(new String[]{"COLOUR_LOOK", "1"});
         if (toneOp != ToneCurve.AGX) defs.add(new String[]{"TONE_OP", "1"});
         // P369: a film's scene table (FILM_SIM) or the chosen LUT (FILM_LUT), never both
         if (lutOn) defs.add(new String[]{scene ? "FILM_SIM" : "FILM_LUT", "1"});
+        // P378 review: the sky term (the photo's SKY, its cells from LiveSky)
+        if (withSky && point) defs.add(new String[]{"SKY", "1"});
         return defs.toArray(new String[0][]);
     }
 
@@ -826,9 +1074,14 @@ public final class LiveWhyTone {
             for (int mode = 0; mode <= 1; mode++) out.add(new Object[]{"why/ab", new String[][]{{"MODE", String.valueOf(mode)}}});
             out.add(new Object[]{"why/box", null});
         }
-        out.add(new Object[]{"why/combine", combineDefines(false, false, point, fused)});
+        out.add(new Object[]{"why/combine", combineDefines(false, false, point, fused, false)});
         // P369: with a film its FILM_SIM variant
-        if (lutStrength > 0f || filmNow != null) out.add(new Object[]{"why/combine", combineDefines(true, filmNow != null, point, fused)});
+        if (lutStrength > 0f || filmNow != null) out.add(new Object[]{"why/combine", combineDefines(true, filmNow != null, point, fused, false)});
+        // P378 review: the sky term's variants (never with a film: the photo has none then)
+        if (skyWanted && point) {
+            out.add(new Object[]{"why/combine", combineDefines(false, false, point, fused, true)});
+            if (lutStrength > 0f) out.add(new Object[]{"why/combine", combineDefines(true, false, point, fused, true)});
+        }
         return out;
     }
 

@@ -199,7 +199,12 @@ final class TrayMotion {
      */
     @SuppressLint("ClickableViewAccessibility")
     static void pressable(View v) {
-        v.setOnTouchListener((view, e) -> {
+        v.setOnTouchListener(press());
+    }
+
+    /** {@link #pressable}'s touch listener, for a view that watches its touches for more (P382: a tab's double tap). */
+    static View.OnTouchListener press() {
+        return (view, e) -> {
             switch (e.getActionMasked()) {
                 case MotionEvent.ACTION_DOWN:
                     view.animate().cancel();
@@ -214,7 +219,7 @@ final class TrayMotion {
                     break;
             }
             return false;
-        });
+        };
     }
 
     /** A light tick for a choice made (the system's own setting decides whether it is felt). */

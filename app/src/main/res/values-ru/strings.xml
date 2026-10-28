@@ -60,8 +60,6 @@
     <!-- AE metering -->
     <string name="ultrahdr_summary">В JPEG добавляется карта яркости: на HDR-экранах света ярче. Обычный экран покажет обычное фото.</string>
     <string name="show_horizon_on_preview">Горизонт</string>
-    <string name="sensor_configurations">Настройки сенсоров по модулям</string>
-    <string name="sensor_configurations_summary">Уровни RAW, стабилизация, сессия и вендорные ключи каждого модуля</string>
     <string name="options">Параметры</string>
     <string name="perm_open_settings">Открыть настройки</string>
     <string name="perm_settings_title">Нужны разрешения</string>

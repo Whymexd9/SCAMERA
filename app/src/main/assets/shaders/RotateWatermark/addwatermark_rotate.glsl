@@ -39,8 +39,9 @@ void main() {
         case 0:
         xy += ivec2(0,(rawSize.y-cropSize.y));
         cr = (vec2(xy+ivec2(0,-texSize.y))/(texS));
+        // P387: the last texel is size - 1 (size itself is outside the texture: texelFetch gives 0, a black line)
         if(mirror)
-            xy.y = texSize.y - xy.y;
+            xy.y = texSize.y - 1 - xy.y;
         Output = texelFetch(InputBuffer, xy, 0);
         break;
         case 1:
@@ -48,22 +49,24 @@ void main() {
         xy += ivec2((rawSize.y-cropSize.y),0);
         cr = (vec2(xy+ivec2(-(rawSize.y-cropSize.y),-cropSize.x))/(texS));
         if(mirror)
-            xy.x = cropSize.y - xy.x;
-        Output = texelFetch(InputBuffer, ivec2(texSize.x-xy.y,xy.x), 0);
+            xy.x = cropSize.y - 1 - xy.x;
+        Output = texelFetch(InputBuffer, ivec2(texSize.x-1-xy.y,xy.x), 0);
         break;
         case 2:
         //xy += ivec2(0,-(texSize.y-rotatedSize.y)/4);
         cr = (vec2(xy+ivec2(0,-cropSize.y))/(texS));
         if(mirror)
-            xy.y = texSize.y - xy.y;
-        Output = texelFetch(InputBuffer, ivec2(texSize.x-xy.x,texSize.y-xy.y), 0);
+            xy.y = texSize.y - 1 - xy.y;
+        Output = texelFetch(InputBuffer, ivec2(texSize.x-1-xy.x,texSize.y-1-xy.y), 0);
         break;
         case 3:
         //xy += ivec2(-(texSize.x-rotatedSize.x)/4,0);
         cr = (vec2(xy+ivec2(0,-texSize.x))/(texS));
         if(mirror)
-            xy.x = cropSize.y - xy.x;
-        Output = texelFetch(InputBuffer, ivec2(xy.y,texSize.y-xy.x),0);
+            xy.x = cropSize.y - 1 - xy.x;
+        // P387 (both build-31136 photos of the film pair and an OPPO X8U photo: column 0 of the portrait JPEG black - row
+        // texSize.y read outside the texture): the sensor's last row is texSize.y - 1
+        Output = texelFetch(InputBuffer, ivec2(xy.y,texSize.y-1-xy.x),0);
         break;
     }
     #if WATERMARK == 1

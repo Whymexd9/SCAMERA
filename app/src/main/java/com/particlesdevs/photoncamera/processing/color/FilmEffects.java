@@ -34,20 +34,27 @@ public final class FilmEffects {
         return Math.round(e * 255f);
     }
 
-    /** Scatter and halation (the light before the film's colour, the photo's FilmHalation) on sRGB pixels. */
+    /**
+     * The film's diffusion, scatter and halation (the light before the film's colour: the photo's FilmDiffusion and FilmHalation)
+     * on sRGB pixels.
+     */
     public static int[] light(int[] px, int w, int h, FilmSim.Settings set) {
         final float um = pixelUm(set);
-        if (um <= 0f) return px;
-        final boolean scatter = set.stock.spectral != null && set.softness > 0f;
+        // P380: the film's camera diffusion (sized on the format's frame of the photo the preview is a 1:1 crop of; without a
+        // format on the lens filter's 36 mm), as LensFilter.film draws it on the photo
+        final DiffusionGauss.Plan diffusion = set.diffusionP() > 0 ? DiffusionGauss.plan(set.diffusion, set.diffusionP(),
+                LensFilters.Tune.defaults(set.diffusion), w, h, PHOTO_LONG_PX, set.diffusionFrameUm()) : null;
+        final boolean scatter = um > 0f && set.stock.spectral != null && set.softness > 0f;
         final float[] a = set.halationAmounts(); // x «Сила симуляции», as the photo
-        final boolean halo = a[0] + a[1] + a[2] > 0f;
-        if (!scatter && !halo) return px;
+        final boolean halo = um > 0f && a[0] + a[1] + a[2] > 0f;
+        if (diffusion == null && !scatter && !halo) return px;
         float[] e = new float[px.length * 3];
         for (int i = 0; i < px.length; i++) {
             e[i * 3] = decode((px[i] >> 16) & 255);
             e[i * 3 + 1] = decode((px[i] >> 8) & 255);
             e[i * 3 + 2] = decode(px[i] & 255);
         }
+        if (diffusion != null) DiffusionGauss.apply(e, w, h, diffusion);
         if (scatter) {
             // per channel (1 - w) G(core) + w Exp(tail), the scale the setting
             final float k = set.softnessApplied() / um;
@@ -101,7 +108,7 @@ public final class FilmEffects {
         final Random rnd = new Random(Math.abs(set.stock.id.hashCode()));
         final float[] n = new float[px.length * 3];
         for (int i = 0; i < n.length; i++) n[i] = (float) rnd.nextGaussian();
-        final float[] nb = DiffusionGauss.blur(n, w, h, FilmSpectral.GRAIN_BLUR_UM / um);
+        final float[] nb = DiffusionGauss.blur(n, w, h, FilmSim.grainBlurUm(set.format) / um); // P380: x (format / 35)^0.62, as the photo
         final float scale = set.grainApplied() / um;
         final int[] out = new int[px.length];
         for (int i = 0; i < px.length; i++) {

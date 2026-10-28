@@ -16,6 +16,12 @@ of the ceiling, i.e. a large blown area):
 - without clipped data (headroomU 0) the landing does nothing.
 A blown disc with a soft edge on a mid grey, with the real mask: the disc lands on white, and the steepest step across its
 edge is not steeper than without the landing (owner: «очень резкие переходы с уходом в серый» of the per-pixel landing).
+P378 HL_OPPOSED (the nearness of a light «Inpaint opposed» rebuilt, ScamRgb's map: scamhdr/suncore MODE 2's block weight
+smoothstep(0.05, 0.15, share), MODE 1's max-gaussian): with a map of 0 everywhere (no such light: ultrashort data) every render
+is HL_OPPOSED 0's within float rounding (1e-6); a map of 1 lands the low-saturation lavender LED letter (its neighbourhood's
+colour, P163) on white and leaves a saturated red letter on its colour with its light's gate 0 (within 0.01); the lavender letter's
+neutral dots rebuilt without ultrashort frames fill no 16 px block (a 3072-px frame's), so it still lands on its colour and
+the dots with it (0.03).
 """
 import sys
 from pathlib import Path
@@ -46,6 +52,7 @@ def main():
         ctx = moderngl.create_standalone_context(require=430)
     src_off = expand_imports((SH / 'why/combine.glsl').read_text(encoding='utf-8'))
     src = set_define(src_off, 'HL_LANDING', '1')
+    src_opp = set_define(src, 'HL_OPPOSED', '1')
     mask_src = expand_imports((SH / 'why/hlmask.glsl').read_text(encoding='utf-8'))
     clip = 2.5
     soft = 0.7
@@ -76,6 +83,7 @@ def main():
     prog_on = ctx.program(vertex_shader=vs, fragment_shader='#version 300 es\n' + src)
     prog_off = ctx.program(vertex_shader=vs, fragment_shader='#version 300 es\n' + src_off)
     prog_mask = ctx.program(vertex_shader=vs, fragment_shader='#version 300 es\n' + mask_src)
+    prog_opp = ctx.program(vertex_shader=vs, fragment_shader='#version 300 es\n' + src_opp)
 
     def run_mask(a, sigma):
         """why/hlmask.glsl: the share, then the gaussian along x and along y (WhyCombine's three passes)."""
@@ -122,9 +130,10 @@ def main():
     print('  hlmask: max |GPU - numpy gaussian| %.2e' % err)
     check(err < 1e-4, 'why/hlmask.glsl differs from the gaussian of the share (%.2e)' % err)
 
-    def render(image, fz, share, hl, headroom=1, full=None, detail=0.0):
+    def render(image, fz, share, hl, headroom=1, full=None, detail=0.0, opp=None):
+        """opp: (P378) the share of the pixels «Inpaint opposed» left neutral on blocks of opp[1] px (HL_OPPOSED 1)."""
         h, w = image.shape[:2]
-        prog = prog_on if hl > 0 else prog_off
+        prog = prog_opp if opp is not None else prog_on if hl > 0 else prog_off
         t_img, t_fused, t_hl = tex(image), tex(fz), tex(np.repeat(share[..., None], 4, 2))
         t_full = tex(full) if full is not None else t_img   # the full-size merge (the detail delta's source)
         out = ctx.texture((w, h), 4, dtype='f4')
@@ -133,6 +142,13 @@ def main():
         ctx.viewport = (0, 0, w, h)
         units = {'InputBuffer': t_full, 'GainMap': ones, 'WhyLow': t_img, 'WhyColour': t_img, 'WhyFused': t_fused,
                  'WhyDetailRef': t_img, 'WhyLumaS': t_img, 'WhyHl': t_hl}
+        t_opp = None
+        if opp is not None:
+            near = np.asarray(opp[0], np.float32)
+            gate = np.full_like(near, opp[2] if len(opp) > 2 else 1.0)    # P378 review: .g the light's gate (suncore MODE 3)
+            t_opp = tex(np.dstack([near, gate, near, near]))
+            t_opp.filter = (moderngl.LINEAR, moderngl.LINEAR)
+            units['OppShare'] = t_opp
         for i, (key, t) in enumerate(units.items()):
             if key in prog:
                 t.use(i)
@@ -143,6 +159,8 @@ def main():
                 'vibU': (0.0, 0.0, 0.0), 'detailGainU': detail, 'deltaChromaU': 1.0, 'filmToeU': 0.1, 'ditherU': 0,
                 'agxAU': (2.7, 1.35, 1.6, 1.0), 'agxBU': (-8.5, 3.5, 0.3, 4.0), 'headroomU': headroom, 'hlWhiteU': 0.0,
                 'hlSoftU': hl}
+        if opp is not None:
+            vals['oppGridU'] = (w / float(opp[0].shape[1] * opp[1]), h / float(opp[0].shape[0] * opp[1]))
         for key, v in vals.items():
             if key in prog:
                 prog[key].value = v
@@ -152,6 +170,8 @@ def main():
             t.release()
         if full is not None:
             t_full.release()
+        if t_opp is not None:
+            t_opp.release()
         return res
 
     own = (img[..., :3].max(2) / clip).astype(np.float32)
@@ -245,6 +265,62 @@ def main():
     print('  LED letter: inside %s, its neutral dots differ by at most %.4f' % (np.round(ref, 4), worst))
     check(worst < 0.03, 'the neutral dots of a tinted light land apart from it (white specks): %.4f' % worst)
     check(ref[2] - ref[1] > 0.02, 'the lavender letter lost its tint: %s' % ref)
+
+    # P378 HL_OPPOSED: a map of 0 (no light «Inpaint opposed» rebuilt) changes nothing (llvmpipe compiles the other program's
+    # arithmetic a last bit apart: 6e-8 seen)
+    worst0 = 0.0
+    for name, (im, fz_, sh_) in (('ramps', (img, fused, own)), ('blown disc', (scene, fz, mask)),
+                                 ('LED letter', (led, fz_l, run_mask(led, max(1.0, 0.012 * S2))))):
+        h_, w_ = im.shape[:2]
+        same = np.abs(render(im, fz_, sh_, soft, opp=(np.zeros(((h_ + 15) // 16, (w_ + 15) // 16)), 16))
+                      - render(im, fz_, sh_, soft)).max()
+        check(same < 1e-6, 'HL_OPPOSED with a share of 0 changes the %s (%.2e)' % (name, same))
+        worst0 = max(worst0, same)
+    print('  HL_OPPOSED with a map of 0: ramps, blown disc, LED letter max |diff| %.1e' % worst0)
+    # a map of 1 (the letter clipped without ultrashort data): the lavender letter (saturation 0.24) on white, not its
+    # neighbourhood's tint
+    led_mask = run_mask(led, max(1.0, 0.012 * S2))
+    out_w = render(led, fz_l, led_mask, soft, opp=(np.ones((S2, S2)), 1))
+    inside_w = np.median(out_w[36:62, 36:62].reshape(-1, 3), 0)
+    print('  LED letter with a map of 1: %s (without %s)' % (np.round(inside_w, 4), np.round(ref, 4)))
+    check(np.all(inside_w > 0.995) and inside_w.max() - inside_w.min() < 0.005,
+          'a map of 1 does not land the letter on white: %s' % inside_w)
+    # a saturated letter (an LED wall's red: saturation 0.85) keeps its colour with a map of 1: its light's gate 0 (P378 review:
+    # decided per light, scamhdr/suncore MODE 3 - a red LED's glow measures far over GATE_HI)
+    red = led.copy()
+    red[24:72, 24:72, :3] = np.array([1.0, 0.15, 0.1]) * clip
+    lum_r = red[..., :3] @ np.array([0.2126, 0.7152, 0.0722])
+    fz_r = np.zeros_like(red)
+    fz_r[..., 0] = np.interp(np.minimum(lum_r, table.max()), table, grid) ** (1 / 2.2)
+    mask_r = run_mask(red, max(1.0, 0.012 * S2))
+    plain_r = np.median(render(red, fz_r, mask_r, soft)[36:62, 36:62].reshape(-1, 3), 0)
+    opp_r = np.median(render(red, fz_r, mask_r, soft, opp=(np.ones((S2, S2)), 1, 0.0))[36:62, 36:62].reshape(-1, 3), 0)
+    print('  red LED letter with a map of 1: %s (HL_OPPOSED 0: %s)' % (np.round(opp_r, 4), np.round(plain_r, 4)))
+    check(np.abs(opp_r - plain_r).max() < 0.01, 'a map of 1 takes the red letter\'s colour: %s against %s' % (opp_r, plain_r))
+    # the letter's neutral dots rebuilt without ultrashort frames: on 16-px blocks (a 3072-px frame's) 0.035 of a block, under
+    # the block weight's 0.05 (scamhdr/suncore MODE 2) - no block filled, the map 0 after the spread (MODE 1, ~6.3 blocks): they
+    # keep the letter's colour (P163)
+    blk = 16
+    dmap = np.zeros(((S2 + blk - 1) // blk * blk, (S2 + blk - 1) // blk * blk))
+    for y, x in dots:
+        dmap[y - 1:y + 2, x - 1:x + 2] = 1.0
+    dshare = dmap.reshape(dmap.shape[0] // blk, blk, dmap.shape[1] // blk, blk).mean((1, 3))
+    t = np.clip((dshare - 0.05) / 0.10, 0.0, 1.0)
+    dweight = t * t * (3 - 2 * t)
+    radius = 0.033 * 192
+    rr = int(np.ceil(2.5 * radius))
+    taps = np.exp(-(np.arange(-rr, rr + 1) / radius) ** 2)
+    pw = np.pad(dweight, rr)
+    dnear = np.max([[(taps[i] * taps[j]) * pw[j:j + dweight.shape[0], i:i + dweight.shape[1]] for i in range(2 * rr + 1)]
+                    for j in range(2 * rr + 1)], (0, 1))
+    out_d = render(led, fz_l, led_mask, soft, opp=(dnear, blk))
+    ref_d = np.median(out_d[36:62, 36:62].reshape(-1, 3), 0)
+    worst_d = max(np.abs(out_d[y, x] - ref_d).max() for y, x in dots)
+    print('  LED letter, its dots rebuilt (16-px blocks: share max %.3f, map max %.3f): dots differ from the letter by at most %.4f'
+          % (dshare.max(), dnear.max(), worst_d))
+    check(dnear.max() == 0.0, 'the rebuilt dots fill a block: map %.3f' % dnear.max())
+    check(worst_d < 0.03, 'the rebuilt neutral dots of a tinted light land apart from it: %.4f' % worst_d)
+    check(ref_d[2] - ref_d[1] > 0.02, 'the lavender letter lost its tint with its rebuilt dots: %s' % ref_d)
 
     if FAILURES:
         print('highlight landing check FAILED (%d)' % len(FAILURES))

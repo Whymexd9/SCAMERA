@@ -444,6 +444,7 @@ public class SettingsMenuTest {
             fm.beginTransaction().replace(R.id.settings_container,copy).commitNow();
             // SIMPLE_UI §4: the root's groups are the copy catalog's groups («Снимок» holds the everyday sliders and the colour
             // pages; 2026-10-27: the camera's colour profile moved to «Для опытных › Другие тонкие настройки»)
+            assertNull("P384: no group of the module cards",copy.requireView().findViewWithTag("group_root_modules"));
             android.view.View picture=copy.requireView().findViewWithTag("group_root_colour");
             assertNotNull(tags(copy.requireView()),picture);assertTrue(picture.performClick());
             assertNotNull(tags(copy.requireView()),copy.requireView().findViewWithTag("parameter_pref_scam_hybrid_colour_warmth"));
@@ -453,6 +454,9 @@ public class SettingsMenuTest {
             // the camera's colour (the RawTherapee sharpening left in the settings audit and is gone since P118, the curves are
             // gone, P64): the DCP profile
             assertNotNull(tags(copy.requireView()),copy.requireView().findViewWithTag("parameter_pref_dcp_profile_key"));
+            // P384: the module's sensor settings are copied from «Сенсор по модулям» (the main page's module cards hold no value)
+            assertNotNull(tags(copy.requireView()),copy.requireView().findViewWithTag("parameter_sensor_copy_blackleveloverride"));
+            assertTrue(shownText(copy.requireView(),context.getString(R.string.prefs_expert_module_sensor_title)));
             activity.getOnBackPressedDispatcher().onBackPressed();
             assertNotNull(copy.requireView().findViewWithTag("group_root_expert"));
         }
@@ -493,14 +497,19 @@ public class SettingsMenuTest {
         prefs.edit().putString("module_active","back0").putBoolean("pref_dng_lossless",true).commit();
         try(var controller=org.robolectric.Robolectric.buildActivity(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.class)){
             controller.setup();var activity=controller.get();var fm=activity.getSupportFragmentManager();
-            var modules=new com.particlesdevs.photoncamera.ui.settings.ModuleSettingsFragment();fm.beginTransaction().replace(R.id.settings_container,modules).commitNow();renderPage(modules.requireView(),"modules"+png);
+            fm.executePendingTransactions();
+            var root=(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment)fm.findFragmentById(R.id.settings_container);
+            renderPage(root.requireView(),"modules"+png);
             assertEquals(android.view.View.GONE,activity.findViewById(R.id.settings_toolbar).getVisibility());
-            // P319 (user report: «объединить "Камеры и сенсоры" с "Настройки по модулям"»): one page «Камеры и модули» holds the
-            // modules and their profiles (still in one place only: the main page's row is hidden, its key opens this page)
-            assertNotNull("«"+copyRow+"» on «Камеры и модули»",modules.requireView().findViewWithTag(copyRow));
-            var group=new com.particlesdevs.photoncamera.ui.settings.ModuleProfilesFragment();fm.beginTransaction().replace(R.id.settings_container,group).commitNow();
-            group.requireView().findViewWithTag(copyRow).performClick();fm.executePendingTransactions();
+            // P384 (owner, 2026-10-28: «Переместить эту группу настроек на главный экран»): copying settings between modules is a row
+            // under the module cards of the main page (was «Камеры и модули»; the module profiles still in one place only)
+            Preference copyRowPreference=root.findPreference("module_copy_settings");
+            assertNotNull(copyRowPreference);assertEquals(copyRow,String.valueOf(copyRowPreference.getTitle()));
+            assertSame(root.findPreference("module_actions"),copyRowPreference.getParent());
+            copyRowPreference.performClick();fm.executePendingTransactions();
+            assertEquals("module_copy",fm.getBackStackEntryAt(fm.getBackStackEntryCount()-1).getName());
             var copy=(com.particlesdevs.photoncamera.ui.settings.ModuleCopyFragment)fm.findFragmentById(R.id.settings_container);renderPage(copy.requireView(),"copy"+png);
+            assertEquals(android.view.View.GONE,activity.findViewById(R.id.settings_toolbar).getVisibility());
             copy.requireView().findViewWithTag("clear_selection").performClick();assertFalse(copy.requireView().findViewWithTag("primary_action").isEnabled());
             // one row of «Фото» (SIMPLE_UI §4: the root's groups are the copy catalog's; the DNG compression is under «Фото»)
             copy.requireView().findViewWithTag("group_root_photo").performClick();
@@ -1434,7 +1443,8 @@ public class SettingsMenuTest {
         PreferenceScreen screen=inflate();
         // 2026-10-27 (owner: «Упрости так чтобы даже тупой человек смог разобраться в настройках и настроить камеру сам»; this
         // order supersedes P319's): the picture first, then the file, the shooting, the camera screen, the app, the experts, about
-        String[] order={"root_colour","root_photo","root_shoot","root_view","root_app","root_expert","root_about"};
+        // P384 (owner, 2026-10-28: «Переместить эту группу настроек на главный экран»): «Модули камеры» after «Съёмка»
+        String[] order={"root_colour","root_photo","root_shoot","root_modules","root_view","root_app","root_expert","root_about"};
         assertEquals(order.length,screen.getPreferenceCount());
         for(int i=0;i<order.length;i++)assertEquals(order[i],screen.getPreference(i).getKey());
         // «Снимок»: the style page, the six everyday sliders, the fine colour page
@@ -1469,16 +1479,20 @@ public class SettingsMenuTest {
         // «Экран камеры»
         assertEquals(Arrays.asList("pref_show_grid_key","pref_horizon","pref_show_afdata_key","pref_low_light_boost","pref_show_roundedge_key"),
                 keys(screen.findPreference("root_view")));
-        // «Для опытных»: SHDR, «Другие тонкие настройки», and the lab (P277: a row that opens ScamLabFragment, no page of its own)
+        // «Для опытных»: SHDR, «Другие тонкие настройки», and the lab (P277: a row that opens ScamLabFragment, no page of its own);
+        // P384: the modules' Camera IDs and sensors, two groups of their own (built in code: empty in the XML)
         androidx.preference.PreferenceGroup expert=screen.findPreference("root_expert");
-        assertEquals(Arrays.asList("scam_hybrid_screen","advanced_screen","scam_lab_screen"),keys(expert));
+        assertEquals(Arrays.asList("scam_hybrid_screen","advanced_screen","scam_lab_screen","expert_module_ids","expert_module_sensor"),keys(expert));
+        for(String group:new String[]{"root_modules","expert_module_ids","expert_module_sensor"})
+            assertEquals(group,0,((androidx.preference.PreferenceGroup)screen.findPreference(group)).getPreferenceCount());
         assertEquals(0,((PreferenceScreen)expert.getPreference(2)).getPreferenceCount());
         PreferenceScreen advanced=screen.findPreference("advanced_screen");
         assertEquals(Arrays.asList("adv_capture","colour_expert_category","adv_output","adv_cameras","adv_view","adv_system"),keys(advanced));
         assertEquals(Arrays.asList("pref_scam_hybrid_zsl_frames","pref_scam_hybrid_fullres50_frames","pref_scam_hybrid_fullres50_zsl",
                 "pref_scam_hybrid_fullres200_frames","pref_zsl_buffer_count_key","scam_hybrid_motion_screen"),keys(screen.findPreference("adv_capture")));
         assertEquals(Arrays.asList("pref_scam_hybrid_auto2x","pref_scam_hybrid_downsampler"),keys(screen.findPreference("adv_output")));
-        assertEquals(Arrays.asList("camera_settings_screen","pref_xiaomi_smooth_zoom","pref_fullres_hw_remosaic"),keys(screen.findPreference("adv_cameras")));
+        // P384: no «Камеры и модули» page and no empty sensor page: «RAW и сенсор» is the group's first row
+        assertEquals(Arrays.asList("capture_settings_screen","pref_xiaomi_smooth_zoom","pref_fullres_hw_remosaic"),keys(screen.findPreference("adv_cameras")));
         assertEquals(Arrays.asList("pref_live_viewfinder_raw_key"),keys(screen.findPreference("adv_view")));
         for(String key:new String[]{"pref_dcp_profile_key","pref_color_method_key","pref_mosaic_wb_corrections","pref_scam_hybrid_colour_gamut",
                 "pref_scam_hybrid_colour_hue_lock","pref_scam_hybrid_why_ccm_sat","pref_scam_hybrid_why_hl_white","colour_calibration_screen",
@@ -1488,12 +1502,12 @@ public class SettingsMenuTest {
             assertNotNull(key,advanced.findPreference(key));
         // the Richardson–Lucy page sits with the microtexture rows (its one-page category is gone)
         assertEquals("scam_hybrid_why_microtexture_category",((Preference)screen.findPreference("scam_hybrid_why_rl_screen")).getParent().getKey());
-        // rows removed: the module hub (camera_settings_screen holds the modules' settings), the LUT link, empty containers
+        // rows removed: the module hub (P384: the modules are a group of the main page), the LUT link, empty containers
         for(String key:new String[]{"module_profiles_screen","photo_style_lut","scam_hybrid_why_rl_category","adv_processing"})
             assertNull(key,screen.findPreference(key));
         assertNull(screen.findPreference(PreferenceKeys.ROUTE_KEY));
-        PreferenceScreen cameras=screen.findPreference("camera_settings_screen");
-        assertNotNull(cameras.findPreference("capture_settings_screen"));assertNotNull(cameras.findPreference("pref_sensor_config_submenu"));
+        assertNull(screen.findPreference("camera_settings_screen"));assertNull(screen.findPreference("pref_sensor_config_submenu"));
+        assertEquals("adv_cameras",((Preference)screen.findPreference("capture_settings_screen")).getParent().getKey());
         androidx.preference.PreferenceGroup ui=screen.findPreference("root_app");
         for(String key:new String[]{"pref_theme_key","pref_theme_accent_key","pref_hide_gallery_icon_key","pref_shade_transparency",
                 "backup_settings_screen"})assertNotNull(key,ui.findPreference(key));
@@ -1604,20 +1618,37 @@ public class SettingsMenuTest {
         }
         assertTrue("checked "+checked,checked>=everyday.size());
         assertTrue("technical rows outside «Для опытных»: "+stray,stray.isEmpty());
-        // the rows shown by the settings page itself (it hides the two sound switches behind «Звуки» and what the phone lacks)
+        // the rows shown by the settings page itself (it hides the two sound switches behind «Звуки» and what the phone lacks);
+        // P384: «Модули камеры» with three modules: three cards and the actions under them
+        for(int i=0;i<3;i++)prefs.edit().putString("module_auto_back"+i,""+(3+i)).putString("module_label_back"+i,new String[]{"1×","0.6×","3×"}[i]).putBoolean("module_visible_back"+i,true).commit();
+        prefs.edit().putString("module_active","back0").commit();
         try(org.robolectric.android.controller.ActivityController<com.particlesdevs.photoncamera.ui.settings.SettingsActivity> controller=
                 org.robolectric.Robolectric.buildActivity(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.class)) {
             controller.setup();
             var fm=controller.get().getSupportFragmentManager();fm.executePendingTransactions();
             org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
             var root=(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment)fm.findFragmentById(R.id.settings_container);
-            for(String group:new String[]{"root_colour","root_photo","root_shoot","root_view","root_app","root_about"}){
+            for(String group:new String[]{"root_colour","root_photo","root_shoot","root_modules","root_view","root_app","root_about"}){
                 androidx.preference.PreferenceGroup g=root.findPreference(group);assertNotNull(group,g);
                 List<String> shown=new ArrayList<>();
                 for(int i=0;i<g.getPreferenceCount();i++)if(g.getPreference(i).isVisible())shown.add(g.getPreference(i).getKey());
                 assertTrue(group+" shows "+shown,shown.size()<=8&&!shown.isEmpty());
             }
+            assertEquals(Arrays.asList("module_card_back1","module_card_back0","module_card_back2","module_actions"),
+                    visibleKeys((androidx.preference.PreferenceGroup)root.findPreference("root_modules")));
+            // no module card is open at the start: the list holds none of a card's rows
+            androidx.preference.PreferenceGroupAdapter adapter=(androidx.preference.PreferenceGroupAdapter)root.getListView().getAdapter();
+            for(int i=0;i<adapter.getItemCount();i++){
+                String key=adapter.getItem(i).getKey();
+                for(String row:new String[]{"module_row_name_","module_row_zoom_","module_row_button_","module_row_crop_","module_row_copy_",
+                        "module_row_delete_","module_row_profile_","module_row_trials_"})
+                    assertFalse("an open card's row at the start: "+key,key!=null&&key.startsWith(row));
+            }
         }
+    }
+
+    private static List<String> visibleKeys(androidx.preference.PreferenceGroup group){
+        List<String> out=new ArrayList<>();for(int i=0;i<group.getPreferenceCount();i++)if(group.getPreference(i).isVisible())out.add(group.getPreference(i).getKey());return out;
     }
 
     /**
@@ -1775,24 +1806,36 @@ public class SettingsMenuTest {
         assertEquals("70",prefs.getString("pref_sensorconfig_back1_blackleveloverride",""));
         assertEquals("20",prefs.getString("pref_sensorconfig_back1_sessiontype",""));
     }
-    @Test public void sensorEditorStartsAtActiveModuleAndDoesNotSwitchCamera(){
+    /**
+     * P384: «Сенсор по модулям» of the main page starts with no module shown (the page stays short); choosing one shows only its
+     * rows, choosing none hides them again; the camera keeps its module.
+     */
+    @Test public void sensorEditorStartsWithNoModuleAndDoesNotSwitchCamera(){
         prefs.edit().putString("module_auto_back0","3").putString("module_auto_back1","5")
             .putBoolean("module_visible_back0",true).putBoolean("module_visible_back1",true) // shown modules (hidden fillers are not listed)
             .putString("module_active","back1").commit();
         PreferenceScreen screen=inflate();
         SensorConfigPreferenceGenerator.ModuleSelection selection=SensorConfigPreferenceGenerator.generatePreferences(context,screen);
-        assertNull("the module is picked by the page chip, not by a row on the page",screen.findPreference("pref_sensor_config_selector"));
-        assertEquals("back1",selection.selected());
+        assertNull("the module is picked by the chips, not by a row on the page",screen.findPreference("pref_sensor_config_selector"));
+        assertNull(selection.selected());
         assertEquals(Arrays.asList("back0","back1"),selection.slots());
-        assertTrue(screen.findPreference("pref_category_sensor_back1").isVisible());
+        assertSame(screen.findPreference("expert_module_sensor"),((Preference)screen.findPreference("pref_category_sensor_back1")).getParent());
+        assertFalse(screen.findPreference("pref_category_sensor_back1").isVisible());
         assertFalse(screen.findPreference("pref_category_sensor_back0").isVisible());
         selection.select("back0");
         assertEquals("back1",ModuleRegistry.active());
         assertTrue(screen.findPreference("pref_category_sensor_back0").isVisible());
         assertFalse(screen.findPreference("pref_category_sensor_back1").isVisible());
+        selection.select(null);
+        assertNull(selection.selected());
+        assertFalse(screen.findPreference("pref_category_sensor_back0").isVisible());
+        assertFalse(screen.findPreference("pref_category_sensor_back1").isVisible());
     }
-    /** The sensor page has no module row: its chip names the module and picks another one; the camera stays. */
-    @Test public void sensorPageChipPicksTheModuleWithoutSwitchingTheCamera(){
+    /**
+     * P384: a module's sensor rows (sensorPage: the main page with that module chosen) - the module chips of «Сенсор по модулям» pick
+     * another one (its rows only), the chosen chip again lets it go; the choice survives a recreate; the camera stays.
+     */
+    @Test public void sensorChipsPickTheModuleWithoutSwitchingTheCamera(){
         prefs.edit().putString("module_auto_back0","3").putString("module_auto_back1","5").putString("module_auto_back2","7")
             .putString("module_label_back0","1×").putString("module_label_back1","3×").putString("module_label_back2","6×")
             .putBoolean("module_visible_back0",true).putBoolean("module_visible_back1",true).putBoolean("module_visible_back2",true)
@@ -1803,21 +1846,49 @@ public class SettingsMenuTest {
             fm.beginTransaction().replace(R.id.settings_container,page).commitNow();
             org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
             assertNull(page.findPreference("pref_sensor_config_selector"));
+            assertNull("the main page: no header chip for the sensor",page.requireView().findViewWithTag("settings_chip"));
             assertTrue(page.findPreference("pref_category_sensor_back1").isVisible());
             assertFalse(page.findPreference("pref_category_sensor_back0").isVisible());
-            android.widget.TextView chip=page.requireView().findViewWithTag("settings_chip");
-            assertNotNull(chip);assertTrue(chip.getText().toString(),chip.getText().toString().startsWith("Editing: 3× · ID 5"));
-            chip.performClick();org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
-            var sheet=(com.google.android.material.bottomsheet.BottomSheetDialog)org.robolectric.shadows.ShadowDialog.getLatestDialog();
-            assertNotNull(sheet);sheet.findViewById(android.R.id.content).findViewWithTag("option_back0").performClick();
-            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+            assertEquals("3× · ID 5",String.valueOf(((Preference)page.findPreference("pref_category_sensor_back1")).getTitle()).replace("\u200B",""));
+            var chips=(com.particlesdevs.photoncamera.ui.settings.custompreferences.ModuleChipsPreference)page.findPreference("module_sensor_picker");
+            assertEquals("back1",chips.selected());
+            android.view.View row=chipsRow(page,chips);
+            assertNotNull(row.findViewWithTag("module_chip_back0"));
+            row.findViewWithTag("module_chip_back0").performClick();org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
             assertTrue(page.findPreference("pref_category_sensor_back0").isVisible());
             assertFalse(page.findPreference("pref_category_sensor_back1").isVisible());
             assertEquals("the camera keeps its module","back2",ModuleRegistry.active());
-            chip=page.requireView().findViewWithTag("settings_chip");
-            assertTrue(chip.getText().toString(),chip.getText().toString().startsWith("Editing: 1× · ID 3"));
+            assertEquals("back0",page.requireArguments().getString(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment.ARG_SENSOR_SLOT));
+            row=chipsRow(page,chips);
+            row.findViewWithTag("module_chip_back0").performClick();org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+            assertFalse("the chosen chip again: none",page.findPreference("pref_category_sensor_back0").isVisible());
+            assertNull(chips.selected());
+            assertEquals("",page.requireArguments().getString(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment.ARG_SENSOR_SLOT));
+            assertEquals(android.view.View.VISIBLE,chipsRow(page,chips).findViewById(R.id.settings_chips_hint).getVisibility());
+            chipsRow(page,chips).findViewWithTag("module_chip_back2").performClick();org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+            controller.recreate();
+            var again=(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment)controller.get().getSupportFragmentManager().findFragmentById(R.id.settings_container);
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+            assertTrue("kept over a recreate",again.findPreference("pref_category_sensor_back2").isVisible());
+            assertFalse(again.findPreference("pref_category_sensor_back1").isVisible());
+            assertEquals("back2",((com.particlesdevs.photoncamera.ui.settings.custompreferences.ModuleChipsPreference)again.findPreference("module_sensor_picker")).selected());
+            assertEquals("back2",ModuleRegistry.active());
         }
     }
+
+    /** The bound row of the module chips (the list scrolled to it). */
+    private static android.view.View chipsRow(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment page,Preference chips){
+        androidx.recyclerview.widget.RecyclerView list=page.getListView();
+        androidx.preference.PreferenceGroupAdapter adapter=(androidx.preference.PreferenceGroupAdapter)list.getAdapter();
+        int position=adapter.getPreferenceAdapterPosition(chips);
+        assertTrue(position>=0);
+        ((androidx.recyclerview.widget.LinearLayoutManager)list.getLayoutManager()).scrollToPositionWithOffset(position,0);
+        list.measure(android.view.View.MeasureSpec.makeMeasureSpec(400,1073741824),android.view.View.MeasureSpec.makeMeasureSpec(800,1073741824));list.layout(0,0,400,800);
+        androidx.recyclerview.widget.RecyclerView.ViewHolder holder=list.findViewHolderForAdapterPosition(position);
+        assertNotNull(holder);
+        return holder.itemView;
+    }
+
     /**
      * P156: on a page with per-module values the chip picks the module to edit: its profile comes into the main settings, the
      * camera keeps its module; leaving the settings saves the edit into that module and brings the camera module's values back.
@@ -1872,7 +1943,7 @@ public class SettingsMenuTest {
         assertEquals("3",PreferenceKeys.getCameraID());
         ModuleRegistry.forgetHomeCheck();
     }
-    /** A module page opens its own sensor settings, even for a hidden module; the rows keep one fixed order. */
+    /** A module's sensor settings open at that module, even a hidden one; the rows keep one fixed order (P384: its reset last). */
     @Test public void sensorPageOpensAtTheRequestedModuleInFixedRowOrder(){
         prefs.edit().putString("module_auto_back0","3").putString("module_auto_back1","5")
             .putBoolean("module_visible_back0",true).putBoolean("module_visible_back1",false)
@@ -1884,33 +1955,41 @@ public class SettingsMenuTest {
         PreferenceCategory category=screen.findPreference("pref_category_sensor_back1");
         assertTrue(category.isVisible());
         List<String> keys=new ArrayList<>();
-        for(int i=0;i<category.getPreferenceCount();i++)if(category.getPreference(i).getKey().startsWith("pref_sensorconfig_back1_"))keys.add(category.getPreference(i).getKey().substring("pref_sensorconfig_back1_".length()));
+        for(int i=0;i<category.getPreferenceCount();i++){String key=category.getPreference(i).getKey();keys.add(key.startsWith("pref_sensorconfig_back1_")?key.substring("pref_sensorconfig_back1_".length()):key);}
         // RAW levels, stabilization (only with OIS hardware), session, P266's ISP stream and RAW frame rate; then the vendor tag
-        // button (the exposure limits read by nothing were removed)
+        // button (the exposure limits read by nothing were removed); P384: the module's own sensor reset at the end
         keys.remove("oismode");
-        assertEquals(Arrays.asList("blackleveloverride","whiteleveloverride","sessiontype","ispsurface","rawfps","rawviewfinder","fpsprobe","add_tunablekey"),keys);
+        assertEquals(Arrays.asList("blackleveloverride","whiteleveloverride","sessiontype","ispsurface","rawfps","rawviewfinder","fpsprobe","add_tunablekey",
+                "pref_reset_sensor_config_settings_back1"),keys);
     }
     /**
-     * P148: the module page groups its rows (basics, copies, advanced) and makes a copy with a lens crop: «1.3×» of the 1× camera
-     * crops its frame 1.3x from the lens's uncropped zoom - also with the 1× button hidden -, its page shows and changes the crop;
-     * a copy of a sensor-cropped module crops that module's frame.
+     * P148: a copy of a module with a lens crop: «1.3×» of the 1× camera crops its frame 1.3x from the lens's uncropped zoom - also
+     * with the 1× button hidden -, its card shows and changes the crop; a copy of a sensor-cropped module crops that module's frame.
+     * P384 (owner, 2026-10-28: «Переместить эту группу настроек на главный экран»): the module cards of the main page (the untouched
+     * fillers a count, the modules' rows in their card: name, zoom, button, copying, its own settings; Camera ID and the sensor in
+     * their expert groups, not in the card).
      */
     @Test @Config(qualifiers="ru-w400dp-h880dp-mdpi") public void aModuleCopyWithItsOwnLensCrop() throws Exception {
         for(int i=0;i<3;i++)prefs.edit().putString("module_auto_back"+i,""+(3+i)).putString("module_label_back"+i,new String[]{"1×","0.6×","2×"}[i]).putBoolean("module_visible_back"+i,true).commit();
         for(int i=3;i<8;i++)prefs.edit().putString("module_auto_back"+i,"5").putString("module_label_back"+i,"2×").putBoolean("module_visible_back"+i,false).commit(); // the hidden filler slots
         prefs.edit().putString("module_active","back0").putBoolean("module_sensorcrop_back2",true).commit();
         try(var controller=org.robolectric.Robolectric.buildActivity(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.class)){
-            controller.setup();var activity=controller.get();var fm=activity.getSupportFragmentManager();
-            var modules=new com.particlesdevs.photoncamera.ui.settings.ModuleSettingsFragment();fm.beginTransaction().replace(R.id.settings_container,modules).commitNow();
-            assertNotNull("the page's own «add a copy» action",modules.requireView().findViewWithTag("Добавить модуль с кропом"));
-            assertFalse("untouched filler slots are a count, not hidden modules",shownText(modules.requireView(),"Скрытые модули"));
-            assertTrue(shownText(modules.requireView(),"свободных мест: 5"));
-            renderPage(modules.requireView(),"modules-p148");
-            var page=com.particlesdevs.photoncamera.ui.settings.ModuleLensFragment.module("back0");fm.beginTransaction().replace(R.id.settings_container,page).commitNow();
-            renderPage(page.requireView(),"module-page-p148");
-            for(String row:new String[]{"Название","Зум и кроп на сенсоре","Кнопка в видоискателе","Сделать копию с кропом","Camera ID","Сенсор и вендорные ключи"})
-                assertNotNull(row,page.requireView().findViewWithTag(row));
-            page.requireView().findViewWithTag("Сделать копию с кропом").performClick();
+            controller.setup();var activity=controller.get();var fm=activity.getSupportFragmentManager();fm.executePendingTransactions();
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+            var root=(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment)fm.findFragmentById(R.id.settings_container);
+            for(String slot:new String[]{"back0","back1","back2"})assertNotNull(slot,root.findPreference("module_card_"+slot));
+            for(int i=3;i<8;i++)assertNull("untouched filler slots are a count, not modules",root.findPreference("module_card_back"+i));
+            assertTrue(String.valueOf(((Preference)root.findPreference("module_row_add_copy")).getSummary()),
+                    String.valueOf(((Preference)root.findPreference("module_row_add_copy")).getSummary()).contains("свободных мест: 5"));
+            renderPage(root.requireView(),"modules-p148");
+            var card=(com.particlesdevs.photoncamera.ui.settings.custompreferences.ModuleSection)root.findPreference("module_card_back0");
+            card.performClick();org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+            List<String> open=listed(root,"module_card_back0","module_card_back2");
+            assertEquals(Arrays.asList("module_row_name_back0","module_row_zoom_back0","module_row_button_back0","module_row_copy_back0",
+                    "module_row_profile_back0"),open);
+            for(String key:open)assertFalse("Camera ID and the sensor are not in the card: "+key,key.startsWith("module_row_id_")||key.startsWith("pref_"));
+            renderPage(root.requireView(),"module-page-p148");
+            ((Preference)root.findPreference("module_row_copy_back0")).performClick();
             org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
             var sheet=(com.google.android.material.bottomsheet.BottomSheetDialog)org.robolectric.shadows.ShadowDialog.getLatestDialog();
             assertNotNull(sheet);sheet.findViewById(android.R.id.content).findViewWithTag("option_crop_1.3").performClick();
@@ -1922,21 +2001,24 @@ public class SettingsMenuTest {
             assertEquals(1.3f,ModuleRegistry.crop(copy),1e-4f);
             assertEquals("the lens's uncropped zoom: the camera crops 1.3x",1f,ModuleRegistry.nativeRatio(copy),1e-4f);
             assertTrue(ModuleRegistry.visible(copy));
-            var copyPage=fm.findFragmentById(R.id.settings_container);
-            assertTrue(copyPage instanceof com.particlesdevs.photoncamera.ui.settings.ModuleLensFragment);
-            assertNotNull("the copy's page shows its crop",copyPage.requireView().findViewWithTag("Кроп копии"));
-            assertNotNull(copyPage.requireView().findViewWithTag("Удалить копию"));
-            renderPage(copyPage.requireView(),"module-copy-p148");
+            var copyCard=(com.particlesdevs.photoncamera.ui.settings.custompreferences.ModuleSection)root.findPreference("module_card_"+copy);
+            assertNotNull("the copy's card",copyCard);
+            assertTrue("the new copy's card is open",copyCard.isExpanded());
+            assertFalse("one card open",card.isExpanded());
+            assertTrue(listed(root,"module_card_"+copy,null).contains("module_row_crop_"+copy));
+            assertTrue(listed(root,"module_card_"+copy,null).contains("module_row_delete_"+copy));
+            renderPage(root.requireView(),"module-copy-p148");
             prefs.edit().putBoolean("module_visible_back0",false).commit();
             assertEquals("the crop stays with the 1× button hidden",1f,ModuleRegistry.nativeRatio(copy),1e-4f);
-            // the crop of the copy changed on its page: 1.5x
-            copyPage.requireView().findViewWithTag("Кроп копии").performClick();
+            // the crop of the copy changed in its card: 1.5x
+            ((Preference)root.findPreference("module_row_crop_"+copy)).performClick();
             org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
             sheet=(com.google.android.material.bottomsheet.BottomSheetDialog)org.robolectric.shadows.ShadowDialog.getLatestDialog();
             sheet.findViewById(android.R.id.content).findViewWithTag("option_crop_1.5").performClick();
             org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
             assertEquals(1.5f,ModuleRegistry.zoom(copy),1e-4f);
             assertEquals(1.5f,ModuleRegistry.crop(copy),1e-4f);
+            assertEquals("1.5×",((com.particlesdevs.photoncamera.ui.settings.custompreferences.ModuleSection)root.findPreference("module_card_"+copy)).badge().toString());
             // a copy of the sensor-cropped 2× module: its frame is cropped 1.5x more (native = the 2× module's frame)
             String isz=ModuleRegistry.duplicate("back2",1.5f);
             assertNotNull(isz);
@@ -1946,6 +2028,20 @@ public class SettingsMenuTest {
             assertEquals(2f,ModuleRegistry.nativeRatio("back2"),1e-4f);
         }
     }
+
+    /** The keys the root's list holds between two rows (exclusive; {@code to} null: to the next card or the actions). */
+    private static List<String> listed(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment root,String from,String to){
+        androidx.preference.PreferenceGroupAdapter adapter=(androidx.preference.PreferenceGroupAdapter)root.getListView().getAdapter();
+        List<String> out=new ArrayList<>();boolean in=false;
+        for(int i=0;i<adapter.getItemCount();i++){
+            String key=adapter.getItem(i).getKey();
+            if(in&&(key==null||key.equals(to)||(to==null&&(key.startsWith("module_card_")||key.equals("module_actions")))))break;
+            if(in)out.add(key);
+            if(from.equals(key))in=true;
+        }
+        return out;
+    }
+
     /**
      * P134 / SIMPLE_UI §4c «Плёночный LUT» is its own page, as the concept: the before / after preview, three samples, the strip
      * («Нет», our film looks, the folder's .cube files, «Импорт .cube»), the strength and «Что меняется»; a card is the choice.

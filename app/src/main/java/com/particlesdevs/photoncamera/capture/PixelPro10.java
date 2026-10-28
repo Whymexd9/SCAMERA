@@ -154,7 +154,7 @@ public final class PixelPro10 {
                         .putBoolean("module_sensorcrop_" + slot, false)
                         .putFloat("module_fov_" + cameraId, f);
                 known.add(f);
-                // the camera list materializes it at the next start like a lens the owner chose (ModuleLensFragment)
+                // the camera list materializes it at the next start like a lens the owner chose (CameraIdSheet)
                 Set<String> user = new java.util.HashSet<>(p.getStringSet("user_camera_ids", new java.util.HashSet<>()));
                 user.add(cameraId);
                 Set<String> hidden = new java.util.HashSet<>(p.getStringSet("hidden_camera_ids", new java.util.HashSet<>()));

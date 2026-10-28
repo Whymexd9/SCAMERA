@@ -91,7 +91,18 @@ public class LensFilterPreference extends Preference implements PageReset.Resett
     public boolean resetToDefault() {
         final SharedPreferences prefs = getSharedPreferences();
         if (prefs == null) return false;
-        boolean stored = false, any = !chosen().isEmpty();
+        final boolean any = resetKeys(prefs);
+        notifyChanged();
+        return any;
+    }
+
+    /**
+     * The page reset's values (P382: the LUT tray's «Фильтр» tab double tap too): the filter, its strength and every filter's
+     * fine controls lose their stored values; true when a filter was chosen or a value of its own was stored.
+     */
+    public static boolean resetKeys(SharedPreferences prefs) {
+        final Object chosen = PreferenceValue.get(prefs, LensFilters.KEY);
+        boolean stored = false, any = chosen != null && !chosen.toString().isEmpty() && LensFilters.known(chosen.toString());
         final SharedPreferences.Editor e = prefs.edit();
         for (String k : prefs.getAll().keySet()) {
             if (!LensFilters.KEY.equals(k) && !LensFilters.STRENGTH_KEY.equals(k) && !k.startsWith(LensFilters.TUNE_PREFIX)) continue;
@@ -99,9 +110,7 @@ public class LensFilterPreference extends Preference implements PageReset.Resett
             stored = true;
             if (!LensFilters.KEY.equals(k)) any = true;
         }
-        if (!stored) return false;
-        e.apply();
-        notifyChanged();
+        if (stored) e.apply();
         return any;
     }
 

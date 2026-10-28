@@ -942,6 +942,9 @@ public class ScamProcessor extends ProcessorBase {
         pipeline.look = lookAtPress;
         // P369: the shot's film snapshot (the press's), before the teardown decision and the pipeline (every film gate reads it)
         pipeline.takeFilm();
+        // P380: the film's recipe in the photo's description (only with a film)
+        processingParameters.filmRecipe = pipeline.film == null ? null : pipeline.film.recipe();
+        ParseExif.describeFilm(exifData, processingParameters);
         // W1.3: at 16 MP or less without Ultra HDR the GL teardown waits until the JPEG is saved (finishDeferredTeardown).
         pipeline.deferTeardown = PostPipeline.canDeferTeardown(processingParameters, pipeline.film);
         if (pipeline.deferTeardown) { deferredPipeline = pipeline; openPipeline = null; }
@@ -1384,8 +1387,12 @@ public class ScamProcessor extends ProcessorBase {
         catch (RuntimeException e) { return null; }
     }
 
-    /** The shortest exposure has the most pixels at the dark floor, so it bounds black best. */
-    private static void refineBlackFromDarkestFrame(Parameters processingParameters, ArrayList<ImageFrame> frames) {
+    /**
+     * The shortest exposure has the most pixels at the dark floor, so it bounds black best. P386: read at the colour block the merge
+     * will take (ScamHybridBurst.knownBlock: stored for the stream or declared by its module; 1 when unknown or binned), as a frame
+     * of the shot's stream (MosaicBlockStore.shotKey: a stream proven without its pedestal keeps its floor, PedestalMemory).
+     */
+    static void refineBlackFromDarkestFrame(Parameters processingParameters, ArrayList<ImageFrame> frames) {
         ImageFrame darkest = null;
         double lowest = Double.MAX_VALUE;
         for (ImageFrame frame : frames) {
@@ -1395,7 +1402,9 @@ public class ScamProcessor extends ProcessorBase {
                     : frame.pair != null ? frame.pair.exposure * (double) frame.pair.iso : Double.MAX_VALUE / 2;
             if (exposure < lowest) { lowest = exposure; darkest = frame; }
         }
-        if (darkest != null) processingParameters.refineBlackLevel(darkest.buffer, darkest.width, darkest.height);
+        if (darkest != null) processingParameters.refineBlackLevel(darkest.buffer, darkest.width, darkest.height,
+                com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.knownBlock(processingParameters),
+                com.particlesdevs.photoncamera.processing.MosaicBlockStore.shotKey());
     }
 
     /**

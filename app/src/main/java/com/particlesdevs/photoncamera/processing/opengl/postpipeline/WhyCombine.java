@@ -50,6 +50,25 @@ public final class WhyCombine extends Node {
         return film == null ? sharpGain * detailBoost(snr) : sharpGain * (1f + (detailBoost(snr) - 1f) * (1f - film.strength));
     }
 
+    /** P154 «Мягкость засветов»: where the highlight landing starts below the data ceiling (fraction 0 .. 0.9; 0 = off). */
+    static float hlSoft() {
+        return Math.max(0f, Math.min(0.9f, WhyTone.value("hl_soft", 0.7f)));
+    }
+
+    /**
+     * P378: whether this shot's highlight landing can be drawn - «Мягкость засветов» on and no film at 100 % (Run's filmOnly) - for
+     * ScamRgb, which skips the opposed landing's map otherwise. A film at 100 % whose data cannot be read gets the landing without
+     * the map (HL_OPPOSED off: the landing as before P378).
+     */
+    static boolean landingDrawn(PostPipeline pipeline) {
+        return landingDrawn(hlSoft(), pipeline.film);
+    }
+
+    /** P378: {@link #landingDrawn(PostPipeline)} of «Мягкость засветов» {@code hlSoft} and the shot's film snapshot. */
+    static boolean landingDrawn(float hlSoft, @androidx.annotation.Nullable com.particlesdevs.photoncamera.processing.color.FilmSim.Settings film) {
+        return hlSoft > 0f && !(film != null && film.strength >= 1f);
+    }
+
     /**
      * Bounded reference of the detail delta (review_whytone F1): box mean of min(m * Y, 1) on the whyLow grid (m = ae, or the
      * domain of WhyLumaSharpen). The unbounded delta of a light edge reached -0.7 in OKLab L and drew black rings around lamps.
@@ -113,8 +132,9 @@ public final class WhyCombine extends Node {
         final com.particlesdevs.photoncamera.processing.color.FilmLut lut = lutStrength > 0f && !lutName.isEmpty()
                 ? com.particlesdevs.photoncamera.processing.color.FilmChain.lut(com.particlesdevs.photoncamera.app.ScameraApp.getAppContext(), lutName) : null;
         int lutTexture = 0;
-        GLTexture hlA = null, hlB = null, sunBloom = null;
-        boolean sunBloomOn = false;
+        GLTexture hlA = null, hlB = null, sunBloom = null, oppShare = null, skyWith = null, skyWithout = null;
+        boolean sunBloomOn = false, oppOn = false;
+        String skyLog = "";
         try {
             GLTexture colour = st.lowDn != null ? st.lowDn : st.low;
             int colourFactor = st.factor;
@@ -134,7 +154,7 @@ public final class WhyCombine extends Node {
             // P187: WhyLumaSharpen drew it already when it gave the full-size image back (above 100 MP)
             if (detail != 0f && st.detailRef == null) st.detailRef = detailRef(glProg, pipeline, input, gainMap, sharp ? st.sharpMul : r.ae);
             // P154: the highlight landing and the upward path to white (HL_LANDING 0 = the shader before P154)
-            final float hlSoft = Math.max(0f, Math.min(0.9f, WhyTone.value("hl_soft", 0.7f)));
+            final float hlSoft = hlSoft();
             final boolean realClip = ScamRgb.lastRealClip || ScamHybridBurst.lastBentoUsClipped > 0f;
             if (hlSoft > 0f && realClip && !filmOnly) {
                 // the blurred share of the ceiling on the whyLow grid (why/hlmask.glsl): max channel / ceiling, then a gaussian of
@@ -165,6 +185,17 @@ public final class WhyCombine extends Node {
                 hlA = null;
             }
             if (hlB != null) glProg.setDefine("HL_LANDING", 1);
+            // P378: the low-chroma glow round a light «Inpaint opposed» rebuilt (ScamRgb.opposedShare: none without a filled block)
+            // lands on white, with the landing only and on the image the map covers
+            oppShare = pipeline.opposedShare;
+            pipeline.opposedShare = null;
+            final Point oppSize = pipeline.opposedShareSize;
+            if (oppShare != null && (hlB == null || oppSize == null || oppSize.x * input.mSize.y != oppSize.y * input.mSize.x)) {
+                oppShare.close();
+                oppShare = null;
+            }
+            if (oppShare != null) glProg.setDefine("HL_OPPOSED", 1);
+            oppOn = oppShare != null;
             // P46 Display P3: the same shader with P3_OUT 1 (colour source, OKLab and gamut in P3); sRGB sets no define.
             if (pipeline.p3Output) glProg.setDefine("P3_OUT", 1);
             if (colourOn) glProg.setDefine("COLOUR_LOOK", 1);
@@ -185,6 +216,22 @@ public final class WhyCombine extends Node {
             }
             if (sunBloom != null) glProg.setDefine("SUN_BLOOM", 1);
             sunBloomOn = sunBloom != null;
+            // P378: the sky term only with a sky mask (WhySky; none: the shader before P378 token for token)
+            if (st.sky != null) glProg.setDefine("SKY", 1);
+            // window burst (a room 7 EV under the window crushed to black): the macro contrast below its pivot as a power
+            if (WhyTone.macroToe()) glProg.setDefine("MACRO_TOE", 1);
+            skyLog = st.sky == null ? "" : " sky=" + Math.round(100f * st.skyMask.coverage) + "%" + (st.skyMask.keep < 1f
+                    ? " backlit (level x" + Math.round(100f * st.skyMask.keep) / 100f + ")" : "");
+            // P378 review: Ultra HDR keeps the sky term's change - the combine at whyLow with and without it (skyHdrRatio), its
+            // targets made before the combine's samplers are bound: RGBA8 (the output is display-encoded; review: two RGBA16F were
+            // 802 MB at 200 MP), none above 100 MP (P187's window for the output: the gain map takes the scene as before there)
+            if (st.sky != null && st.skyMask.keep > 0f && pipeline.captureDemosaic && !filmOnly) {
+                if (ScamRgb.earlyRelease(input.mSize)) skyLog += " hdrSkyRatio=skipped (over 100 MP)";
+                else {
+                    skyWith = new GLTexture(st.low.mSize, new GLFormat(GLFormat.DataType.SIMPLE_8, 4), null, GL_NEAREST, GL_CLAMP_TO_EDGE);
+                    skyWithout = new GLTexture(st.low.mSize, new GLFormat(GLFormat.DataType.SIMPLE_8, 4), null, GL_NEAREST, GL_CLAMP_TO_EDGE);
+                }
+            }
             // P187: above 100 MP the 1.6 GB output is made only after the GPU has finished with the fusion's and the mask's
             // temporaries (their storage is freed when the GPU is done with them). Made before the combine's samplers are bound:
             // a new texture binds itself on unit 1 + its name, which may be a sampler's unit (the pass then read its own output).
@@ -192,10 +239,15 @@ public final class WhyCombine extends Node {
             WorkingTexture = pipeline.getMain();
             glProg.useAssetProgram("why/combine", false);
             if (sunBloom != null) {
-                final int block = Math.max(1, Math.round(Math.min(bloomSize.x, bloomSize.y) / 192f));
+                final int block = Math.max(1, pipeline.sunBloomBlock);
                 glProg.setTexture("SunBloom", sunBloom);
                 glProg.setVar("sunGridU", bloomSize.x / (float) (sunBloom.mSize.x * block), bloomSize.y / (float) (sunBloom.mSize.y * block));
                 glProg.setVar("sunBloomU", WhyTone.sunBloom()[0]);
+            }
+            if (oppShare != null) {
+                final int block = Math.max(1, pipeline.opposedShareBlock);
+                glProg.setTexture("OppShare", oppShare);
+                glProg.setVar("oppGridU", oppSize.x / (float) (oppShare.mSize.x * block), oppSize.y / (float) (oppShare.mSize.y * block));
             }
             if (lut != null) {
                 lutTexture = lut.upload();
@@ -227,6 +279,16 @@ public final class WhyCombine extends Node {
             glProg.setVar("detailRefU", st.detailRef != null ? 1 : 0);
             glProg.setTexture("WhyLumaS", sharp ? st.lumaS : st.low);
             if (hlB != null) glProg.setTexture("WhyHl", hlB);
+            if (st.sky != null) {
+                // P378: L2 / L3 keep the backlit sky's level (owner: «наш тонмапинг не должен затемнять небо в контровых сценах»);
+                // C1, M1 and L4 act on every sky
+                final float sky = WhyTone.sky();
+                final float[] tone = WhyTone.skyTone(), tops = st.skyMask.tops();
+                glProg.setTexture("WhySky", st.sky);
+                glProg.setVar("skyU", sky * st.skyMask.keep, tone[0], tone[1], tone[2]);
+                glProg.setVar("skyMU", sky, sky, sky * WhyTone.SKY_GLOW, WhyTone.SKY_VIBRANCE);
+                glProg.setVar("skyTopU", tops[0], tops[1]);
+            }
             glProg.setVar("sharpU", sharp ? 1 : 0);
             glProg.setVar("fullInputU", st.inputReleased ? 0 : 1);   // P349: the bright rim reads the full-size merge
             glProg.setVar("sharpToneU", sharp ? r.ae / Math.max(st.sharpMul, 1e-6f) : 1f);
@@ -286,24 +348,91 @@ public final class WhyCombine extends Node {
                 glProg.setVar("gradeBU", grade[1]);
             }
             glProg.drawBlocks(WorkingTexture);
+            if (skyWith != null) {
+                try {
+                    skyHdrRatio(pipeline, st, r, skyWith, skyWithout);
+                    skyLog += pipeline.skyHdrRatio != null ? " hdrSkyRatio=" + pipeline.skyHdrRatioSize.x + "x" + pipeline.skyHdrRatioSize.y : "";
+                } catch (RuntimeException e) {
+                    // the photo stands; its gain map takes the scene as before
+                    pipeline.skyHdrRatio = null;
+                    pipeline.skyHdrRatioSize = null;
+                    Log.w("SCAM_PIPELINE", "WHY combine: the sky's Ultra HDR ratio failed (" + e + ")");
+                }
+            }
             glProg.closed = true;
         } finally {
+            if (skyWith != null) skyWith.close();
+            if (skyWithout != null) skyWithout.close();
             st.closeTextures();
             if (fallback != null) fallback.close();
             if (lutTexture != 0) android.opengl.GLES30.glDeleteTextures(1, new int[]{lutTexture}, 0);
             if (hlA != null) hlA.close();
             if (hlB != null) hlB.close();
             if (sunBloom != null) sunBloom.close();
+            if (oppShare != null) oppShare.close();
         }
         Log.i("SCAM_PIPELINE", "WHY combine ae=" + r.ae + " clip=" + r.clip + (r.hr > 0f ? " hr=" + r.hr : "") + " headroom=" + (ScamRgb.lastRealClip || ScamHybridBurst.lastBentoUsClipped > 0f)
                 + " hlWhite=" + WhyTone.value("hl_white", 0.15f) + " hlSoft=" + WhyTone.value("hl_soft", 0.7f) + " grid=" + input.mSize.x + "x" + input.mSize.y
                 + " lowFactor=" + st.factor + (st.factor > 2 ? " colour=whyMid" : " colour=whyLow") + " detail=" + detail
                 + (sharp ? " (WhyLumaS, mul " + sharpMul + ")" : " (Sabre Y, bounded ref)")
                 + (sunBloomOn ? " sunBloom=" + WhyTone.sunBloom()[0] + "@" + WhyTone.sunBloom()[1] : "")
+                + (oppOn ? " opposedLanding" : "") + skyLog
                 + (pipeline.p3Output ? " output=DisplayP3" : "") + (colourOn ? " colourLook" : "")
                 + (lut != null ? " filmLut=" + lutName + " " + lut.size + "^3 x" + lutStrength : lutStrength > 0f && !lutName.isEmpty() ? " filmLut=" + lutName + " unreadable" : "")
                 + (scene != null ? " filmSim=" + scene.key + " x" + scene.strength + " exp=" + filmExp + (filmOnly ? " (film only)" : "")
                 : film != null ? " filmSim=" + film.lutKey() + " film data unreadable: no film" : "")
                 + " ms=" + (System.currentTimeMillis() - started));
+    }
+
+    /** P378 review: the sky ratio grid's longer side at most (why/skyratio, PostPipeline.skyHdrRatio: ~0.8 MB of floats at 512 x 384). */
+    static final int SKY_RATIO_SIDE = 512;
+
+    /**
+     * P378 review (Ultra HDR, owner: «только небо» lowered, but the gain map's boost - the scene plane over the SDR - gave an HDR
+     * display the sky's old light back): the SDR's own ratio of the sky term into PostPipeline.skyHdrRatio - the combine program
+     * still bound draws whyLow (the kernel's same-size bypass fU 1 on whyLow: no detail, no dither) with the sky term and without
+     * it (skyU.x, skyMU 0: every sky branch is skipped, as off the mask), then why/skyratio takes their luminance ratio on a grid
+     * of whyLow (its longer side SKY_RATIO_SIDE) and it is read back. RunHDRGainMap scales the scene plane by it: the HDR
+     * rendition is the SDR's sky term times the scene's own headroom over the SDR before it.
+     */
+    private void skyHdrRatio(PostPipeline pipeline, WhyTone.State st, WhyAe.Result r, GLTexture with, GLTexture without) {
+        final GLTexture colour = st.lowDn != null ? st.lowDn : st.low;
+        glProg.setTexture("InputBuffer", st.low);
+        glProg.setTexture("WhyColour", colour);
+        glProg.setVar("fU", 1);
+        glProg.setVar("colourFU", 1);
+        glProg.setVar("detailGainU", 0f);
+        glProg.setVar("ditherU", 0);
+        if (r.hr > 0f) glProg.setVar("hrDetailU", 0f);
+        glProg.drawBlocks(with);
+        glProg.setVar("skyU", 0f, 0f, 1f, 1f);
+        glProg.setVar("skyMU", 0f, 0f, 0f, 1f);
+        glProg.drawBlocks(without);
+        final Point low = st.low.mSize;
+        final int box = Math.max(1, (Math.max(low.x, low.y) + SKY_RATIO_SIDE - 1) / SKY_RATIO_SIDE);
+        final Point size = WhyTone.reduced(low, box);
+        final GLTexture ratio = new GLTexture(size, new GLFormat(GLFormat.DataType.FLOAT_32, 4), null, GL_NEAREST, GL_CLAMP_TO_EDGE);
+        try {
+            glProg.useAssetProgram("why/skyratio", false);
+            glProg.setTexture("WithSky", with);
+            glProg.setTexture("WithoutSky", without);
+            glProg.setVar("boxU", box);
+            glProg.setVar("p3U", pipeline.p3Output ? 1 : 0);
+            glProg.setVar("epsU", com.particlesdevs.photoncamera.processing.ultrahdr.GainMapComputer.DECODE_OFFSET);
+            glProg.drawBlocks(ratio);
+            final java.nio.ByteBuffer b = java.nio.ByteBuffer.allocateDirect(size.x * size.y * 16).order(java.nio.ByteOrder.nativeOrder());
+            ratio.textureBuffer(new GLFormat(GLFormat.DataType.FLOAT_32, 4), b);
+            b.rewind();
+            final java.nio.FloatBuffer f = b.asFloatBuffer();
+            final float[] out = new float[size.x * size.y];
+            for (int i = 0; i < out.length; i++) {
+                final float v = f.get(4 * i);
+                out[i] = v > 0f && v < 16f ? v : 1f;
+            }
+            pipeline.skyHdrRatio = out;
+            pipeline.skyHdrRatioSize = size;
+        } finally {
+            ratio.close();
+        }
     }
 }

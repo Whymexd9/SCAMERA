@@ -8,7 +8,10 @@
                                                               plane's luminance is the render's (the colour matrix and white
                                                               balance, PostPipeline.sceneLumaWeights) within 1 % on ColorChecker
                                                               colours through the OPPO X8U and vivo X200U ISP matrices, a grey
-                                                              within 1e-6; a Display P3 base's luminance takes the P3 weights
+                                                              within 1e-6; a Display P3 base's luminance takes the P3 weights;
+                                                              P378 review: the sky term's ratio (WhyCombine, why/skyratio) scales
+                                                              the plane where it is under 1, the rest bit for bit, and an HDR
+                                                              display shows the lowered sky (the boost no longer undoes it)
 
 What a file must have (Ultra HDR image format v1.0, CIPA DC-007 MPF):
   * primary JPEG: SOI, an APP1 XMP packet with hdrgm:Version="1.0" and a GContainer directory (Container:Directory /
@@ -422,6 +425,44 @@ def scene_luma():
         if np.abs(r - want).max() > 1.5 / 255:
             failures.append('gainmap.glsl uP3 %d: the SDR luminance is not the %s one (%s against %s)' % (p3, 'P3' if p3 else 'Rec.709', r, want))
     print('gainmap.glsl: the SDR luminance of a Display P3 base takes the P3 weights (uP3 1), of an sRGB base Rec.709')
+    # P378 review (Ultra HDR keeps the sky term's change): the plane x the SDR's own ratio of the sky term (skyRatioU 1); before,
+    # the boost log2(scene / SDR) of a sky the term lowered x0.86 grew by the same amount and an HDR display showed its old light
+    n = 8
+    ratio = np.ones((1, n, 4))
+    ratio[0, :n // 2, 0] = 0.86                                  # the sky (the term's ratio), the ground at 1
+    plane_img = np.zeros((1, n, 4))
+    plane_img[0, :, :3] = np.linspace(0.3, 2.4, n)[:, None]      # bright scene light, above the render's midtones
+    plane_img[0, :, 3] = 1
+    pu = {'rotate': 4, 'mirror': False, 'cropSize': (n, 1), 'rawSize': (n, 1), 'wU': (0.0, 0.0, 0.0)}
+    off = draw(prog, (n, 1), {'InputBuffer': tex(plane_img), 'GainMap': gain}, dict(pu, skyRatioU=0))[0, :, 0]
+    on = draw(prog, (n, 1), {'InputBuffer': tex(plane_img), 'GainMap': gain, 'SkyRatio': tex(ratio)}, dict(pu, skyRatioU=1))[0, :, 0]
+    if not np.array_equal(on[n // 2:], off[n // 2:]):
+        failures.append('sceneluma.glsl SkyRatio: the ground (ratio 1) moved')
+    if np.abs(on[:n // 2] / off[:n // 2] - 0.86).max() > 1e-6:
+        failures.append('sceneluma.glsl SkyRatio: the sky\'s plane x%s, not x0.86' % (on[:n // 2] / off[:n // 2]))
+    # the HDR rendition at full headroom: (SDR + eps) 2^(boost) - eps; the SDR's sky lowered x0.86 by the term
+    eps, scale = 1 / 64, 6.0
+    sdr_before = np.linspace(0.25, 0.8, n)                       # display-linear
+    sdr_after = np.where(np.arange(n) < n // 2, 0.86 * sdr_before, sdr_before)
+    enc = np.where(sdr_after <= 0.0031308, 12.92 * sdr_after, 1.055 * sdr_after ** (1 / 2.4) - 0.055)
+    base_img = np.zeros((1, n, 4))
+    base_img[0, :, :3] = enc[:, None]
+    base_img[0, :, 3] = 1
+    hdr = {}
+    for name, plane in (('old', off), ('new', on)):
+        pl = np.zeros((1, n, 4))
+        pl[0, :, :3] = plane[:, None]
+        pl[0, :, 3] = 1
+        v = draw(gprog, (n, 1), {'InputBuffer': tex(base_img), 'LBuffer': tex(pl)},
+                 {'uAnchor': 1.0, 'uDown': 1, 'uScale': scale, 'uEps': eps, 'uP3': 0})[0, :, 0]
+        hdr[name] = (sdr_after + eps) * 2.0 ** (v * scale) - eps
+    sky_old, sky_new = hdr['old'][:n // 2] / off[:n // 2], hdr['new'][:n // 2] / off[:n // 2]
+    print('the sky term on an HDR display: the sky at x%.3f .. %.3f of the scene before, x%.3f .. %.3f now (the SDR x0.86); the ground as '
+          'before: %s' % (sky_old.min(), sky_old.max(), sky_new.min(), sky_new.max(), bool(np.array_equal(hdr['old'][n // 2:], hdr['new'][n // 2:]))))
+    if np.abs(sky_new / 0.86 - 1).max() > 0.02:
+        failures.append('Ultra HDR: the sky on an HDR display x%s of the scene, not the SDR\'s x0.86' % np.round(sky_new, 3))
+    if not np.array_equal(hdr['old'][n // 2:], hdr['new'][n // 2:]):
+        failures.append('Ultra HDR: the ground\'s boost moved')
     ctx.release()
     for f in failures:
         print('FAIL: ' + f)

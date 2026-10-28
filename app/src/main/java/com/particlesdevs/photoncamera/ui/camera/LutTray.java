@@ -1,6 +1,7 @@
 package com.particlesdevs.photoncamera.ui.camera;
 
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.content.res.ColorStateList;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Handler;
@@ -22,18 +23,24 @@ import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.circularbarlib.ui.UiScale;
 import com.particlesdevs.photoncamera.processing.color.FilmLooks;
 import com.particlesdevs.photoncamera.processing.color.FilmLut;
+import com.particlesdevs.photoncamera.processing.color.FilmSim;
 import com.particlesdevs.photoncamera.processing.color.LensFilters;
 import com.particlesdevs.photoncamera.settings.ParamHelp;
 import com.particlesdevs.photoncamera.settings.PreferenceKeys;
 import com.particlesdevs.photoncamera.settings.SettingsManager;
 import com.particlesdevs.photoncamera.ui.camera.views.settingsbar.ShadeStyle;
+import com.particlesdevs.photoncamera.ui.settings.PageReset;
+import com.particlesdevs.photoncamera.ui.settings.custompreferences.FilmSimPreference;
+import com.particlesdevs.photoncamera.ui.settings.custompreferences.LensFilterPreference;
 import com.particlesdevs.photoncamera.util.Lang;
 import com.particlesdevs.photoncamera.util.Log;
 import com.particlesdevs.photoncamera.util.ScameraFolder;
 
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * SIMPLE_UI §1, the owner's requirement «менять LUT без меню и настроек»: the LUT pill in the viewfinder's top-left corner
@@ -47,7 +54,8 @@ import java.util.List;
  * LUT («Кино 500 · Pro-Mist»).
  * Owner, 2026-10-28: the sections as tabs of one segmented control («LUT · Фильтр · Плёнка · Цвет», the last one kept), the
  * chosen filter's and film's adjustments in their pages (TrayAdjust), a long press on a parameter shows what it does (ParamHelp),
- * «Все ›» opens the shown section's settings page.
+ * «Все ›» opens the shown section's settings page. P381: the film page's «Печать» and «Формат» among the film's adjustments; P382:
+ * a double tap on a tab's title puts that tab's settings back to their defaults (a tap on the hint line undoes it).
  */
 public final class LutTray {
     /**
@@ -91,6 +99,8 @@ public final class LutTray {
     /** The tray's height animation (a tab, an adjust strip or the description changed what it holds). */
     @Nullable private android.animation.ValueAnimator resizing;
     private final Runnable hideHint = this::hideHint;
+    /** P382: what a tap on the hint line does besides closing it (a tab reset's undo); null: it only closes. */
+    @Nullable private Runnable hintAction;
     /**
      * P319 (user report 2026-10-22: «Много лишнего, в том числе того, что должно быть только в видоискателе (фильтр на объектив,
      * тепло, и т.п.)»): «Тепло» and «Оттенок» of «Цвет» in the tray too, the same settings (pref_scam_hybrid_colour_warmth /
@@ -154,8 +164,15 @@ public final class LutTray {
             chip.setTypeface(android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL));
             chip.setTag("lut_tray_tab_" + TAB_IDS[i]);
             chip.setContentDescription(titles[i]);
-            chip.setOnClickListener(v -> { if (tab != t) TrayMotion.tick(v); showTab(t, true); });
-            TrayMotion.pressable(chip);
+            // a tap on the shown tab does nothing (the second tap of a double tap)
+            chip.setOnClickListener(v -> {
+                if (tab == t) return;
+                TrayMotion.tick(v);
+                showTab(t, true);
+            });
+            // P382 (owner, 2026-10-28): a double tap on a tab's title puts the tab's settings back to their defaults; the first tap
+            // switches to it as a single tap does
+            com.particlesdevs.photoncamera.ui.controls.DoubleTapReset.attach(chip, () -> resetTab(t), TrayMotion.press());
             tabs.addView(chip, new LinearLayout.LayoutParams(0, UiScale.dp(c, 28), 1f));
         }
         head.addView(tabs, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
@@ -230,7 +247,12 @@ public final class LutTray {
         hb.setColor(CHIP_FILL);
         hint.setBackground(hb);
         hint.setVisibility(View.GONE);
-        hint.setOnClickListener(v -> hideHint());
+        hint.setOnClickListener(v -> {
+            final Runnable action = hintAction;
+            hintAction = null;
+            if (action != null) action.run();
+            hideHint();
+        });
         LinearLayout.LayoutParams hlp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         hlp.topMargin = UiScale.dp(c, 8);
         tray.addView(hint, hlp);
@@ -288,6 +310,12 @@ public final class LutTray {
 
     /** The description line: the parameter's name, then what it does; it stays 8 s, a tap on it closes it. */
     void showHint(String title, String text) {
+        showHint(title, text, null, 8000);
+    }
+
+    /** The hint line with {@code title} and {@code text} for {@code ms}; a tap on it runs {@code action} (if any) and closes it. */
+    private void showHint(String title, String text, @Nullable Runnable action, long ms) {
+        hintAction = action;
         Context c = tray.getContext();
         android.text.SpannableStringBuilder b = new android.text.SpannableStringBuilder(title);
         b.setSpan(new android.text.style.StyleSpan(android.graphics.Typeface.BOLD), 0, title.length(), 0);
@@ -304,11 +332,12 @@ public final class LutTray {
             hint.animate().alpha(1f).setStartDelay(60).setDuration(200).setInterpolator(TrayMotion.EASE_OUT).start();
         }
         hint.setContentDescription(title + ". " + text);
-        main.postDelayed(hideHint, 8000);
+        main.postDelayed(hideHint, ms);
     }
 
     private void hideHint() {
         main.removeCallbacks(hideHint);
+        hintAction = null;
         if (hint.getVisibility() != View.VISIBLE) return;
         hint.animate().cancel();
         resize(() -> hint.setVisibility(View.GONE));
@@ -379,6 +408,7 @@ public final class LutTray {
 
     private void hideHintNow() {
         main.removeCallbacks(hideHint);
+        hintAction = null;
         hint.animate().cancel();
         hint.setVisibility(View.GONE);
     }
@@ -427,6 +457,125 @@ public final class LutTray {
             p.setColor(color);
             cv.drawCircle(x + gap + r, y + p.ascent() * .36f, r, p);
             p.setColor(old);
+        }
+    }
+
+    /**
+     * P382 (owner, 2026-10-28: a double tap on a tab's title resets every parameter of that tab): tab {@code t}'s settings back to
+     * the values the settings pages' reset (P357, PageReset) puts back - the LUT «Нет» at its strength's default, the lens filter's
+     * and the film's own keys as their pages reset them (no filter / film; strength, fine controls, print, format, effects), the
+     * colour rows' defaults. The page follows in place, the tab's dot goes, and the hint line says it - a tap on it puts the
+     * values back as they were.
+     */
+    void resetTab(int t) {
+        final Context c = tray.getContext();
+        final SharedPreferences prefs = settings().getDefaultPreferences();
+        final Map<String, Object> before = tabValues(prefs, t);
+        final boolean changed = resetToDefaults(c, prefs, t);
+        Log.d("LutTray", "tab " + TAB_IDS[t] + " reset to defaults" + (changed ? "" : " (it was)"));
+        resize(() -> refreshTab(t));
+        bindPill();
+        bindTabs();
+        if (changed) showHint(tabTitles[t], Lang.t(c, "всё по умолчанию · нажмите, чтобы вернуть", "all back to defaults · tap to undo"),
+                () -> restore(t, before), 5000);
+        else showHint(tabTitles[t], Lang.t(c, "всё уже по умолчанию", "everything is at its default already"), null, 2500);
+    }
+
+    /** P382: tab {@code t}'s keys back to their defaults in {@code prefs}; true when anything was not at its default. */
+    static boolean resetToDefaults(Context c, SharedPreferences prefs, int t) {
+        switch (t) {
+            case TAB_LUT: {
+                final String def = PageReset.defaultOf(c, FilmLut.STRENGTH_KEY, "100");
+                final boolean changed = !PreferenceKeys.filmLut().isEmpty()
+                        || Math.abs(PreferenceKeys.filmLutStrength() * 100f - number(def, 100f)) > .5f;
+                prefs.edit().putString(FilmLut.KEY, "").putString(FilmLut.STRENGTH_KEY, def).apply();
+                return changed;
+            }
+            case TAB_FILTER:
+                return LensFilterPreference.resetKeys(prefs);
+            case TAB_FILM:
+                return FilmSimPreference.resetKeys(prefs);
+            default: {
+                final String w = PageReset.defaultOf(c, WARMTH_KEY, "0"), n = PageReset.defaultOf(c, TINT_KEY, "0");
+                final boolean changed = colourValue(WARMTH_KEY) != Math.round(number(w, 0f))
+                        || colourValue(TINT_KEY) != Math.round(number(n, 0f));
+                prefs.edit().putString(WARMTH_KEY, w).putString(TINT_KEY, n).apply();
+                return changed;
+            }
+        }
+    }
+
+    /** P382: whether setting {@code key} belongs to tab {@code t} (what its reset puts back). */
+    static boolean ownedBy(int t, String key) {
+        switch (t) {
+            case TAB_LUT: return FilmLut.KEY.equals(key) || FilmLut.STRENGTH_KEY.equals(key);
+            case TAB_FILTER: return LensFilters.KEY.equals(key) || LensFilters.STRENGTH_KEY.equals(key) || key.startsWith(LensFilters.TUNE_PREFIX);
+            case TAB_FILM: return java.util.Arrays.asList(FilmSim.KEYS).contains(key);
+            default: return WARMTH_KEY.equals(key) || TINT_KEY.equals(key);
+        }
+    }
+
+    /** P382: tab {@code t}'s stored settings (key -> value as stored). */
+    static Map<String, Object> tabValues(SharedPreferences prefs, int t) {
+        final Map<String, Object> out = new HashMap<>();
+        for (Map.Entry<String, ?> e : prefs.getAll().entrySet()) if (ownedBy(t, e.getKey())) out.put(e.getKey(), e.getValue());
+        return out;
+    }
+
+    /** P382's undo: tab {@code t}'s settings as they were stored before its reset ({@code before}). */
+    private void restore(int t, Map<String, Object> before) {
+        final SharedPreferences prefs = settings().getDefaultPreferences();
+        final SharedPreferences.Editor e = prefs.edit();
+        for (String k : tabValues(prefs, t).keySet()) e.remove(k);
+        for (Map.Entry<String, Object> v : before.entrySet()) {
+            final Object x = v.getValue();
+            if (x instanceof Boolean) e.putBoolean(v.getKey(), (Boolean) x);
+            else if (x instanceof Integer) e.putInt(v.getKey(), (Integer) x);
+            else if (x instanceof Long) e.putLong(v.getKey(), (Long) x);
+            else if (x instanceof Float) e.putFloat(v.getKey(), (Float) x);
+            else if (x instanceof java.util.Set) {
+                final java.util.Set<String> set = new java.util.HashSet<>();
+                for (Object o : (java.util.Set<?>) x) set.add(String.valueOf(o));
+                e.putStringSet(v.getKey(), set);
+            } else if (x != null) e.putString(v.getKey(), x.toString());
+        }
+        e.apply();
+        Log.d("LutTray", "tab " + TAB_IDS[t] + " reset undone");
+        resize(() -> refreshTab(t));
+        bindPill();
+        bindTabs();
+    }
+
+    /** P382: tab {@code t}'s page from the settings again, in place (the chips' pill glides, the adjustments follow). */
+    private void refreshTab(int t) {
+        switch (t) {
+            case TAB_LUT: {
+                final String chosen = PreferenceKeys.filmLut();
+                final int i = values.indexOf(chosen);
+                select(row, i, 17, open);
+                bindLutState(chosen, open);
+                if (i >= 0) centre(row, row.getChildAt(i));
+                break;
+            }
+            case TAB_FILTER: {
+                final String chosen = PreferenceKeys.lensFilter();
+                final int i = filterValues.indexOf(chosen);
+                select(filterRow, i, 17, open);
+                bindFilterAdjust(chosen);
+                if (i >= 0) centre(filterRow, filterRow.getChildAt(i));
+                break;
+            }
+            case TAB_FILM: {
+                final String chosen = settings().getString(SettingsManager.SCOPE_GLOBAL, FilmSim.STOCK_KEY, "");
+                final int i = filmValues.indexOf(FilmSim.stock(chosen) == null ? "" : FilmSim.stock(chosen).id);
+                select(filmRow, i, 14, open);
+                bindFilmAdjust(chosen);
+                if (i >= 0) centre(filmRow, filmRow.getChildAt(i));
+                break;
+            }
+            default:
+                warmth.setProgress(colourValue(WARMTH_KEY) + 100);
+                tint.setProgress(colourValue(TINT_KEY) + 100);
         }
     }
 
@@ -487,6 +636,15 @@ public final class LutTray {
             return Math.max(-100, Math.min(100, Math.round(PreferenceKeys.hybridValue(key.substring("pref_scam_hybrid_".length()), 0f))));
         } catch (RuntimeException e) {
             return 0;
+        }
+    }
+
+    /** A stored number's text ({@code fallback} when it is none). */
+    private static float number(@Nullable String v, float fallback) {
+        try {
+            return v == null ? fallback : Float.parseFloat(v.trim().replace(',', '.'));
+        } catch (NumberFormatException e) {
+            return fallback;
         }
     }
 
@@ -643,7 +801,7 @@ public final class LutTray {
     }
 
     /** Scrolls a row so the chosen chip sits in its middle. */
-    private static void centre(LinearLayout row, @Nullable View target) {
+    static void centre(LinearLayout row, @Nullable View target) {
         if (target != null) row.post(() -> {
             View scroll = (View) row.getParent();
             if (scroll instanceof HorizontalScrollView)
@@ -886,13 +1044,22 @@ public final class LutTray {
 
     /**
      * A film's parameters as the film page has them (FilmSimPreference, the same keys, ranges, steps and defaults): the
-     * simulation's strength (written as it moves: the viewfinder mixes it), grain, halation, softness, the film's exposure, its
-     * contrast (the measured colour stocks: our black-and-white model has none) and the print's exposure (not for a slide or a
-     * reversal film, which are not printed) - the rest stays on the page («Все ›»).
+     * simulation's strength (written as it moves: the viewfinder mixes it), P381 the print (the paper or print film of every
+     * negative, as on the page: a black-and-white one's grain follows it) and the format (every stock) as choices, grain, halation, softness, the
+     * film's exposure, its contrast (the measured colour stocks: our black-and-white model has none) and the print's exposure
+     * (not for a slide or a reversal film, which are not printed) - the enlarger's filters stay on the page («Все ›»).
+     * P380: the film's diffusion (a choice: Нет and the four families) and its «Сила фильтра» after the format, and
+     * «Цветоразделение (DIR)» (the measured colour stocks) after the contrast - the film page's rows.
      */
     static List<TrayAdjust.Param> filmParams(Context c, @Nullable com.particlesdevs.photoncamera.processing.color.FilmSim.Stock st) {
         final List<TrayAdjust.Param> out = new ArrayList<>();
         out.add(filmParam(c, "strength", Lang.t(c, "Сила", "Strength"), com.particlesdevs.photoncamera.processing.color.FilmSim.STRENGTH_KEY, 0, 100, 1, 100, " %", true));
+        // P381 (owner, 2026-10-28, the film page's «Плёнка · Печать · Формат · Эффекты» circled): its print and format here too
+        if (st == null || !st.reversal()) out.add(printChoice(c, st));
+        out.add(formatChoice(c));
+        // P380: the film's camera diffusion and its grade
+        out.add(diffusionChoice(c));
+        out.add(diffusionStrength(c));
         out.add(filmParam(c, "grain", Lang.t(c, "Зерно", "Grain"), com.particlesdevs.photoncamera.processing.color.FilmSim.GRAIN_KEY, 0, 200, 1, 100, " %", false));
         out.add(filmParam(c, "halation", Lang.t(c, "Ореол", "Halation"), com.particlesdevs.photoncamera.processing.color.FilmSim.HALATION_KEY, 0, 400, 1, 100, " %", false));
         out.add(filmParam(c, "softness", Lang.t(c, "Мягкость", "Softness"), com.particlesdevs.photoncamera.processing.color.FilmSim.SOFTNESS_KEY, 0, 300, 1, 100, " %", false));
@@ -900,9 +1067,86 @@ public final class LutTray {
         // only what acts on this stock: the curve's steepness on the measured (colour) stocks, the print on what is printed
         if (st == null || st.spectral != null)
             out.add(filmParam(c, "contrast", Lang.t(c, "Контраст", "Contrast"), com.particlesdevs.photoncamera.processing.color.FilmSim.TONE_KEY, -100, 100, 1, 0, "", false));
+        // P380: the DIR couplers' amount, as on the page (the measured colour stocks)
+        if (st == null || st.spectral != null)
+            out.add(filmParam(c, "dir", Lang.t(c, "Цветоразделение (DIR)", "Colour separation (DIR)"), FilmSim.DIR_KEY, 0, 100, 1, 100, " %", false));
         if (st == null || st.type != com.particlesdevs.photoncamera.processing.color.FilmSim.SLIDE && st.type != com.particlesdevs.photoncamera.processing.color.FilmSim.BW_REVERSAL)
-            out.add(filmParam(c, "print", Lang.t(c, "Печать", "Print"), com.particlesdevs.photoncamera.processing.color.FilmSim.PRINT_EV_KEY, -1, 1, .05f, 0, " EV", false));
+            out.add(filmParam(c, "print", Lang.t(c, "Экспозиция печати", "Print exposure"), com.particlesdevs.photoncamera.processing.color.FilmSim.PRINT_EV_KEY, -1, 1, .05f, 0, " EV", false));
         return out;
+    }
+
+    /**
+     * P381: the film page's «Печать» - the paper or print film the negative is printed on (FilmSim.PRINTS in the page's order),
+     * stored as the page stores it (its id in PRINT_KEY); none stored reads as the one the stock's maker pairs it with, which is
+     * the default.
+     */
+    static TrayAdjust.Param printChoice(Context c, @Nullable FilmSim.Stock st) {
+        final FilmSim.Print[] prints = FilmSim.PRINTS;
+        final String[] labels = new String[prints.length], info = new String[prints.length];
+        for (int i = 0; i < prints.length; i++) {
+            labels[i] = prints[i].name;
+            info[i] = prints[i].brand + " " + prints[i].name + ", " + (prints[i].film ? Lang.t(c, "кинопечать", "print film") : Lang.t(c, "бумага", "paper"));
+        }
+        return new TrayAdjust.Param("paper", Lang.t(c, "Печать", "Print"), ParamHelp.of(c, FilmSim.PRINT_KEY), labels, info,
+                printIndex(FilmSim.print("", st).id),
+                () -> (float) printIndex(FilmSim.print(settings().getString(SettingsManager.SCOPE_GLOBAL, FilmSim.PRINT_KEY, ""), st).id),
+                v -> settings().set(SettingsManager.SCOPE_GLOBAL, FilmSim.PRINT_KEY, prints[Math.max(0, Math.min(prints.length - 1, Math.round(v)))].id));
+    }
+
+    /**
+     * P380: the film page's «Диффузия» - none or a camera diffusion family (FilmSim.DIFFUSIONS), stored as the page stores it (its
+     * id in DIFFUSION_KEY, "" none: the default).
+     */
+    static TrayAdjust.Param diffusionChoice(Context c) {
+        final String[] ids = FilmSim.DIFFUSIONS;
+        final String[] labels = new String[ids.length], info = new String[ids.length];
+        for (int i = 0; i < ids.length; i++) {
+            labels[i] = FilmSim.diffusionName(c, ids[i]);
+            info[i] = labels[i] + ", " + (ids[i].isEmpty() ? Lang.t(c, "без диффузии", "no diffusion") : LensFilters.hint(c, ids[i]));
+        }
+        return new TrayAdjust.Param("diffusion", Lang.t(c, "Диффузия", "Diffusion"), ParamHelp.of(c, FilmSim.DIFFUSION_KEY), labels, info, 0,
+                () -> (float) diffusionIndex(settings().getString(SettingsManager.SCOPE_GLOBAL, FilmSim.DIFFUSION_KEY, "")),
+                v -> settings().set(SettingsManager.SCOPE_GLOBAL, FilmSim.DIFFUSION_KEY, ids[Math.max(0, Math.min(ids.length - 1, Math.round(v)))]));
+    }
+
+    private static int diffusionIndex(String id) {
+        for (int i = 0; i < FilmSim.DIFFUSIONS.length; i++) if (FilmSim.DIFFUSIONS[i].equals(id)) return i;
+        return 0;
+    }
+
+    /** P380: the film page's «Сила фильтра» - the diffusion's grade 0 .. 2 (step 0.05, 0.5 by default), stored x 100 as the page. */
+    static TrayAdjust.Param diffusionStrength(Context c) {
+        return new TrayAdjust.Param("diffusion_strength", Lang.t(c, "Сила фильтра", "Filter strength"), ParamHelp.of(c, FilmSim.DIFFUSION_STRENGTH_KEY),
+                0, 2, .05f, FilmSim.DIFFUSION_DEFAULT, "", false,
+                () -> FilmSim.diffusionGrade(settings().getString(SettingsManager.SCOPE_GLOBAL, FilmSim.DIFFUSION_STRENGTH_KEY, "50")),
+                v -> settings().set(SettingsManager.SCOPE_GLOBAL, FilmSim.DIFFUSION_STRENGTH_KEY, String.valueOf(Math.round(v * 100f))));
+    }
+
+    private static int printIndex(String id) {
+        for (int i = 0; i < FilmSim.PRINTS.length; i++) if (FilmSim.PRINTS[i].id.equals(id)) return i;
+        return 0;
+    }
+
+    /**
+     * P381: the film page's «Формат» - the frame's size (FilmSim.FORMATS; «Выкл.» no grain, halation or film softness), stored as
+     * the page stores it (its id in FORMAT_KEY, 35 mm by default).
+     */
+    static TrayAdjust.Param formatChoice(Context c) {
+        final FilmSim.Format[] formats = FilmSim.FORMATS;
+        final String[] labels = new String[formats.length], info = new String[formats.length];
+        for (int i = 0; i < formats.length; i++) {
+            labels[i] = FilmSim.formatName(c, formats[i]);
+            info[i] = labels[i] + ", " + FilmSim.formatHint(c, formats[i]);
+        }
+        return new TrayAdjust.Param("format", Lang.t(c, "Формат", "Format"), ParamHelp.of(c, FilmSim.FORMAT_KEY), labels, info,
+                formatIndex(FilmSim.format(FilmSim.DEFAULT_FORMAT).id),
+                () -> (float) formatIndex(FilmSim.format(settings().getString(SettingsManager.SCOPE_GLOBAL, FilmSim.FORMAT_KEY, FilmSim.DEFAULT_FORMAT)).id),
+                v -> settings().set(SettingsManager.SCOPE_GLOBAL, FilmSim.FORMAT_KEY, formats[Math.max(0, Math.min(formats.length - 1, Math.round(v)))].id));
+    }
+
+    private static int formatIndex(String id) {
+        for (int i = 0; i < FilmSim.FORMATS.length; i++) if (FilmSim.FORMATS[i].id.equals(id)) return i;
+        return 0;
     }
 
     private static TrayAdjust.Param filmParam(Context c, String id, String title, String key, float min, float max, float step, float def,

@@ -31,8 +31,20 @@ public final class DoubleTapReset {
      * A double tap on {@code view} runs {@code reset}; with {@code onTap} a single tap runs it instead of the view's click
      * listener (once the double tap is ruled out).
      */
-    @SuppressLint("ClickableViewAccessibility")
     public static void attach(View view, @Nullable Runnable onTap, Runnable reset) {
+        attach(view, onTap, reset, null);
+    }
+
+    /**
+     * As {@link #attach(View, Runnable)} for a view with a touch listener of its own ({@code also}: the LUT tray's press motion
+     * of a tab, P382) - a view has one touch listener, so both see every event here and the view's own answer stands.
+     */
+    public static void attach(View view, Runnable reset, View.OnTouchListener also) {
+        attach(view, null, reset, also);
+    }
+
+    @SuppressLint("ClickableViewAccessibility")
+    private static void attach(View view, @Nullable Runnable onTap, Runnable reset, @Nullable View.OnTouchListener also) {
         if (view == null || reset == null) return;
         // the touches below never reach it; an accessibility click (TalkBack) still does
         if (onTap != null) view.setOnClickListener(v -> onTap.run());
@@ -42,7 +54,8 @@ public final class DoubleTapReset {
         final Taps taps = new Taps(view, onTap, reset, own);
         view.setOnTouchListener((v, e) -> {
             taps.on(e);
-            if (!own) return false;
+            final boolean used = also != null && also.onTouch(v, e);
+            if (!own) return used;
             if (e.getActionMasked() == MotionEvent.ACTION_DOWN) v.setPressed(true);
             else if (e.getActionMasked() == MotionEvent.ACTION_UP || e.getActionMasked() == MotionEvent.ACTION_CANCEL) v.setPressed(false);
             return true;

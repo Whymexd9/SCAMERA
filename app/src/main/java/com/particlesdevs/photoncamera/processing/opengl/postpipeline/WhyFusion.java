@@ -61,6 +61,7 @@ public final class WhyFusion extends Node {
         glProg.setVar("satLevelU", satLight[4], satLight[5]);
         final float[] warm = WhyTone.warmLight();
         glProg.setVar("warmU", warm[0], warm[1]);
+        glProg.setVar("deepFloorU", WhyTone.deepFloor());
     }
 
     /** Separable box of radius r; closes the input. */
@@ -138,6 +139,17 @@ public final class WhyFusion extends Node {
             lw[0] = WhyTone.headroomHlWeight();
         }
         if (!com.particlesdevs.photoncamera.processing.opengl.PostGlMode.legacy()) {
+            // P378: the sky mask, once per photo (none: no SKY define in the fusion or the combine, the tone as before); a failure
+            // gives the photo no sky term, not a failed shot
+            try {
+                WhySky.build(glProg, pipeline, st, st.lowDn);
+            } catch (RuntimeException e) {
+                Log.w("SCAM_PIPELINE", "WHY sky: failed (" + e + "), no sky term");
+                if (st.sky != null) st.sky.close();
+                st.sky = null;
+                st.skyMask = null;
+                glProg.closed = true;
+            }
             pyramid(st, em, lw, r.ae, center, satLight, started, strength);
             return;
         }
@@ -242,6 +254,9 @@ public final class WhyFusion extends Node {
                 : pyramidLevels(low.x, low.y, coarse);
         final GLFormat rgba = new GLFormat(GLFormat.DataType.FLOAT_16, 4), one = new GLFormat(GLFormat.DataType.FLOAT_32, 1);
         final GLTexture[] L = new GLTexture[levels + 1], W = new GLTexture[levels + 1], F = new GLTexture[levels + 1];
+        final GLTexture[] G = new GLTexture[levels + 1];
+        final float[] edge = WhyTone.edgeShare();
+        final boolean edgeOn = edge[1] > edge[0];
         GLTexture guidedF = null;
         try {
             Point size = low;
@@ -250,6 +265,7 @@ public final class WhyFusion extends Node {
                 L[l] = new GLTexture(size, rgba, null, GL_NEAREST, GL_CLAMP_TO_EDGE);
                 W[l] = new GLTexture(size, rgba, null, GL_NEAREST, GL_CLAMP_TO_EDGE);
                 F[l] = new GLTexture(size, one, null, GL_NEAREST, GL_CLAMP_TO_EDGE);
+                if (edgeOn) G[l] = new GLTexture(size, new GLFormat(GLFormat.DataType.FLOAT_16, 1), null, GL_NEAREST, GL_CLAMP_TO_EDGE);
             }
             // level 1 of the lumas and the weights straight from whyLow, then the Gaussian pyramids
             fusionProgram("why/lpyr", 0, st.lowDn, em, lw, ae, center, satLight);
@@ -262,6 +278,21 @@ public final class WhyFusion extends Node {
                     glProg.useAssetProgram("why/lpyr", false);
                     glProg.setTexture("InputBuffer", p[l - 1]);
                     glProg.drawBlocks(p[l]);
+                }
+            }
+            // window halo: the guide's log light down to the coarsest level (MODE 6, then the plain reduce), for MODE 5's edge share
+            final float edgeScale = (float) (1 << levels);
+            if (edgeOn) {
+                fusionProgram("why/lpyr", 6, st.lowDn, em, lw, ae, center, satLight);
+                glProg.setVar("edgeMixU", edge[0], edge[1], edge[2], edgeScale);
+                glProg.drawBlocks(G[1]);
+                for (int l = 2; l <= levels; l++) {
+                    glProg.setDefine("MODE", 2);
+                    glProg.useAssetProgram("why/lpyr", false);
+                    glProg.setTexture("InputBuffer", G[l - 1]);
+                    glProg.drawBlocks(G[l]);
+                    G[l - 1].close();
+                    G[l - 1] = null;
                 }
             }
             // the coarsest level blended by its weights, then every band from coarse to fine
@@ -281,12 +312,15 @@ public final class WhyFusion extends Node {
             }
             // P349: the guided filter's fusion for the light above white (no Mertens halo round dark objects in a glow)
             final float[] gmix = WhyTone.guidedLights();
-            if (gmix[1] > gmix[0]) {
+            if (gmix[1] > gmix[0] || edgeOn) {
                 for (GLTexture t : W) if (t != null) t.close();
                 java.util.Arrays.fill(W, null);
                 guidedF = guided(st, em, lw, ae, center, satLight);
             }
             st.fused = new GLTexture(low, one, null, GL_NEAREST, GL_CLAMP_TO_EDGE);
+            // P378 (M1): the clear sky keeps the pyramid's fusion of its clouds (only with the guided share and a sky)
+            final boolean sky = guidedF != null && st.sky != null;
+            if (sky) glProg.setDefine("SKY", 1);
             fusionProgram("why/lpyr", 5, st.lowDn, em, lw, ae, center, satLight);
             glProg.setTexture("CoarseL", L[1]);
             glProg.setTexture("CoarseF", F[1]);
@@ -294,13 +328,21 @@ public final class WhyFusion extends Node {
                 glProg.setTexture("GuidedF", guidedF);
                 glProg.setVar("guidedMixU", gmix[0], gmix[1]);
             }
+            if (sky) {
+                glProg.setTexture("WhySky", st.sky);
+                glProg.setVar("skyGuidedU", WhyTone.sky());
+            }
+            // set on every shot (a linked program keeps its uniforms): zeros = the share off
+            if (edgeOn) glProg.setTexture("GuideC", G[levels]);
+            glProg.setVar("edgeMixU", edgeOn ? edge[0] : 0f, edgeOn ? edge[1] : 0f, edgeOn ? edge[2] : 0f, edgeScale);
             glProg.drawBlocks(st.fused);
             glProg.closed = true;
         } finally {
-            for (GLTexture[] p : new GLTexture[][]{L, W, F}) for (GLTexture t : p) if (t != null) t.close();
+            for (GLTexture[] p : new GLTexture[][]{L, W, F, G}) for (GLTexture t : p) if (t != null) t.close();
             if (guidedF != null) guidedF.close();
         }
         Log.i("SCAM_PIPELINE", "WHY fusion (Laplacian pyramid) " + params(em, lw, center, satLight) + " levels=" + levels + " coarse=" + coarse
+                + (edgeOn ? " edgeShare=" + edge[0] + ".." + edge[1] + "EV floor=" + edge[2] : "")
                 + " bracketDn=" + (st.lowDn != st.low ? strength : 0f) + " ms=" + (System.currentTimeMillis() - started));
     }
 }

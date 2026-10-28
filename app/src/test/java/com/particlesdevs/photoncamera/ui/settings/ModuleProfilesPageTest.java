@@ -14,7 +14,9 @@ import androidx.fragment.app.FragmentManager;
 import androidx.preference.Preference;
 import androidx.preference.PreferenceGroup;
 import androidx.preference.PreferenceManager;
+import androidx.preference.PreferenceGroupAdapter;
 import androidx.preference.PreferenceScreen;
+import androidx.preference.SwitchPreferenceCompat;
 
 import com.particlesdevs.photoncamera.R;
 import com.particlesdevs.photoncamera.app.ScameraApp;
@@ -28,6 +30,8 @@ import com.particlesdevs.photoncamera.settings.SettingsManager;
 import com.particlesdevs.photoncamera.settings.SettingsMigration;
 import com.particlesdevs.photoncamera.settings.TunablePreferenceGenerator;
 import com.particlesdevs.photoncamera.settings.TunableRegistry;
+import com.particlesdevs.photoncamera.ui.settings.custompreferences.ModuleRowPreference;
+import com.particlesdevs.photoncamera.ui.settings.custompreferences.ModuleSection;
 
 import org.junit.After;
 import org.junit.Before;
@@ -54,7 +58,9 @@ import static org.mockito.Mockito.*;
 /**
  * P189 (owner, 2026-10-17: «Я так и не увидел где я могу настраивать отдельно 50мп и 200мп, сделай отдельную группу настроек где
  * все будет разделено по модулям»): «Настройки по модулям» lists each module with its FULLRES 50 / 200 MP profiles; a profile's
- * pages show only its per-module values and edit that profile while the camera keeps its module.
+ * pages show only its per-module values and edit that profile while the camera keeps its module. P384 (owner, 2026-10-28:
+ * «Переместить эту группу настроек на главный экран»): the profiles are rows of each module's card in «Модули камеры» on the main
+ * page (no page in between); the per-module switch and copying are rows under the cards.
  */
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = 35, application = Application.class, qualifiers = "w400dp-h880dp-mdpi")
@@ -121,22 +127,32 @@ public class ModuleProfilesPageTest {
         return fm.findFragmentById(R.id.settings_container);
     }
 
-    private static ModuleProfilesFragment openGroup(SettingsActivity activity) {
-        activity.openModuleProfiles("module_profiles");
-        Fragment group = top(activity);
-        assertTrue(String.valueOf(group), group instanceof ModuleProfilesFragment);
-        return (ModuleProfilesFragment) group;
+    private static SettingsActivity.SettingsFragment root(SettingsActivity activity) {
+        Fragment root = top(activity);
+        assertTrue(String.valueOf(root), root instanceof SettingsActivity.SettingsFragment);
+        assertNull(((SettingsActivity.SettingsFragment) root).moduleProfile());
+        return (SettingsActivity.SettingsFragment) root;
+    }
+
+    /** The profile rows of {@code slot}'s card, in order. */
+    private static List<ModuleRowPreference> profileRows(SettingsActivity.SettingsFragment root, String slot) {
+        ModuleSection card = root.findPreference(ModuleRows.CARD + slot);
+        assertNotNull(slot, card);
+        List<ModuleRowPreference> out = new ArrayList<>();
+        for (int i = 0; i < card.getPreferenceCount(); i++)
+            if (card.getPreference(i).getKey().startsWith(ModuleRows.PROFILE)) out.add((ModuleRowPreference) card.getPreference(i));
+        return out;
+    }
+
+    private static List<String> keys(List<? extends Preference> rows) {
+        List<String> out = new ArrayList<>();
+        for (Preference p : rows) out.add(p.getKey());
+        return out;
     }
 
     private static void back(SettingsActivity activity) {
         activity.getOnBackPressedDispatcher().onBackPressed();
         top(activity);
-    }
-
-    private static void collect(View view, List<View> out) {
-        if (view.getTag() instanceof String && ((String) view.getTag()).startsWith("profile_")) out.add(view);
-        if (view instanceof ViewGroup)
-            for (int i = 0; i < ((ViewGroup) view).getChildCount(); i++) collect(((ViewGroup) view).getChildAt(i), out);
     }
 
     private static String text(View view) {
@@ -156,41 +172,62 @@ public class ModuleProfilesPageTest {
     }
 
     /**
-     * 2026-10-27 (owner: settings anyone can set up alone): the separate «Настройки по модулям» row is gone; «Камеры и модули»
-     * holds the modules and their own settings - its row and its search hit open the group, and its row says whether the
-     * modules have their own settings now.
+     * P384 (was: «Камеры и модули» found by its row and its search hit): the modules are a group of the main page - no page in
+     * between; the per-module switch says whether the modules have their own settings now; the search finds the group by its old
+     * name and the switch by the old group's words, and a hit on a folded card's row opens the card; back leaves the settings page
+     * as it was, no restart.
      */
-    @Test public void camerasRowAndSearchOpenTheGroup() {
+    @Test public void modulesOnTheMainPageAndFound() {
         try (ActivityController<SettingsActivity> controller = Robolectric.buildActivity(SettingsActivity.class)) {
             controller.setup();
             SettingsActivity activity = controller.get();
             FragmentManager fm = activity.getSupportFragmentManager();
-            SettingsActivity.SettingsFragment root = (SettingsActivity.SettingsFragment) top(activity);
+            SettingsActivity.SettingsFragment root = root(activity);
             assertNull(root.findPreference("module_profiles_screen"));
-            Preference cameras = root.findPreference(ModulePageFilter.CAMERAS);
-            assertNotNull(cameras);
-            assertTrue(cameras.isVisible());
-            assertEquals(context.getString(R.string.prefs_camera_settings_screen_summary) + ". Each lens and its FULLRES 50 / 200 MP shots with their own settings",
-                    String.valueOf(cameras.getSummary()));
-            // the real click of the row
-            cameras.performClick();
-            assertTrue(top(activity) instanceof ModuleProfilesFragment);
+            assertNull("no «Камеры и модули» page in between", root.findPreference("camera_settings_screen"));
+            PreferenceGroup modules = root.findPreference(ModuleRows.GROUP);
+            assertNotNull(modules);
+            assertTrue(modules.isVisible());
+            SwitchPreferenceCompat perLens = root.findPreference(ModuleRows.PER_LENS);
+            assertTrue(perLens.isChecked());
+            assertEquals("Each module and its FULLRES 50 / 200 MP shots with their own settings", String.valueOf(perLens.getSummary()));
+            controller.pause();
+            prefs.edit().putBoolean("pref_save_per_lens_settings", false).commit();
+            controller.resume();
+            idle();
+            assertFalse(perLens.isChecked());
+            assertEquals("All modules shoot with the common settings now", String.valueOf(perLens.getSummary()));
+            controller.pause();
+            prefs.edit().putBoolean("pref_save_per_lens_settings", true).commit();
+            controller.resume();
+            idle();
+            assertTrue(perLens.isChecked());
+
+            List<SettingsSearchFragment.Entry> index = SettingsSearchFragment.index(root.getPreferenceScreen());
+            Map<String, String> words = SettingsSearchFragment.searchWords(context, index);
+            SettingsSearchFragment.Entry group = null, perModule = null, profile = null;
+            for (SettingsSearchFragment.Entry e : index) {
+                if (ModuleRows.GROUP.equals(e.key)) group = e;
+                if (ModuleRows.PER_LENS.equals(e.key)) perModule = e;
+                if ("module_row_profile_back1@full200".equals(e.key)) profile = e;
+            }
+            assertNotNull("the search finds the group", group);
+            assertTrue("found by the old page's name", group.matches("cameras and modules", words.get(group.key)));
+            assertNotNull(perModule);
+            assertTrue("found by the old group's words", perModule.matches("settings per module", words.get(perModule.key))
+                    && perModule.matches("FULLRES", words.get(perModule.key)));
+            assertNotNull("a folded card's row is found", profile);
+            activity.openSearchResult(profile);
+            SettingsActivity.SettingsFragment page = root(activity);
+            ModuleSection card = page.findPreference(ModuleRows.CARD + "back1");
+            assertTrue("the hit's card is open", card.isExpanded());
+            PreferenceGroupAdapter adapter = (PreferenceGroupAdapter) page.getListView().getAdapter();
+            assertTrue(adapter.getPreferenceAdapterPosition(page.findPreference("module_row_profile_back1@full200")) >= 0);
             assertEquals(1, fm.getBackStackEntryCount());
             back(activity);
             assertEquals(0, fm.getBackStackEntryCount());
             assertFalse(activity.isFinishing());
             assertSame(root, top(activity));
-
-            SettingsSearchFragment.Entry entry = null;
-            for (SettingsSearchFragment.Entry e : SettingsSearchFragment.index(root.getPreferenceScreen()))
-                if (ModulePageFilter.CAMERAS.equals(e.key)) entry = e;
-            assertNotNull("the search finds the group", entry);
-            assertTrue("found by the old row's words", entry.matches("settings per module") && entry.matches("FULLRES"));
-            activity.openSearchResult(entry);
-            assertTrue(top(activity) instanceof ModuleProfilesFragment);
-            back(activity);
-            assertEquals(0, fm.getBackStackEntryCount());
-            assertFalse(activity.isFinishing());
             camera.verify(() -> ScameraApp.restartApp(any(Context.class)), never());
         }
     }
@@ -203,20 +240,29 @@ public class ModuleProfilesPageTest {
         groupListsModulesThenTheirFullResProfiles("3× · 200 Мп", "Снимки FULLRES 200 Мп", "пока как у «3×»", "сейчас в камере");
     }
 
+    /** P384: each module's card holds its own profile and then its FULLRES 50 / 200 MP ones (the former «Настройки по модулям» list). */
     private void groupListsModulesThenTheirFullResProfiles(String title200, String shots200, String unopened, String inCamera) {
         try (ActivityController<SettingsActivity> controller = Robolectric.buildActivity(SettingsActivity.class)) {
             controller.setup();
-            ModuleProfilesFragment group = openGroup(controller.get());
-            List<View> rows = new ArrayList<>();
-            collect(group.requireView(), rows);
-            List<String> tags = new ArrayList<>();
-            for (View row : rows) tags.add((String) row.getTag());
-            assertEquals(Arrays.asList("profile_back0", "profile_back0@full", "profile_back1", "profile_back1@full50", "profile_back1@full200"), tags);
-            String full200 = text(rows.get(4));
-            assertTrue(full200, full200.contains(title200) && full200.contains(shots200) && full200.contains(unopened));
-            assertTrue(text(rows.get(0)), text(rows.get(0)).contains(inCamera));
-            assertFalse(text(rows.get(2)), text(rows.get(2)).contains(inCamera));
-            for (View row : rows) assertEquals(1f, row.getAlpha(), 1e-3);
+            SettingsActivity.SettingsFragment root = root(controller.get());
+            assertEquals(Arrays.asList("module_row_profile_back0", "module_row_profile_back0@full"), keys(profileRows(root, "back0")));
+            List<ModuleRowPreference> rows = profileRows(root, "back1");
+            assertEquals(Arrays.asList("module_row_profile_back1", "module_row_profile_back1@full50", "module_row_profile_back1@full200"), keys(rows));
+            ModuleRowPreference full200 = rows.get(2);
+            String text = full200.getTitle() + "\n" + full200.getSummary();
+            assertTrue(text, text.contains(title200) && text.contains(shots200) && text.contains(unopened));
+            ModuleRowPreference back0 = profileRows(root, "back0").get(0);
+            assertTrue(String.valueOf(back0.getSummary()), String.valueOf(back0.getSummary()).contains(inCamera));
+            assertFalse(String.valueOf(rows.get(0).getSummary()), String.valueOf(rows.get(0).getSummary()).contains(inCamera));
+            // the module's own profile beside its FULLRES ones says which it is
+            assertTrue(String.valueOf(rows.get(0).getSummary()), String.valueOf(rows.get(0).getSummary()).endsWith(
+                    root.getString(R.string.module_row_profile_regular)));
+            List<ModuleRowPreference> all = new ArrayList<>(profileRows(root, "back0"));
+            all.addAll(rows);
+            for (ModuleRowPreference row : all) {
+                assertFalse(row.getKey(), row.dimmed());
+                assertEquals(row.getKey(), 1f, SettingsStyle.restingAlpha(row), 1e-3);
+            }
         }
     }
 
@@ -232,8 +278,8 @@ public class ModuleProfilesPageTest {
         try (ActivityController<SettingsActivity> controller = Robolectric.buildActivity(SettingsActivity.class)) {
             controller.setup();
             SettingsActivity activity = controller.get();
-            ModuleProfilesFragment group = openGroup(activity);
-            group.requireView().findViewWithTag("profile_back1@full200").performClick();
+            SettingsActivity.SettingsFragment root = root(activity);
+            root.findPreference("module_row_profile_back1@full200").performClick();
             Fragment top = top(activity);
             assertTrue(String.valueOf(top), top instanceof SettingsActivity.SettingsFragment);
             SettingsActivity.SettingsFragment page = (SettingsActivity.SettingsFragment) top;
@@ -248,6 +294,8 @@ public class ModuleProfilesPageTest {
             assertTrue(chip.getText().toString(), chip.getText().toString().startsWith("Editing: 3× · 200 MP · ID 5"));
             assertFalse(chip.getText().toString(), chip.getText().toString().endsWith("▾"));
             assertNull("no search on a module page", page.requireView().findViewWithTag("settings_search"));
+            assertEquals("the main page's profile, given back on the way back", "back0",
+                    page.requireArguments().getString(SettingsActivity.SettingsFragment.ARG_RETURN_PROFILE));
 
             prefs.edit().putString(CDM, "0.3").commit();   // an edit of the 3× 200 MP shots
             if (finish) {
@@ -255,19 +303,17 @@ public class ModuleProfilesPageTest {
                 controller.pause();
             } else {
                 back(activity);
-                assertTrue(top(activity) instanceof ModuleProfilesFragment);
-                assertEquals("the group keeps the edited profile", "back1@full200", PreferenceKeys.profiles().editing());
-                back(activity);
+                assertSame("back on the main page", root, top(activity));
             }
             assertEquals("back0", PreferenceKeys.profiles().editing());
             assertEquals("the camera module's value back", "0.9", prefs.getString(CDM, ""));
             assertEquals("0.3", context.getSharedPreferences("module_profile_v2_back1@full200", 0).getString(CDM, ""));
             assertEquals("the 3×'s own unchanged", "0.5", context.getSharedPreferences("module_profile_v2_back1", 0).getString(CDM, ""));
             if (!finish) {
-                Fragment root = top(activity);
-                assertTrue(root instanceof SettingsActivity.SettingsFragment);
-                assertNull(((SettingsActivity.SettingsFragment) root).moduleProfile());
-                TextView rootChip = root.requireView().findViewWithTag("settings_chip");
+                Fragment back = top(activity);
+                assertTrue(back instanceof SettingsActivity.SettingsFragment);
+                assertNull(((SettingsActivity.SettingsFragment) back).moduleProfile());
+                TextView rootChip = back.requireView().findViewWithTag("settings_chip");
                 assertTrue(rootChip.getText().toString(), rootChip.getText().toString().startsWith("Editing: 1×"));
             }
         }
@@ -330,9 +376,13 @@ public class ModuleProfilesPageTest {
         // P190: the FULLRES frame counts are rows of the FULLRES profiles only
         assertFalse(shown(root.findPreference(com.particlesdevs.photoncamera.settings.FullResProfiles.FRAMES_50)));
         assertFalse(shown(root.findPreference(com.particlesdevs.photoncamera.settings.FullResProfiles.FRAMES_200)));
-        assertNotNull(root.findPreference(ModulePageFilter.SENSOR_PAGE));
-        assertTrue(shown(root.findPreference(ModulePageFilter.SENSOR_PAGE)));
-        assertEquals("Sensor and RAW", String.valueOf(root.findPreference(ModulePageFilter.CAMERAS).getTitle()));
+        // P384: the module cards and the Camera ID rows are every module's; the module's sensor is its group of «Для опытных»
+        assertFalse(shown(root.findPreference(ModuleRows.GROUP)));
+        assertFalse(shown(root.findPreference(ModuleRows.IDS)));
+        assertNotNull(root.findPreference(ModulePageFilter.SENSOR_GROUP));
+        assertTrue(shown(root.findPreference(ModulePageFilter.SENSOR_GROUP)));
+        assertEquals("This module's sensor", String.valueOf(root.findPreference(ModulePageFilter.SENSOR_GROUP).getTitle()));
+        assertTrue("the module's RAW page", shown(root.findPreference("capture_settings_screen")));
 
         PreferenceScreen fifty = inflate();
         ModulePageFilter.apply(fifty, "back0@full50", true);
@@ -364,6 +414,10 @@ public class ModuleProfilesPageTest {
         }
     }
 
+    /**
+     * A module profile's root page shows its own sensor only (no chips, the other modules' categories hidden), retitled; its
+     * pages stay the module's (P384: «RAW и сенсор» one level up, under «Другие тонкие настройки»).
+     */
     @Test public void navigationInsideTheGroupStaysOnTheModule() {
         try (ActivityController<SettingsActivity> controller = Robolectric.buildActivity(SettingsActivity.class)) {
             controller.setup();
@@ -372,23 +426,34 @@ public class ModuleProfilesPageTest {
                     .replace(R.id.settings_container, SettingsActivity.SettingsFragment.modulePage("back1@full200", null))
                     .addToBackStack("module").commit();
             SettingsActivity.SettingsFragment root = (SettingsActivity.SettingsFragment) top(activity);
-            for (String key : new String[]{"scam_hybrid_screen", ModulePageFilter.CAMERAS}) {
+            assertEquals("back1@full200", root.moduleProfile());
+            assertFalse(root.findPreference(ModuleRows.GROUP).isVisible());
+            assertFalse(root.findPreference(ModuleRows.IDS).isVisible());
+            PreferenceGroup sensor = root.findPreference(ModulePageFilter.SENSOR_GROUP);
+            assertTrue(shown(sensor));
+            assertEquals("This module's sensor", String.valueOf(sensor.getTitle()));
+            assertTrue(String.valueOf(sensor.getSummary()), String.valueOf(sensor.getSummary()).contains("Shared by “3×” and its FULLRES shots"));
+            List<String> shownCategories = new ArrayList<>();
+            for (int i = 0; i < sensor.getPreferenceCount(); i++)
+                if (sensor.getPreference(i) instanceof androidx.preference.PreferenceCategory && sensor.getPreference(i).isVisible())
+                    shownCategories.add(sensor.getPreference(i).getKey());
+            assertEquals(Arrays.asList("pref_category_sensor_back1"), shownCategories);
+            assertFalse("no module chips on a module's page", root.findPreference(ModuleRows.PICKER).isVisible());
+            for (String key : new String[]{"scam_hybrid_screen", "advanced_screen"}) {
                 activity.onPreferenceStartScreen(root, root.findPreference(key));
                 Fragment next = top(activity);
                 assertTrue(key + ": " + next, next instanceof SettingsActivity.SettingsFragment);
                 assertEquals(key, "back1@full200", ((SettingsActivity.SettingsFragment) next).moduleProfile());
-                if (key.equals(ModulePageFilter.CAMERAS)) {
-                    SettingsActivity.SettingsFragment cameras = (SettingsActivity.SettingsFragment) next;
-                    assertEquals("Sensor and RAW", String.valueOf(cameras.getPreferenceScreen().getTitle()));
-                    Preference sensor = cameras.findPreference(ModulePageFilter.SENSOR_PAGE);
-                    assertTrue(String.valueOf(sensor.getSummary()), String.valueOf(sensor.getSummary()).contains("Shared by “3×”"));
-                    sensor.performClick();
-                    Fragment sensorPage = top(activity);
-                    assertTrue(sensorPage instanceof SettingsActivity.SettingsFragment);
-                    assertEquals("the module's own sensor", "back1",
-                            sensorPage.requireArguments().getString(SettingsActivity.SettingsFragment.ARG_SENSOR_SLOT));
-                    assertNull(((SettingsActivity.SettingsFragment) sensorPage).moduleProfile());
-                } else back(activity);
+                if (key.equals("advanced_screen")) {
+                    SettingsActivity.SettingsFragment advanced = (SettingsActivity.SettingsFragment) next;
+                    activity.onPreferenceStartScreen(advanced, advanced.findPreference("capture_settings_screen"));
+                    Fragment raw = top(activity);
+                    assertTrue(raw instanceof SettingsActivity.SettingsFragment);
+                    assertEquals("capture_settings_screen", ((SettingsActivity.SettingsFragment) raw).getPreferenceScreen().getKey());
+                    assertEquals("the module's RAW page", "back1@full200", ((SettingsActivity.SettingsFragment) raw).moduleProfile());
+                    back(activity);
+                }
+                back(activity);
                 assertEquals("back1@full200", PreferenceKeys.profiles().editing());
             }
         }
@@ -399,12 +464,13 @@ public class ModuleProfilesPageTest {
         try (ActivityController<SettingsActivity> controller = Robolectric.buildActivity(SettingsActivity.class)) {
             controller.setup();
             SettingsActivity activity = controller.get();
-            SettingsActivity.SettingsFragment root = (SettingsActivity.SettingsFragment) top(activity);
-            assertEquals(context.getString(R.string.prefs_camera_settings_screen_summary) + ". All modules share the settings now",
-                    String.valueOf(root.findPreference(ModulePageFilter.CAMERAS).getSummary()));
-            ModuleProfilesFragment group = openGroup(activity);
-            View row = group.requireView().findViewWithTag("profile_back1");
-            assertEquals(.55f, row.getAlpha(), 1e-3);
+            SettingsActivity.SettingsFragment root = root(activity);
+            assertEquals("All modules shoot with the common settings now",
+                    String.valueOf(root.findPreference(ModuleRows.PER_LENS).getSummary()));
+            ModuleRowPreference row = root.findPreference("module_row_profile_back1");
+            assertTrue("dimmed: it asks first", row.dimmed());
+            assertEquals(.55f, SettingsStyle.restingAlpha(row), 1e-3);
+            assertEquals("All modules share them now. Tap to turn on separate ones", String.valueOf(row.getSummary()));
             Map<String, Object> before = state();
             String editing = PreferenceKeys.profiles().editing();
             row.performClick();
@@ -416,9 +482,9 @@ public class ModuleProfilesPageTest {
             dialog.getButton(DialogInterface.BUTTON_NEGATIVE).performClick();
             idle();
             assertEquals("cancel changes nothing", before, state());
-            assertTrue(top(activity) instanceof ModuleProfilesFragment);
+            assertSame(root, top(activity));
 
-            group.requireView().findViewWithTag("profile_back1").performClick();
+            row.performClick();
             idle();
             dialog = (androidx.appcompat.app.AlertDialog) ShadowDialog.getLatestDialog();
             dialog.getButton(DialogInterface.BUTTON_POSITIVE).performClick();
@@ -433,8 +499,7 @@ public class ModuleProfilesPageTest {
     @Test public void recreateAndCameraTakeBack() {
         try (ActivityController<SettingsActivity> controller = Robolectric.buildActivity(SettingsActivity.class)) {
             controller.setup();
-            ModuleProfilesFragment group = openGroup(controller.get());
-            group.requireView().findViewWithTag("profile_back1@full200").performClick();
+            root(controller.get()).findPreference("module_row_profile_back1@full200").performClick();
             top(controller.get());
             assertEquals("back1@full200", PreferenceKeys.profiles().editing());
 
@@ -471,6 +536,12 @@ public class ModuleProfilesPageTest {
             fm.beginTransaction().replace(R.id.settings_container, copy).commitNow();
             assertNotNull(copy.requireView().findViewWithTag("group_root_photo"));
             assertNull(copy.requireView().findViewWithTag("group_module_profiles_screen"));
+            // P384: the main page's module cards hold nothing to copy; the module's sensor settings under «Сенсор по модулям»
+            assertNull(copy.requireView().findViewWithTag("group_root_modules"));
+            copy.requireView().findViewWithTag("group_root_expert").performClick();
+            assertTrue(text(copy.requireView()), text(copy.requireView()).contains("Sensor per module"));
+            assertNotNull(copy.requireView().findViewWithTag("parameter_sensor_copy_blackleveloverride"));
+            assertNotNull(copy.requireView().findViewWithTag("parameter_sensor_copy_tunablekeys"));
         }
     }
 }

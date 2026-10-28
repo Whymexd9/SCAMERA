@@ -13,6 +13,9 @@ import com.particlesdevs.photoncamera.R;
 import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.processing.color.FilmLooks;
 import com.particlesdevs.photoncamera.processing.color.FilmLut;
+import com.particlesdevs.photoncamera.processing.color.FilmSim;
+import com.particlesdevs.photoncamera.processing.color.LensFilters;
+import com.particlesdevs.photoncamera.settings.ParamHelp;
 import com.particlesdevs.photoncamera.settings.PreferenceKeys;
 import com.particlesdevs.photoncamera.settings.SettingsManager;
 import com.particlesdevs.photoncamera.ui.camera.views.settingsbar.ShadeStyle;
@@ -272,6 +275,400 @@ public class LutTrayTest {
         for (TrayAdjust.Param p : LutTray.filmParams(context, com.particlesdevs.photoncamera.processing.color.FilmSim.stock("kodak_portra_400")))
             assertNotNull(p.id, p.help);
         for (TrayAdjust.Param p : LutTray.filterParams(context, "bpm")) assertNotNull(p.id, p.help);
+    }
+
+    /**
+     * P381 (owner, 2026-10-28: the film page's «Печать» and «Формат» circled): the film's print and format in its tray page as
+     * choices, written as the film page writes them (the print's id in PRINT_KEY, the format's in FORMAT_KEY) and taken by the
+     * model; the print only for a printed colour negative, the format for every stock; the choices take the slider's place at
+     * its height, so the tray is no taller for them.
+     */
+    @Test
+    public void thePrintAndTheFormatAreTheFilmPagesChoices() {
+        TextView pill = new TextView(context);
+        LinearLayout box = new LinearLayout(context);
+        LutTray tray = tray(pill, box);
+        tray.setOpen(true);
+        box.findViewWithTag("lut_tray_tab_film").performClick();
+        box.findViewWithTag("lut_tray_film_kodak_portra_400").performClick();
+        settle();
+        View choices = box.findViewWithTag("lut_tray_film_adjust_choices");
+        android.widget.SeekBar seek = box.findViewWithTag("lut_tray_film_adjust_seek");
+        View sliderRow = (View) seek.getParent();
+        assertEquals("the strength's slider first", View.GONE, choices.getVisibility());
+        final int sliderHeight = height(box);
+        assertTrue(sliderHeight > 0);
+        // «Печать»: the page's papers and print films in its order, the stock maker's own (Portra Endura) chosen by default
+        TextView print = box.findViewWithTag("lut_tray_film_adjust_param_paper");
+        assertEquals("Печать", print.getText().toString());
+        assertEquals("the print's exposure has the page's name", "Экспозиция печати",
+                ((TextView) box.findViewWithTag("lut_tray_film_adjust_param_print")).getText().toString());
+        print.performClick();
+        settle();
+        assertEquals(View.VISIBLE, choices.getVisibility());
+        assertEquals("the slider's row keeps the line's height", View.INVISIBLE, sliderRow.getVisibility());
+        ViewGroup options = box.findViewWithTag("lut_tray_film_adjust_options");
+        assertEquals(FilmSim.PRINTS.length, options.getChildCount());
+        for (int i = 0; i < FilmSim.PRINTS.length; i++)
+            assertEquals(FilmSim.PRINTS[i].name, ((TextView) options.getChildAt(i)).getText().toString());
+        final int endura = printIndex("kodak_portra_endura"), vision = printIndex("kodak_2383");
+        assertTrue(options.getChildAt(endura).isActivated());
+        assertEquals("nothing stored until chosen", "", manager.getString(SettingsManager.SCOPE_GLOBAL, FilmSim.PRINT_KEY, ""));
+        assertEquals("the tray is no taller with the print's choices", sliderHeight, height(box));
+        options.getChildAt(vision).performClick();
+        assertEquals("the page's key and value", "kodak_2383", manager.getString(SettingsManager.SCOPE_GLOBAL, FilmSim.PRINT_KEY, ""));
+        assertEquals("kodak_2383", FilmSim.current().print.id);
+        assertTrue(options.getChildAt(vision).isActivated());
+        assertFalse(options.getChildAt(endura).isActivated());
+        // «Формат»: 35 mm by default, written as the page writes it
+        TextView format = box.findViewWithTag("lut_tray_film_adjust_param_format");
+        assertEquals("Формат", format.getText().toString());
+        format.performClick();
+        settle();
+        assertEquals(FilmSim.FORMATS.length, options.getChildCount());
+        assertEquals("Выкл.", ((TextView) options.getChildAt(0)).getText().toString());
+        assertTrue(options.getChildAt(formatIndex("135")).isActivated());
+        options.getChildAt(formatIndex("67")).performClick();
+        assertEquals("67", manager.getString(SettingsManager.SCOPE_GLOBAL, FilmSim.FORMAT_KEY, ""));
+        assertEquals(70f, FilmSim.current().format.longMm, 0f);
+        assertEquals("the tray is no taller with the format's choices", sliderHeight, height(box));
+        // a slider again
+        box.findViewWithTag("lut_tray_film_adjust_param_grain").performClick();
+        settle();
+        assertEquals(View.GONE, choices.getVisibility());
+        assertEquals(View.VISIBLE, sliderRow.getVisibility());
+        assertEquals(200, seek.getMax());
+        // a choice chosen last stays chosen for another stock, at that stock's value
+        box.findViewWithTag("lut_tray_film_adjust_param_paper").performClick();
+        box.findViewWithTag("lut_tray_film_kodak_vision3_500t").performClick();
+        assertEquals(View.VISIBLE, choices.getVisibility());
+        assertTrue("the chosen print stays chosen", options.getChildAt(vision).isActivated());
+        // what acts on which stock, as on the film page: a black-and-white negative is printed (the paper, its exposure, the
+        // format: its grain follows the paper); a slide and a black-and-white reversal film are not (the format only)
+        for (String[] st : new String[][]{{"trix400", "print"}, {firstOfType(FilmSim.SLIDE), null}, {"trix7266", null}}) {
+            box.findViewWithTag("lut_tray_film_" + st[0]).performClick();
+            assertEquals(st[0], st[1] != null, box.findViewWithTag("lut_tray_film_adjust_param_paper") != null);
+            assertNotNull(st[0], box.findViewWithTag("lut_tray_film_adjust_param_format"));
+            assertEquals(st[0], st[1] != null, box.findViewWithTag("lut_tray_film_adjust_param_print") != null);
+        }
+        // a long press: what it does
+        TextView hint = box.findViewWithTag("lut_tray_hint");
+        assertTrue(box.findViewWithTag("lut_tray_film_adjust_param_format").performLongClick());
+        assertTrue(hint.getText().toString().startsWith("Формат"));
+        assertTrue(hint.getText().toString().contains(ParamHelp.of(context, FilmSim.FORMAT_KEY)));
+        assertNotNull(ParamHelp.of(context, FilmSim.PRINT_KEY));
+    }
+
+    /**
+     * P380 (owner, 2026-10-28: the pair with Unspektrawesome's SPEKTRA, its recipe a Pro-Mist 2.0 with the DIR couplers at 0): the
+     * film page's new rows in the tray's chip row (P381's, with «Печать» and «Формат») - «Диффузия» a choice (Нет and the four
+     * families), «Сила фильтра» the grade 0 .. 2 stored x 100, «Цветоразделение (DIR)» 0 .. 100 % for the measured colour stocks -
+     * written as the page writes them and taken by the model; each with its description; the tray no taller.
+     */
+    @Test
+    public void theDiffusionAndTheCouplersAreTheFilmPagesRows() {
+        TextView pill = new TextView(context);
+        LinearLayout box = new LinearLayout(context);
+        LutTray tray = tray(pill, box);
+        tray.setOpen(true);
+        box.findViewWithTag("lut_tray_tab_film").performClick();
+        box.findViewWithTag("lut_tray_film_kodak_portra_160").performClick();
+        settle();
+        final int sliderHeight = height(box);
+        View choices = box.findViewWithTag("lut_tray_film_adjust_choices");
+        android.widget.SeekBar seek = box.findViewWithTag("lut_tray_film_adjust_seek");
+        TextView value = box.findViewWithTag("lut_tray_film_adjust_value");
+        // «Диффузия»: none by default, the four families in spektrafilm's order
+        TextView diffusion = box.findViewWithTag("lut_tray_film_adjust_param_diffusion");
+        assertEquals("Диффузия", diffusion.getText().toString());
+        diffusion.performClick();
+        settle();
+        assertEquals(View.VISIBLE, choices.getVisibility());
+        ViewGroup options = box.findViewWithTag("lut_tray_film_adjust_options");
+        final String[] names = {"Нет", "Glimmerglass", "Black Pro-Mist", "Pro-Mist", "CineBloom"};
+        assertEquals(names.length, options.getChildCount());
+        for (int i = 0; i < names.length; i++) assertEquals(names[i], ((TextView) options.getChildAt(i)).getText().toString());
+        assertTrue(options.getChildAt(0).isActivated());
+        assertEquals("nothing stored until chosen", "", manager.getString(SettingsManager.SCOPE_GLOBAL, FilmSim.DIFFUSION_KEY, ""));
+        assertEquals("", FilmSim.current().diffusion);
+        assertEquals("the tray is no taller with the diffusion's choices", sliderHeight, height(box));
+        options.getChildAt(3).performClick();
+        assertEquals("the page's key and value", LensFilters.PEARLESCENT, manager.getString(SettingsManager.SCOPE_GLOBAL, FilmSim.DIFFUSION_KEY, ""));
+        assertEquals(LensFilters.PEARLESCENT, FilmSim.current().diffusion);
+        assertEquals(.5f, FilmSim.current().diffusionGrade, 0f);
+        // «Сила фильтра»: the grade 0 .. 2 in steps of 0.05, 0.5 by default, stored x 100 as the page
+        box.findViewWithTag("lut_tray_film_adjust_param_diffusion_strength").performClick();
+        settle();
+        assertEquals(View.GONE, choices.getVisibility());
+        assertEquals(40, seek.getMax());
+        assertEquals(10, seek.getProgress());
+        assertEquals("0.50", value.getText().toString());
+        TrayAdjust.Param grade = null, dir = null;
+        for (TrayAdjust.Param p : LutTray.filmParams(context, FilmSim.stock("kodak_portra_160"))) {
+            if (p.id.equals("diffusion_strength")) grade = p;
+            if (p.id.equals("dir")) dir = p;
+        }
+        assertNotNull(grade);
+        assertEquals("2.00", grade.text(grade.progress(2f)));
+        grade.write.accept(2f);
+        assertEquals("200", manager.getString(SettingsManager.SCOPE_GLOBAL, FilmSim.DIFFUSION_STRENGTH_KEY, ""));
+        assertEquals(2f, FilmSim.current().diffusionGrade, 0f);
+        assertEquals("the owner's pair's Pro-Mist 2.0", .7875, FilmSim.current().diffusionP(), 1e-6);
+        // «Цветоразделение (DIR)»: 0 .. 100 % (review: above it greys go off), 100 % by default
+        TextView couplers = box.findViewWithTag("lut_tray_film_adjust_param_dir");
+        assertEquals("Цветоразделение (DIR)", couplers.getText().toString());
+        couplers.performClick();
+        settle();
+        assertEquals(100, seek.getMax());
+        assertEquals(100, seek.getProgress());
+        assertEquals("100 %", value.getText().toString());
+        assertNotNull(dir);
+        dir.write.accept(0f);
+        assertEquals("0", manager.getString(SettingsManager.SCOPE_GLOBAL, FilmSim.DIR_KEY, ""));
+        assertEquals(0f, FilmSim.current().couplers, 0f);
+        assertEquals("the height kept", sliderHeight, height(box));
+        // what acts on which stock: the diffusion on every stock (black and white too), the couplers on the measured colour ones
+        for (String st : new String[]{"trix400", "trix7266", firstOfType(FilmSim.SLIDE), "kodak_vision3_250d"}) {
+            box.findViewWithTag("lut_tray_film_" + st).performClick();
+            assertNotNull(st, box.findViewWithTag("lut_tray_film_adjust_param_diffusion"));
+            assertNotNull(st, box.findViewWithTag("lut_tray_film_adjust_param_diffusion_strength"));
+            assertEquals(st, FilmSim.stock(st).spectral != null, box.findViewWithTag("lut_tray_film_adjust_param_dir") != null);
+        }
+        // a long press: what it does
+        TextView hint = box.findViewWithTag("lut_tray_hint");
+        assertTrue(box.findViewWithTag("lut_tray_film_adjust_param_diffusion").performLongClick());
+        assertTrue(hint.getText().toString().startsWith("Диффузия"));
+        assertTrue(hint.getText().toString().contains(ParamHelp.of(context, FilmSim.DIFFUSION_KEY)));
+        for (String k : new String[]{FilmSim.DIFFUSION_KEY, FilmSim.DIFFUSION_STRENGTH_KEY, FilmSim.DIR_KEY}) assertNotNull(k, ParamHelp.of(context, k));
+        // «Формат»: 65 mm and IMAX 70 among the choices
+        box.findViewWithTag("lut_tray_film_kodak_portra_160").performClick();
+        box.findViewWithTag("lut_tray_film_adjust_param_format").performClick();
+        settle();
+        options.getChildAt(formatIndex("imax70")).performClick();
+        assertEquals("imax70", manager.getString(SettingsManager.SCOPE_GLOBAL, FilmSim.FORMAT_KEY, ""));
+        assertEquals("IMAX 70", ((TextView) options.getChildAt(formatIndex("imax70"))).getText().toString());
+        assertEquals("65 mm", ((TextView) options.getChildAt(formatIndex("65mm"))).getText().toString());
+        assertEquals(70410.0, FilmSim.current().diffusionFrameUm(), .01);
+    }
+
+    /** P380 with P382: a double tap on «Плёнка» resets the diffusion, its grade and the couplers too (FilmSim.KEYS), the hint undoes it. */
+    @Test
+    public void aDoubleTapOnTheFilmTabResetsTheDiffusionAndTheCouplers() {
+        final String g = SettingsManager.SCOPE_GLOBAL;
+        manager.set(g, FilmSim.STOCK_KEY, "kodak_portra_160");
+        manager.set(g, FilmSim.DIFFUSION_KEY, LensFilters.PEARLESCENT);
+        manager.set(g, FilmSim.DIFFUSION_STRENGTH_KEY, "200");
+        manager.set(g, FilmSim.DIR_KEY, "0");
+        manager.set(g, FilmSim.FORMAT_KEY, "imax70");
+        TextView pill = new TextView(context);
+        LinearLayout box = new LinearLayout(context);
+        LutTray tray = attachedTray(pill, box);
+        tray.setOpen(true);
+        settle();
+        final android.content.SharedPreferences prefs = manager.getDefaultPreferences();
+        final java.util.Map<String, ?> before = prefs.getAll();
+        doubleTap(box.findViewWithTag("lut_tray_tab_film"), android.os.SystemClock.uptimeMillis());
+        for (String k : new String[]{FilmSim.DIFFUSION_KEY, FilmSim.DIFFUSION_STRENGTH_KEY, FilmSim.DIR_KEY, FilmSim.FORMAT_KEY})
+            assertFalse(k, prefs.contains(k));
+        assertOthersKept(LutTray.TAB_FILM, before, prefs.getAll());
+        assertNull("no film", FilmSim.current());
+        TextView hint = box.findViewWithTag("lut_tray_hint");
+        hint.performClick();
+        settle();
+        assertEquals("undone", before, prefs.getAll());
+        assertEquals(.7875, FilmSim.current().diffusionP(), 1e-6);
+        assertEquals(0f, FilmSim.current().couplers, 0f);
+    }
+
+    /**
+     * P382 (owner, 2026-10-28): a double tap on a tab's title puts every setting of that tab back to the default the settings
+     * pages' reset gives (P357) - the LUT «Нет» at 100 %, no lens filter with its strength and fine controls as designed, no
+     * film with every film setting (print, format, effects), the colour rows at 0 - and nothing else; the tab's dot goes, the
+     * hint line says it, a tap on it puts the values back.
+     */
+    @Test
+    public void aDoubleTapOnATabResetsThatTabOnly() {
+        final String g = SettingsManager.SCOPE_GLOBAL;
+        manager.set(g, FilmLut.KEY, FilmLooks.values()[1]);
+        manager.set(g, FilmLut.STRENGTH_KEY, "40");
+        manager.set(g, LensFilters.KEY, "bpm");
+        manager.set(g, LensFilters.STRENGTH_KEY, "80");
+        LensFilters.Tune tune = PreferenceKeys.lensFilterTune("bpm");
+        tune.set(LensFilters.T_RADIUS, .7f);
+        manager.set(g, LensFilters.tuneKey("bpm"), tune.serialize());
+        manager.set(g, FilmSim.STOCK_KEY, "kodak_portra_400");
+        manager.set(g, FilmSim.GRAIN_KEY, "150");
+        manager.set(g, FilmSim.PRINT_KEY, "kodak_2383");
+        manager.set(g, FilmSim.FORMAT_KEY, "67");
+        manager.set(g, FilmSim.PRINT_M_KEY, "5");
+        manager.set(g, FilmSim.STRENGTH_KEY, "80");
+        manager.set(g, LutTray.WARMTH_KEY, "30");
+        manager.set(g, LutTray.TINT_KEY, "-20");
+        manager.set(g, "pref_film_sim_probe_other", "kept"); // a key of no tab: never touched
+        TextView pill = new TextView(context);
+        LinearLayout box = new LinearLayout(context);
+        LutTray tray = attachedTray(pill, box);
+        tray.setOpen(true);
+        settle();
+        final android.content.SharedPreferences prefs = manager.getDefaultPreferences();
+        TextView hint = box.findViewWithTag("lut_tray_hint");
+        long t = android.os.SystemClock.uptimeMillis();
+        // the film's tab: reset, then undone by a tap on the hint
+        TextView film = box.findViewWithTag("lut_tray_tab_film");
+        assertNotEquals("the dot: a film is on", "Плёнка", film.getText().toString());
+        java.util.Map<String, ?> before = prefs.getAll();
+        doubleTap(film, t);
+        assertTrue("the first tap shows the tab", film.isActivated());
+        assertNull(FilmSim.current());
+        for (String k : FilmSim.KEYS) assertFalse(k, prefs.contains(k));
+        assertOthersKept(LutTray.TAB_FILM, before, prefs.getAll());
+        assertEquals("the dot went", "Плёнка", film.getText().toString());
+        assertEquals(View.VISIBLE, hint.getVisibility());
+        assertTrue(hint.getText().toString(), hint.getText().toString().startsWith("Плёнка") && hint.getText().toString().contains("по умолчанию"));
+        assertEquals("no film: nothing to adjust", View.GONE, box.findViewWithTag("lut_tray_film_adjust").getVisibility());
+        hint.performClick();
+        settle();
+        assertEquals("undone", before, prefs.getAll());
+        assertEquals("kodak_2383", FilmSim.current().print.id);
+        assertNotEquals("the dot is back", "Плёнка", film.getText().toString());
+        assertEquals(View.VISIBLE, box.findViewWithTag("lut_tray_film_adjust").getVisibility());
+        // each tab: its own settings at their defaults, every other key as it was
+        final String[] titles = {"LUT", "Фильтр", "Плёнка", "Цвет"};
+        for (int tab : new int[]{LutTray.TAB_FILM, LutTray.TAB_LUT, LutTray.TAB_FILTER, LutTray.TAB_COLOUR}) {
+            t += 1000;
+            TextView chip = box.findViewWithTag("lut_tray_tab_" + LutTray.TAB_IDS[tab]);
+            assertNotEquals(titles[tab] + ": its dot before", titles[tab], chip.getText().toString());
+            before = prefs.getAll();
+            doubleTap(chip, t);
+            assertTrue(chip.isActivated());
+            assertOthersKept(tab, before, prefs.getAll());
+            assertEquals(titles[tab] + ": the dot went", titles[tab], chip.getText().toString());
+            assertTrue(hint.getText().toString(), hint.getText().toString().startsWith(titles[tab]));
+            switch (tab) {
+                case LutTray.TAB_LUT:
+                    assertEquals("", PreferenceKeys.filmLut());
+                    assertEquals(1f, PreferenceKeys.filmLutStrength(), 1e-6f);
+                    break;
+                case LutTray.TAB_FILTER:
+                    assertEquals("", PreferenceKeys.lensFilter());
+                    assertEquals(.5f, PreferenceKeys.lensFilterStrength(), 1e-6f);
+                    assertEquals("the fine controls as designed", .5f, PreferenceKeys.lensFilterTune("bpm").radius, 1e-6f);
+                    assertFalse(prefs.contains(LensFilters.tuneKey("bpm")));
+                    break;
+                case LutTray.TAB_FILM:
+                    for (String k : FilmSim.KEYS) assertFalse(k, prefs.contains(k));
+                    break;
+                default:
+                    assertEquals(0, LutTray.colourValue(LutTray.WARMTH_KEY));
+                    assertEquals(0, LutTray.colourValue(LutTray.TINT_KEY));
+                    assertEquals(100, ((android.widget.SeekBar) ((ViewGroup) box.findViewWithTag("lut_tray_warmth")).getChildAt(1)).getProgress());
+            }
+        }
+        assertEquals("kept", manager.getString(g, "pref_film_sim_probe_other", ""));
+        assertEquals("LUT", pill.getText().toString());
+        // at its defaults already: said so, nothing written
+        t += 1000;
+        before = prefs.getAll();
+        doubleTap(box.findViewWithTag("lut_tray_tab_colour"), t);
+        assertEquals(before, prefs.getAll());
+        assertTrue(hint.getText().toString(), hint.getText().toString().contains("уже по умолчанию"));
+    }
+
+    /** P382: a single tap on a tab only shows it (a tap on the shown tab, or taps on two tabs, never reset anything). */
+    @Test
+    public void aSingleTapOnATabOnlySwitchesIt() {
+        manager.set(SettingsManager.SCOPE_GLOBAL, FilmSim.STOCK_KEY, "kodak_portra_400");
+        manager.set(SettingsManager.SCOPE_GLOBAL, FilmSim.GRAIN_KEY, "150");
+        manager.set(SettingsManager.SCOPE_GLOBAL, FilmLut.KEY, FilmLooks.values()[1]);
+        TextView pill = new TextView(context);
+        LinearLayout box = new LinearLayout(context);
+        LutTray tray = attachedTray(pill, box);
+        tray.setOpen(true);
+        settle();
+        final android.content.SharedPreferences prefs = manager.getDefaultPreferences();
+        final java.util.Map<String, ?> before = prefs.getAll();
+        TextView film = box.findViewWithTag("lut_tray_tab_film"), lut = box.findViewWithTag("lut_tray_tab_lut");
+        long t = android.os.SystemClock.uptimeMillis();
+        tap(film, t);
+        settle();
+        assertTrue(film.isActivated());
+        assertEquals(View.VISIBLE, box.findViewWithTag("lut_tray_page_film").getVisibility());
+        assertEquals(before, prefs.getAll());
+        // the shown tab tapped once more, later than a double tap
+        tap(film, t + 1000);
+        settle();
+        assertTrue(film.isActivated());
+        assertEquals(before, prefs.getAll());
+        // two tabs one right after the other: each a single tap
+        tap(lut, t + 2000);
+        tap(film, t + 2120);
+        settle();
+        assertTrue(film.isActivated());
+        assertFalse(lut.isActivated());
+        assertEquals(before, prefs.getAll());
+        assertEquals(View.GONE, box.findViewWithTag("lut_tray_hint").getVisibility());
+    }
+
+    /** The tray in an activity's window (its views' clicks run: a view's posted click waits for a window). */
+    private LutTray attachedTray(TextView pill, LinearLayout box) {
+        android.app.Activity activity = org.robolectric.Robolectric.buildActivity(android.app.Activity.class).setup().get();
+        FrameLayout root = new FrameLayout(context);
+        root.addView(pill, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        root.addView(box, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        activity.setContentView(root);
+        return new LutTray(pill, box, null, () -> { });
+    }
+
+    /** A short tap at {@code t} (40 ms down), as a finger gives it. */
+    private static void tap(View v, long t) {
+        final android.view.MotionEvent down = android.view.MotionEvent.obtain(t, t, android.view.MotionEvent.ACTION_DOWN, 10, 10, 0);
+        v.dispatchTouchEvent(down);
+        down.recycle();
+        final android.view.MotionEvent up = android.view.MotionEvent.obtain(t, t + 40, android.view.MotionEvent.ACTION_UP, 10, 10, 0);
+        v.dispatchTouchEvent(up);
+        up.recycle();
+    }
+
+    /** Two taps 120 ms apart, then what they posted runs. */
+    private static void doubleTap(View v, long t) {
+        tap(v, t);
+        tap(v, t + 120);
+        settle();
+    }
+
+    /** Every key not of tab {@code tab} as it was (the tabs' keys listed here, not read from the tray's own rule). */
+    private static void assertOthersKept(int tab, java.util.Map<String, ?> before, java.util.Map<String, ?> after) {
+        final java.util.Set<String> keys = new java.util.HashSet<>(before.keySet());
+        keys.addAll(after.keySet());
+        for (String k : keys) if (!tabKey(tab, k)) assertEquals(k, before.get(k), after.get(k));
+    }
+
+    private static boolean tabKey(int tab, String k) {
+        if (tab == LutTray.TAB_LUT) return k.equals(FilmLut.KEY) || k.equals(FilmLut.STRENGTH_KEY);
+        if (tab == LutTray.TAB_FILTER) return k.equals(LensFilters.KEY) || k.equals(LensFilters.STRENGTH_KEY) || k.startsWith(LensFilters.TUNE_PREFIX);
+        if (tab == LutTray.TAB_FILM) return k.startsWith("pref_film_sim");
+        return k.equals(LutTray.WARMTH_KEY) || k.equals(LutTray.TINT_KEY);
+    }
+
+    /** The tray's height as its layout gives it at a phone's width. */
+    private static int height(View box) {
+        box.measure(View.MeasureSpec.makeMeasureSpec(1080, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+        return box.getMeasuredHeight();
+    }
+
+    private static int printIndex(String id) {
+        for (int i = 0; i < FilmSim.PRINTS.length; i++) if (FilmSim.PRINTS[i].id.equals(id)) return i;
+        throw new AssertionError(id);
+    }
+
+    private static int formatIndex(String id) {
+        for (int i = 0; i < FilmSim.FORMATS.length; i++) if (FilmSim.FORMATS[i].id.equals(id)) return i;
+        throw new AssertionError(id);
+    }
+
+    private static String firstOfType(int type) {
+        for (FilmSim.Stock st : FilmSim.STOCKS) if (st.type == type) return st.id;
+        throw new AssertionError(type);
     }
 
     /** The tray's and the pill's animations run to their end (Robolectric's paused main looper). */

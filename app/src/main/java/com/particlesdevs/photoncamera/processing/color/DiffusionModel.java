@@ -18,6 +18,14 @@ import androidx.annotation.Nullable;
  * Sizes are on a 36 mm wide frame (micrometres), so the look is the same share of the frame at any resolution. On the GPU and
  * the CPU the PSF is a weighted sum of our pyramid's levels: {@link #levelWeights} fits non-negative weights of the levels
  * (each a Gaussian of a known width; level 0 the image itself) to the PSF's encircled energy, per channel.
+ * <p>
+ * A port of spektrafilm's camera diffusion filter (Andrea Volpato, https://github.com/andreavolpato/spektrafilm,
+ * src/spektrafilm/model/diffusion.py at commit 3bb2c2d, GPL-3.0): the families' groups, shares and halo warmth, the warmth
+ * axis, the grade -> scatter table and the family gains are its numbers (assets/film/CHANGELOG.txt). Ours: below grade 1/8 the
+ * share falls linearly to 0 (spektrafilm holds its 1/8 value), and the fit of the PSF by our pyramids' levels.
+ * P380 (owner, 2026-10-28: the pair with Unspektrawesome's SPEKTRA, its recipe a Pro-Mist 2.0 on an IMAX 70 frame): the film's
+ * own diffusion (FilmSim.Settings.diffusionP) sizes the same PSF on the film format's frame ({@link #shape} with {@code frameUm}:
+ * spektrafilm's pixel size, the format's long edge over the image's) - the lens filter keeps {@link #FRAME_UM}.
  */
 public final class DiffusionModel {
     /** The frame the micrometres refer to (a 36 mm wide film frame). */
@@ -96,9 +104,16 @@ public final class DiffusionModel {
 
     /** The deflected share p of the light at our strength (the grade table, log-interpolated, times the family gain). */
     public static double scatter(@Nullable String id, float strength) {
+        return scatterAtGrade(id, grade(strength));
+    }
+
+    /**
+     * P380: the deflected share p of the light at the filter grade {@code g} (spektrafilm's strength: 1/8 .. 2, 0 none; the grade
+     * table log-interpolated, times the family gain) - {@link #scatter} at our strength's grade, bit for bit.
+     */
+    public static double scatterAtGrade(@Nullable String id, double g) {
         Family f = family(id);
-        double g = grade(strength);
-        if (f == null || g <= 0) return 0.0;
+        if (f == null || !(g > 0)) return 0.0;
         double lg = Math.log(g) / Math.log(2);
         double base;
         if (lg <= -3) base = SCATTER[0] * Math.pow(2.0, lg + 3);   // below 1/8: towards 0
@@ -186,13 +201,40 @@ public final class DiffusionModel {
      * warmth ±0.8 around the family's own.
      */
     static Shape shape(Family f, LensFilters.Tune t, double longPx) {
+        return shape(f, t, longPx, FRAME_UM);
+    }
+
+    /**
+     * P380: {@link #shape} on a frame {@code frameUm} micrometres long (the film format's long edge: its micrometres on the image's
+     * {@code longPx}, as spektrafilm sizes its diffusion by the film's pixel size); {@link #FRAME_UM} is the lens filter's.
+     */
+    static Shape shape(Family f, LensFilters.Tune t, double longPx, double frameUm) {
         double size = Math.pow(2.0, (t.radius - 0.5) * 2.0);
-        double px = longPx / FRAME_UM * size;
+        double px = longPx / frameUm * size;
         double hi = Math.pow(2.0, (t.knee - 0.5) * 2.0), bi = LensFilters.hazeGain(t.haze);
         double wc = f.wc, wh = f.wh * hi, wb = f.wb * bi, total = wc + wh + wb;
         double[][] core = expand(f.core, false), halo = expand(f.halo, false), bloom = expand(f.bloom, true);
         for (double[][] g : new double[][][]{core, halo, bloom}) for (int k = 0; k < g[0].length; k++) g[0][k] *= px;
         return new Shape(core, halo, bloom, wc / total, wh / total, wb / total, f.warmth + (t.warmth - 0.5) * 1.6);
+    }
+
+    /**
+     * P380: the PSF's radial density at radius r (pixels; per pixel², unit energy in 2D), channel c - spektrafilm's
+     * diffusion_filter_radial_profile 'total_per_channel' (a shape of {@code frameUm} on {@code longPx = frameUm}: r in um).
+     */
+    static double density(Shape s, int c, double r) {
+        double e = 0;
+        for (int k = 0; k < s.core[0].length; k++) e += s.wc * s.core[1][k] * expDensity(r, s.core[0][k]);
+        double[] hw = haloWeights(s.halo[1], s.warmth, c);
+        for (int k = 0; k < s.halo[0].length; k++) e += s.wh * hw[k] * expDensity(r, s.halo[0][k]);
+        for (int k = 0; k < s.bloom[0].length; k++) e += s.wb * s.bloom[1][k] * expDensity(r, s.bloom[0][k]);
+        return e;
+    }
+
+    /** A 2D exponential exp(-r / l) / (2 pi l²). */
+    static double expDensity(double r, double lambda) {
+        final double l = Math.max(lambda, 1e-6);
+        return Math.exp(-r / l) / (2 * Math.PI * l * l);
     }
 
     /** The PSF's encircled energy at radius r (pixels), channel c. */
@@ -234,13 +276,21 @@ public final class DiffusionModel {
      */
     @Nullable
     public static float[][] levelWeights(@Nullable String id, float strength, LensFilters.Tune tune, double longPx, double[] sigmas) {
+        return levelWeights(id, scatter(id, strength), tune, longPx, FRAME_UM, sigmas);
+    }
+
+    /**
+     * P380: {@link #levelWeights} of filter {@code id} deflecting the share {@code p} with its PSF on a frame {@code frameUm} long
+     * (the film's diffusion: FilmSim.Settings.diffusionP on the format's frame); the lens filter's overload passes its strength's
+     * share and {@link #FRAME_UM}, as before.
+     */
+    @Nullable
+    public static float[][] levelWeights(@Nullable String id, double p, LensFilters.Tune tune, double longPx, double frameUm, double[] sigmas) {
         Family f = family(id);
-        double p = scatter(id, strength);
-        if (f == null || p <= 0 || longPx <= 0) return null;
-        Shape s = shape(f, tune, longPx);
+        if (f == null || !(p > 0) || longPx <= 0) return null;
+        Shape s = shape(f, tune, longPx, frameUm);
         int n = sigmas.length, m = 48;
-        double[] radii = new double[m];
-        for (int i = 0; i < m; i++) radii[i] = 0.5 * Math.pow(longPx / 0.5, i / (double) (m - 1));
+        double[] radii = radii(longPx, m);
         double[][] basis = new double[n][m];
         for (int k = 0; k < n; k++) for (int i = 0; i < m; i++) basis[k][i] = eeGauss(radii[i], sigmas[k]);
         float[][] out = new float[n][3];
@@ -254,6 +304,52 @@ public final class DiffusionModel {
             for (int k = 0; k < n; k++) out[k][c] = (float) (p * a[k] / sum + (k == 0 ? 1.0 - p : 0.0));
         }
         return out;
+    }
+
+    /** The fit's 48 radii: 0.5 px .. the frame, geometric. */
+    static double[] radii(double longPx, int m) {
+        double[] radii = new double[m];
+        for (int i = 0; i < m; i++) radii[i] = 0.5 * Math.pow(longPx / 0.5, i / (double) (m - 1));
+        return radii;
+    }
+
+    /**
+     * P380 (the viewfinder with a lens diffusion filter and the film's diffusion both on: the photo runs one after the other):
+     * the level weights of two diffusions in a row, a and b on the same levels ({@code sigmas}: [level][c], each channel summing to
+     * 1) - each pair of levels a Gaussian of their widths added in quadrature, weighted a_j b_k, the sum fitted again to the
+     * levels by the same non-negative least squares on the encircled energy at the fit's radii up to {@code longPx}. Either null:
+     * the other alone.
+     */
+    @Nullable
+    public static float[][] combine(@Nullable float[][] a, @Nullable float[][] b, double[] sigmas, double longPx) {
+        if (a == null) return b;
+        if (b == null) return a;
+        int n = sigmas.length, m = 48;
+        double[] radii = radii(longPx, m);
+        double[][] basis = new double[n][m];
+        for (int k = 0; k < n; k++) for (int i = 0; i < m; i++) basis[k][i] = eeGauss(radii[i], sigmas[k]);
+        float[][] out = new float[n][3];
+        for (int c = 0; c < 3; c++) {
+            double[] target = combinedEe(a, b, sigmas, c, radii);
+            double[] w = nnls(basis, target);
+            double sum = 0;
+            for (double v : w) sum += v;
+            if (sum <= 0) { w = new double[n]; w[0] = 1; sum = 1; }
+            for (int k = 0; k < n; k++) out[k][c] = (float) (w[k] / sum);
+        }
+        return out;
+    }
+
+    /** The encircled energy at {@code radii} of the level sets a then b (channel c): Σ a_j b_k EE_G(sqrt(σ_j² + σ_k²)). */
+    static double[] combinedEe(float[][] a, float[][] b, double[] sigmas, int c, double[] radii) {
+        double[] e = new double[radii.length];
+        for (int j = 0; j < a.length && j < sigmas.length; j++) for (int k = 0; k < b.length && k < sigmas.length; k++) {
+            double w = (double) a[j][c] * b[k][c];
+            if (w == 0) continue;
+            double s = Math.sqrt(sigmas[j] * sigmas[j] + sigmas[k] * sigmas[k]);
+            for (int i = 0; i < radii.length; i++) e[i] += w * eeGauss(radii[i], s);
+        }
+        return e;
     }
 
     /** Non-negative least squares by cyclic coordinate descent (a dozen unknowns): min |Σ a_k B_k - t|², a ≥ 0. */

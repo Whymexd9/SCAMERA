@@ -29,20 +29,30 @@ public final class LiveWhyMeter {
 
     /**
      * The frame the RAW viewfinder drew: its visible crop {@code left, top, width, height} (frame pixels, whole CFA periods,
-     * fitted to the viewport's aspect) and the colour transform it drew with (column-major, rawdevelop_fs color_transform).
+     * fitted to the viewport's aspect) and the colour transform it drew with (column-major, rawdevelop_fs color_transform); P378
+     * review: the rotation (rawdevelop_vs texRotate, column-major 4 x 4) and the front mirror it was drawn with (LiveWhyTone puts
+     * the sky's cells of the frame into the tone's orientation with them).
      */
     public static final class View {
         public final LiveRawFrame.Frame frame;
         public final int left, top, width, height;
         public final float[] transform;
+        public final float[] rotation;
+        public final boolean mirror;
 
         public View(LiveRawFrame.Frame frame, int left, int top, int width, int height, float[] transform) {
+            this(frame, left, top, width, height, transform, null, false);
+        }
+
+        public View(LiveRawFrame.Frame frame, int left, int top, int width, int height, float[] transform, float[] rotation, boolean mirror) {
             this.frame = frame;
             this.left = left;
             this.top = top;
             this.width = width;
             this.height = height;
             this.transform = transform.clone();
+            this.rotation = rotation != null && rotation.length >= 16 ? rotation.clone() : new float[]{1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
+            this.mirror = mirror;
         }
     }
 
@@ -76,6 +86,28 @@ public final class LiveWhyMeter {
 
     /** {@link #cells(View, float, int[])} into {@code into} when it is large enough (else a new array). */
     public static float[] cells(View v, float inScale, int[] size, float[] into) {
+        return cells(v, inScale, size, into, null);
+    }
+
+    /**
+     * P378 review: the share of the crop's quads the cells cover along x and y (the grid's cells x their pitch over the crop's
+     * whole quads: the last quads short of a cell are not metered); null as {@link #grid}.
+     */
+    public static float[] cover(View v) {
+        final int[] g = grid(v);
+        if (g == null) return null;
+        final int q = 2 * Math.max(1, v.frame.cfaBlock);
+        final int qw = quads(v.width, v.left, v.frame.width, q), qh = quads(v.height, v.top, v.frame.height, q);
+        return new float[]{Math.min(1f, g[0] * g[2] / (float) qw), Math.min(1f, g[1] * g[2] / (float) qh)};
+    }
+
+    /**
+     * {@link #cells(View, float, int[], float[])}; P378 review (the sky term on the viewfinder): with {@code quads} (12 floats a
+     * cell) each cell's 2 x 2 quads too - top left, top right, bottom left, bottom right x R, G, B, the cells' own values before
+     * their mean (WhySkyMask.Cells.ofQuads: adjacent quads are one whyLow px apart). A cell of fewer quads (a crop under 2 x 2
+     * quads) leaves them 0.
+     */
+    public static float[] cells(View v, float inScale, int[] size, float[] into, float[] quads) {
         final int[] g = grid(v);
         if (g == null) return null;
         final LiveRawFrame.Frame f = v.frame;
@@ -126,9 +158,18 @@ public final class LiveWhyMeter {
                             cb *= gain[2];
                         }
                         // color_transform (column-major), then max(0) as the linear output
-                        sr += Math.max(0f, t[0] * cr + t[3] * cg + t[6] * cb);
-                        sg += Math.max(0f, t[1] * cr + t[4] * cg + t[7] * cb);
-                        sb += Math.max(0f, t[2] * cr + t[5] * cg + t[8] * cb);
+                        final float lr = Math.max(0f, t[0] * cr + t[3] * cg + t[6] * cb);
+                        final float lg = Math.max(0f, t[1] * cr + t[4] * cg + t[7] * cb);
+                        final float lb = Math.max(0f, t[2] * cr + t[5] * cg + t[8] * cb);
+                        sr += lr;
+                        sg += lg;
+                        sb += lb;
+                        if (quads != null && k == QUADS) {
+                            final int qo = (cy * nx + cx) * 12 + 3 * (j * QUADS + i);
+                            quads[qo] = lr * scale;
+                            quads[qo + 1] = lg * scale;
+                            quads[qo + 2] = lb * scale;
+                        }
                     }
                 }
                 final int at = (cy * nx + cx) * 3;
@@ -161,12 +202,37 @@ public final class LiveWhyMeter {
         }
     }
 
+    /**
+     * P378 review: the quads of the last {@link #measure} with {@link #keepQuads} on (12 floats a cell, {@link #lastGrid} cells),
+     * null otherwise.
+     */
+    private float[] quadBuffer;
+    private final int[] lastGrid = new int[2];
+    private boolean quadsKept;
+
+    /** P378 review: whether {@link #measure} keeps each cell's quads (LiveWhyTone's sky term on the viewfinder). */
+    public boolean keepQuads;
+
+    public float[] lastQuads() {
+        return quadsKept ? quadBuffer : null;
+    }
+
+    /** {cells across, cells down} of the last {@link #measure}. */
+    public int[] lastGrid() {
+        return lastGrid.clone();
+    }
+
     /** WhyAe.smartHdr on the cells of the view; null when the crop holds no colour quad. One thread at a time (the GL thread). */
     public WhyAe.Result measure(View v, float inScale, WhyAe.Settings s, int iso, int maxIso) {
         final int[] n = new int[2];
-        final float[] c = cells(v, inScale, n, buffer);
+        final int[] g = keepQuads ? grid(v) : null;
+        quadsKept = g != null && g[3] == QUADS;
+        if (quadsKept && (quadBuffer == null || quadBuffer.length < g[0] * g[1] * 12)) quadBuffer = new float[g[0] * g[1] * 12];
+        final float[] c = cells(v, inScale, n, buffer, quadsKept ? quadBuffer : null);
         if (c == null) return null;
         buffer = c;
+        lastGrid[0] = n[0];
+        lastGrid[1] = n[1];
         final int rowLen = n[0] * 3;
         return WhyAe.smartHdr((y, row) -> System.arraycopy(c, y * rowLen, row, 0, rowLen), 3, n[0], n[1], s, iso, maxIso);
     }

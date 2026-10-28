@@ -19,6 +19,11 @@ uniform vec2 satLevelU;
 // P348: the warm hues (r >= g >= b, (g - b) / (r - b) from x to y: orange to yellow - the sun, its glow, fire) left out of that
 // share; y <= x / unset: every hue as before
 uniform vec2 warmU;
+// Crushed room (window burst 2026-10-28): far under the centre every layer's Gaussian weight is ~equal, so a deep shadow took the
+// AVERAGE of the four layers (two of them darker than the base): x1.47 of the bright layer's x2.61 in a room 7 EV under a window.
+// The brightest layer's weight never falls below its value deepFloorU sigma under the centre: a deep shadow takes ~the bright
+// layer (never more than em.w, the AE's own shadow exposure). Only where L.w < centre - deepFloorU * sigma; 0 / unset: off.
+uniform float deepFloorU;
 
 // ACES tone scale of the kernel [fc_cl_source.cl:971-976] with pre-gain 1.5, a 2.51, d 0.59.
 vec4 acescg(vec4 v, float toe) {
@@ -54,6 +59,15 @@ float satShare(vec3 rgb) {
     return smoothstep(satLightU.z, satLightU.w, sat) * level;
 }
 
+// The guide I of one whyLow pixel (prepare's): max(Y709, max / 2) of the light x AE.
+float guideOf(vec3 rgb) {
+    vec3 lin = max(rgb, vec3(0.0)) * (aeU > 0.0 ? aeU : 1.0);
+    if (isnan(lin.r) || isinf(lin.r)) lin.r = 1.0;
+    if (isnan(lin.g) || isinf(lin.g)) lin.g = 1.0;
+    if (isnan(lin.b) || isinf(lin.b)) lin.b = 1.0;
+    return max(lin.r * 0.2126 + lin.g * 0.7152 + lin.b * 0.0722, max(max(lin.r, lin.g), lin.b) * 0.5);
+}
+
 // Guide, weights and lumas of one whyLow pixel [gf_prepare_weights].
 void prepare(vec3 rgb, out float I, out vec4 p, out vec4 L) {
     float ae = aeU > 0.0 ? aeU : 1.0;
@@ -80,6 +94,7 @@ void prepare(vec3 rgb, out float I, out vec4 p, out vec4 L) {
     vec4 d = L - vec4(center);
     float var = max(smoothness * smoothness, 0.001);
     vec4 w = exp(-0.5 * (d * d) / var) * lw + 0.000001;
+    if (deepFloorU > 0.0 && d.w < 0.0) w.w = max(w.w, exp(-0.5 * deepFloorU * deepFloorU) * lw.w + 0.000001);
     p = w / (w.x + w.y + w.z + w.w);
 }
 
@@ -97,6 +112,7 @@ float fusedAt(float I, float sw) {
     vec4 L = pow(max(acescg(I * em, toe), vec4(0.000001)), vec4(gammaInv));
     vec4 d = L - vec4(center);
     vec4 w = exp(-0.5 * (d * d) / max(smoothness * smoothness, 0.001)) * lw + 0.000001;
+    if (deepFloorU > 0.0 && d.w < 0.0) w.w = max(w.w, exp(-0.5 * deepFloorU * deepFloorU) * lw.w + 0.000001);
     return dot(w, L) / (w.x + w.y + w.z + w.w);
 }
 

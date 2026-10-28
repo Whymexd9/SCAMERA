@@ -40,6 +40,9 @@ import java.util.concurrent.Executors;
  * films a negative is printed on), «Формат» (the frame's size: the grain, the halation and the film's softness follow it) and
  * «Эффекты» (grain, halation, softness, the film's and the print's exposure, the print's tone, the strength). Every choice is
  * stored at once and redraws the preview; the photo and the viewfinder take it at the next frame (FilmChain).
+ * P380 (owner, 2026-10-28: the pair with Unspektrawesome's SPEKTRA): «Эффекты» starts with the film's camera diffusion (Нет /
+ * Glimmerglass / Black Pro-Mist / Pro-Mist / CineBloom) and its «Сила фильтра» (the grade 0 .. 2, stored x 100), and has
+ * «Цветоразделение (DIR)» (the DIR couplers' amount, 0 .. 100 %) for the measured colour stocks; «Формат» lists 65 mm and IMAX 70.
  */
 public class FilmSimPreference extends Preference implements SharedPreferences.OnSharedPreferenceChangeListener, PageReset.Resettable {
     private static final ExecutorService WORKER = Executors.newSingleThreadExecutor(r -> {
@@ -88,6 +91,17 @@ public class FilmSimPreference extends Preference implements SharedPreferences.O
     public boolean resetToDefault() {
         final SharedPreferences p = getSharedPreferences();
         if (p == null) return false;
+        final boolean any = resetKeys(p);
+        fill();
+        redrawPreview();
+        return any;
+    }
+
+    /**
+     * The page reset's values (P382: the LUT tray's «Плёнка» tab double tap too): every key of the film - the stock, the print, the
+     * format and every effect - loses its stored value; true when one was stored (other than «no film»).
+     */
+    public static boolean resetKeys(SharedPreferences p) {
         boolean stored = false, any = false;
         final java.util.Map<String, ?> all = p.getAll();
         final SharedPreferences.Editor e = p.edit();
@@ -98,10 +112,7 @@ public class FilmSimPreference extends Preference implements SharedPreferences.O
             // «no film» stored is the default already
             if (!FilmSim.STOCK_KEY.equals(k) || !String.valueOf(all.get(k)).isEmpty()) any = true;
         }
-        if (!stored) return false;
-        e.apply();
-        fill();
-        redrawPreview();
+        if (stored) e.apply();
         return any;
     }
 
@@ -268,6 +279,31 @@ public class FilmSimPreference extends Preference implements SharedPreferences.O
                 break;
             }
             default: {
+                // P380: the film's camera diffusion first (spektrafilm's order: the camera's filter, then the film)
+                final String diffusion = storedDiffusion();
+                final String[] ids = FilmSim.DIFFUSIONS;
+                final String[] names = new String[ids.length];
+                int on = 0;
+                for (int i = 0; i < ids.length; i++) {
+                    names[i] = FilmSim.diffusionName(c, ids[i]);
+                    if (ids[i].equals(diffusion)) on = i;
+                }
+                final TextView label = SettingsStyle.text(c, Lang.t(c, "Диффузия", "Diffusion"), 14.5f, UiTokens.TEXT);
+                label.setPadding(UiTokens.dp(c, 6), UiTokens.dp(c, 2), UiTokens.dp(c, 6), UiTokens.dp(c, 6));
+                content.addView(label);
+                final String help = com.particlesdevs.photoncamera.settings.ParamHelp.of(c, FilmSim.DIFFUSION_KEY);
+                if (help != null) label.setOnLongClickListener(v -> { showHelp(c, label.getText(), help); return true; });
+                final LinearLayout[] diffusionChips = new LinearLayout[1];
+                diffusionChips[0] = chips(c, names, "film_diffusion_", i -> {
+                    store(FilmSim.DIFFUSION_KEY, ids[i]);
+                    paintChips(diffusionChips[0], i);
+                    fill();
+                });
+                content.addView(diffusionChips[0]);
+                paintChips(diffusionChips[0], on);
+                if (!ids[on].isEmpty())
+                    slider(c, FilmSim.DIFFUSION_STRENGTH_KEY, Lang.t(c, "Сила фильтра", "Filter strength"), 0, 2, .05f,
+                            FilmSim.DIFFUSION_DEFAULT, "", 100);
                 slider(c, FilmSim.GRAIN_KEY, Lang.t(c, "Зерно", "Grain"), 0, 200, 1, 100, "%");
                 slider(c, FilmSim.HALATION_KEY, Lang.t(c, "Ореол", "Halation"), 0, 400, 1, 100, "%");
                 slider(c, FilmSim.SOFTNESS_KEY, Lang.t(c, "Мягкость плёнки", "Film softness"), 0, 300, 1, 100, "%");
@@ -278,6 +314,9 @@ public class FilmSimPreference extends Preference implements SharedPreferences.O
                         -30, 30, 1, 0, " CC");
                 slider(c, FilmSim.PRINT_Y_KEY, Lang.t(c, "Фильтр Y увеличителя (желтее … синее)", "Enlarger Y filter (more yellow … bluer)"),
                         -30, 30, 1, 0, " CC");
+                // P380: the DIR couplers' amount (the measured colour stocks: our black-and-white model has none)
+                if (stock == null || stock.spectral != null)
+                    slider(c, FilmSim.DIR_KEY, Lang.t(c, "Цветоразделение (DIR)", "Colour separation (DIR)"), 0, 100, 1, 100, "%");
                 slider(c, FilmSim.STRENGTH_KEY, Lang.t(c, "Сила симуляции", "Simulation strength"), 0, 100, 1, 100, "%");
                 // P357: every slider of the tab back to its default
                 final TextView all = SettingsStyle.text(c, Lang.t(c, "↺ Сбросить все ползунки", "↺ Reset all sliders"), 13.5f, SettingsStyle.accent(c));
@@ -289,8 +328,8 @@ public class FilmSimPreference extends Preference implements SharedPreferences.O
                 });
                 content.addView(all);
                 // P369: approximate - the preview's film works on a finished sample picture, the photo's on the scene light
-                note(c, Lang.t(c, "Превью показывает зерно, ореол и мягкость примерно как на фото в полном размере (кусок кадра 1:1). В видоискателе — только цвет и тон плёнки.",
-                        "The preview shows the grain, halation and softness roughly as on the full-size photo (a 1:1 crop). The viewfinder shows the film's colour and tone only."));
+                note(c, Lang.t(c, "Превью показывает диффузию, зерно, ореол и мягкость примерно как на фото в полном размере (кусок кадра 1:1). В видоискателе — цвет, тон и диффузия плёнки.",
+                        "The preview shows the diffusion, grain, halation and softness roughly as on the full-size photo (a 1:1 crop). The viewfinder shows the film's colour, tone and diffusion."));
             }
         }
     }
@@ -357,8 +396,22 @@ public class FilmSimPreference extends Preference implements SharedPreferences.O
         return scroll;
     }
 
+    /** P380: the stored diffusion (none when no film is on to read it from). */
+    private String storedDiffusion() {
+        final String id = stored(FilmSim.DIFFUSION_KEY, "");
+        return com.particlesdevs.photoncamera.processing.color.LensFilters.index(id) > 0 ? id : "";
+    }
+
     /** A setting's slider row: the title, the value, the bar; stored when let go. */
     private void slider(Context c, String key, String title, float min, float max, float step, float def, String unit) {
+        slider(c, key, title, min, max, step, def, unit, 1);
+    }
+
+    /**
+     * A slider showing {@code min .. max} that stores the value x {@code scale} (P380: the diffusion's grade 0 .. 2 stored as
+     * 0 .. 200; 1 the others, stored as shown).
+     */
+    private void slider(Context c, String key, String title, float min, float max, float step, float def, String unit, int scale) {
         final int accent = SettingsStyle.accent(c);
         final LinearLayout row = new LinearLayout(c);
         row.setOrientation(LinearLayout.VERTICAL);
@@ -371,7 +424,10 @@ public class FilmSimPreference extends Preference implements SharedPreferences.O
         head.addView(value);
         row.addView(head);
         float v;
-        try { v = Float.parseFloat(stored(key, String.valueOf(def)).replace(',', '.')); } catch (NumberFormatException e) { v = def; }
+        try { v = Float.parseFloat(stored(key, String.valueOf(def * scale)).replace(',', '.')) / scale; } catch (NumberFormatException e) { v = def; }
+        // stored as the page has always stored it: two decimals below a step of 1, else a whole number (x scale)
+        final java.util.function.Function<Float, String> storedText = x -> step * scale < 1
+                ? String.format(Locale.ROOT, "%.2f", x * scale) : String.valueOf(Math.round(x * scale));
         final SeekBar bar = new SeekBar(c);
         bar.setTag("film_" + key);
         bar.setMax(Math.max(1, Math.round((max - min) / step)));
@@ -380,7 +436,9 @@ public class FilmSimPreference extends Preference implements SharedPreferences.O
         bar.setThumbTintList(ColorStateList.valueOf(accent));
         final java.util.function.IntFunction<String> text = p -> {
             final float x = min + p * step;
-            return (step < 1 ? String.format(Locale.ROOT, step < .1f ? "%+.2f" : "%+.1f", x) : String.valueOf(Math.round(x))) + unit;
+            // P380: a value of no sign (the diffusion's grade) without a plus
+            return (step < 1 ? String.format(Locale.ROOT, step < .1f ? (min < 0 ? "%+.2f" : "%.2f") : (min < 0 ? "%+.1f" : "%.1f"), x)
+                    : String.valueOf(Math.round(x))) + unit;
         };
         value.setText(text.apply(bar.getProgress()));
         bar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
@@ -388,14 +446,14 @@ public class FilmSimPreference extends Preference implements SharedPreferences.O
             @Override public void onStartTrackingTouch(SeekBar s) { s.getParent().requestDisallowInterceptTouchEvent(true); }
             @Override public void onStopTrackingTouch(SeekBar s) {
                 final float x = min + s.getProgress() * step;
-                store(key, step < 1 ? String.format(Locale.ROOT, "%.2f", x) : String.valueOf(Math.round(x)));
+                store(key, storedText.apply(x));
             }
         });
         row.addView(bar, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, UiTokens.dp(c, 36)));
         // P357: a double tap puts the default back
         final Runnable reset = () -> {
             bar.setProgress(Math.round((def - min) / step));
-            store(key, step < 1 ? String.format(Locale.ROOT, "%.2f", def) : String.valueOf(Math.round(def)));
+            store(key, storedText.apply(def));
         };
         com.particlesdevs.photoncamera.ui.controls.DoubleTapReset.attach(bar, reset);
         com.particlesdevs.photoncamera.ui.controls.DoubleTapReset.attach(row, reset);

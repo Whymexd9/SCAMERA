@@ -256,7 +256,7 @@ final class LiveRawRenderer {
             GLES20.glUniform4fv(loc("u_exp_mults"),1,meter.multipliers,0);
             integer("mirror",mirror?1:0);integer("peaking_enabled",peaking);integer("u_linear_out",linear?1:0);
             integer("u_signed_hue",com.particlesdevs.photoncamera.processing.opengl.postpipeline.WhyTone.signedHue()?1:0); // P370 (B2)
-            if(linear)lastView=new com.particlesdevs.photoncamera.processing.LiveWhyMeter.View(f,crop[0],crop[1],crop[2],crop[3],transform);
+            if(linear)lastView=new com.particlesdevs.photoncamera.processing.LiveWhyMeter.View(f,crop[0],crop[1],crop[2],crop[3],transform,rotation,mirror);
             GLES20.glUniform3f(loc("peaking_color"),1,.8f,0);
             GLES20.glUniformMatrix4fv(loc("texRotate"),1,false,rotation,0);
             vertices.position(0);coords.position(0);
@@ -381,7 +381,7 @@ final class LiveRawRenderer {
             GLES20.glUniform1f(loc(p,"u_lsc_intensity"),f.shadingWidth>1?1:0);
             GLES20.glUniform1i(loc(p,"mirror"),mirror?1:0);GLES20.glUniform1i(loc(p,"u_ldc_enabled"),0);
             GLES20.glUniformMatrix4fv(loc(p,"texRotate"),1,false,rotation,0);
-            lastView=new com.particlesdevs.photoncamera.processing.LiveWhyMeter.View(f,crop[0],crop[1],crop[2],crop[3],transform);
+            lastView=new com.particlesdevs.photoncamera.processing.LiveWhyMeter.View(f,crop[0],crop[1],crop[2],crop[3],transform,rotation,mirror);
             logDraw(f);
             return true;
         } catch(RuntimeException e) {

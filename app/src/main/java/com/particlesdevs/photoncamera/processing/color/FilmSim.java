@@ -40,9 +40,29 @@ public final class FilmSim {
             GRAIN_KEY = "pref_film_sim_grain", HALATION_KEY = "pref_film_sim_halation", SOFTNESS_KEY = "pref_film_sim_softness",
             EXPOSURE_KEY = "pref_film_sim_exposure", PRINT_EV_KEY = "pref_film_sim_print_ev", TONE_KEY = "pref_film_sim_tone",
             STRENGTH_KEY = "pref_film_sim_strength", PRINT_M_KEY = "pref_film_sim_print_m", PRINT_Y_KEY = "pref_film_sim_print_y";
-    /** Every stored key (the lab, the backups). */
+    /**
+     * P380 (owner, 2026-10-28: «Займись симуляцией плёнки, она у нас не работает как должна» - the pair with Unspektrawesome's
+     * SPEKTRA, its recipe a Pro-Mist 2.0 on IMAX 70 with the DIR couplers at 0): the film's own camera diffusion (""
+     * none, else a LensFilters.IDS family: Glimmerglass, Black Pro-Mist, Pro-Mist, CineBloom), its grade x 100 (0 .. 200, 50 =
+     * spektrafilm's 0.5) and the DIR couplers' amount in % (0 .. 100, 100 = spektrafilm's default, today's colours; review: above it
+     * the exposure before the couplers stops rising in some layer from ~148 % on 14 of the 20 colour stocks - greys go blue / orange
+     * and tones invert - so the range ends at the stocks' own amount).
+     */
+    public static final String DIFFUSION_KEY = "pref_film_sim_diffusion", DIFFUSION_STRENGTH_KEY = "pref_film_sim_diffusion_strength",
+            DIR_KEY = "pref_film_sim_dir";
+    /** Every stored key (the lab, the backups, the pages' and the tray's resets). */
     public static final String[] KEYS = {STOCK_KEY, PRINT_KEY, FORMAT_KEY, GRAIN_KEY, HALATION_KEY, SOFTNESS_KEY, EXPOSURE_KEY,
-            PRINT_EV_KEY, TONE_KEY, PRINT_M_KEY, PRINT_Y_KEY, STRENGTH_KEY};
+            PRINT_EV_KEY, TONE_KEY, PRINT_M_KEY, PRINT_Y_KEY, STRENGTH_KEY, DIFFUSION_KEY, DIFFUSION_STRENGTH_KEY, DIR_KEY};
+    /** P380: the diffusion's default grade (spektrafilm's DiffusionFilterParams.strength 0.5) and the couplers' default amount. */
+    public static final float DIFFUSION_DEFAULT = .5f, DIR_DEFAULT = 1f;
+    /** P380: the film's diffusions offered, in spektrafilm's order ("" none; Pro-Mist is stored as LensFilters.PEARLESCENT). */
+    public static final String[] DIFFUSIONS = {LensFilters.NONE, LensFilters.GLIMMERGLASS, LensFilters.BLACK_PRO_MIST,
+            LensFilters.PEARLESCENT, LensFilters.CINEBLOOM};
+
+    /** P380: a diffusion's name («Нет» for none). */
+    public static String diffusionName(@Nullable android.content.Context c, @Nullable String id) {
+        return LensFilters.name(c, id);
+    }
 
     public static final int NEGATIVE = 0, CINE = 1, SLIDE = 2, BW_NEGATIVE = 3, BW_REVERSAL = 4;
 
@@ -229,7 +249,11 @@ public final class FilmSim {
 
     // ───── the formats
 
-    /** A film format: its frame's long edge (mm). 0: no format (no grain, halation or film softness). */
+    /**
+     * A film format: its frame's long edge (mm). 0: no format (no grain, halation or film softness). P380: 65 mm and IMAX 70 with
+     * spektrafilm-ofx's long edges (Aedan Diez, https://github.com/chaert-s/spektrafilm-ofx, GPL-3.0: filmFormatMm;
+     * assets/film/NOTICE-spektrafilm-ofx.txt).
+     */
     public static final class Format {
         public final String id, name;
         public final float longMm;
@@ -249,9 +273,13 @@ public final class FilmSim {
             new Format("super16", "Super 16", 12.52f),
             new Format("super35", "Super 35", 24.89f),
             new Format("135", "35 mm", 36f),
+            new Format("65mm", "65 mm", 52.48f),
             new Format("645", "645", 56f),
             new Format("67", "6×7", 70f),
+            new Format("imax70", "IMAX 70", 70.41f),
     };
+    /** The default format's id (35 mm). */
+    public static final String DEFAULT_FORMAT = "135";
 
     /** P286: the P281 ids (stored settings) to the reference model's. */
     private static final String[][] OLD_IDS = {{"portra160", "kodak_portra_160"}, {"portra400", "kodak_portra_400"},
@@ -293,7 +321,23 @@ public final class FilmSim {
 
     public static Format format(@Nullable String id) {
         if (id != null) for (Format f : FORMATS) if (f.id.equals(id)) return f;
-        return FORMATS[6];
+        // P380: the default by its id (the list grew)
+        for (Format f : FORMATS) if (f.id.equals(DEFAULT_FORMAT)) return f;
+        throw new IllegalStateException("no default format");
+    }
+
+    /**
+     * P380: the grain's final blur (um of film) on a frame of {@code longMm}: spektrafilm-ofx's grainFinalBlurUm 11.8 um x
+     * (format / 35 mm)^0.62 (grainFinalBlurFormatScale) - finer on a small frame, wider on a large one; the classic
+     * (black-and-white) stocks' grain does not take it.
+     */
+    public static float grainBlurUm(Format f) {
+        return FilmSpectral.GRAIN_BLUR_UM * grainBlurScale(f.longMm);
+    }
+
+    /** (longMm / 35)^0.62, the reference's floor 1e-6 on the ratio. */
+    public static float grainBlurScale(float longMm) {
+        return (float) Math.pow(Math.max(longMm / 35.0, 1e-6), 0.62);
     }
 
     public static String typeName(@Nullable android.content.Context c, Stock s) {
@@ -330,6 +374,12 @@ public final class FilmSim {
          */
         public final float grain, halation, softness, exposure, printEv, tone, strength;
         public final float printM, printY;
+        /**
+         * P380: the film's camera diffusion ("" none, a LensFilters.IDS family), its grade (0 .. 2, spektrafilm's strength) and the
+         * DIR couplers' amount (0 .. 1, 1 spektrafilm's default).
+         */
+        public final String diffusion;
+        public final float diffusionGrade, couplers;
 
         public Settings(Stock stock, Print print, Format format, float grain, float halation, float softness, float exposure,
                         float printEv, float tone, float strength) {
@@ -338,6 +388,17 @@ public final class FilmSim {
 
         public Settings(Stock stock, Print print, Format format, float grain, float halation, float softness, float exposure,
                         float printEv, float tone, float printM, float printY, float strength) {
+            this(stock, print, format, grain, halation, softness, exposure, printEv, tone, printM, printY, strength, "", DIFFUSION_DEFAULT,
+                    DIR_DEFAULT);
+        }
+
+        /** P380: with the film's diffusion ({@code diffusion} "" none, its grade) and the DIR couplers' amount. */
+        public Settings(Stock stock, Print print, Format format, float grain, float halation, float softness, float exposure,
+                        float printEv, float tone, float printM, float printY, float strength, @Nullable String diffusion,
+                        float diffusionGrade, float couplers) {
+            this.diffusion = diffusion == null || LensFilters.index(diffusion) <= 0 ? "" : diffusion;
+            this.diffusionGrade = diffusionGrade;
+            this.couplers = couplers;
             this.printM = printM;
             this.printY = printY;
             this.stock = stock;
@@ -352,10 +413,42 @@ public final class FilmSim {
             this.strength = strength;
         }
 
-        /** What the LUT depends on (the effects do not change it). */
+        /** What the LUT depends on (the effects do not change it); P380: the couplers' amount its 8th field. */
         public String lutKey() {
             return stock.id + "|" + (stock.reversal() ? "-" : print.id) + "|" + fmt(exposure) + "|" + fmt(printEv) + "|" + fmt(tone)
-                    + "|" + fmt(printM) + "|" + fmt(printY);
+                    + "|" + fmt(printM) + "|" + fmt(printY) + "|" + fmt(couplers);
+        }
+
+        /**
+         * P380: the film's diffusion as a deflected share of the light: DiffusionModel.scatterAtGrade of its family at its grade x
+         * «Сила симуляции» (as {@link #halationAmounts}); 0 without one.
+         */
+        public double diffusionP() {
+            if (diffusion.isEmpty()) return 0.0;
+            return DiffusionModel.scatterAtGrade(diffusion, diffusionGrade) * strength;
+        }
+
+        /**
+         * P380: the frame (um) the film's diffusion is sized on - the format's long edge (spektrafilm sizes the camera filter by
+         * the film's pixel size), the lens filter's 36 mm frame (DiffusionModel.FRAME_UM) without a format.
+         */
+        public double diffusionFrameUm() {
+            return format.longMm > 0 ? format.longMm * 1000.0 : DiffusionModel.FRAME_UM;
+        }
+
+        /**
+         * P380: the recipe for the photo's EXIF description (written only with a film): stock, print, format, diffusion, the
+         * effects, the couplers, the exposures and filters, the strength.
+         */
+        public String recipe() {
+            return String.format(Locale.ROOT, "%s %s; print %s; format %s; diffusion %s; grain %d %%; halation %d %%; softness %d %%;"
+                            + " DIR couplers %d %%; film exposure %+.1f EV; print exposure %+.2f EV; contrast %d; enlarger M %d Y %d CC;"
+                            + " strength %d %%",
+                    stock.brand, stock.name, stock.reversal() ? "none (projected)" : print.brand + " " + print.name,
+                    format.longMm <= 0 ? "off" : format.name.replace('×', 'x'),
+                    diffusion.isEmpty() ? "none" : LensFilters.name(null, diffusion) + String.format(Locale.ROOT, " %.2f", diffusionGrade),
+                    Math.round(grain * 100), Math.round(halation * 100), Math.round(softness * 100), Math.round(couplers * 100),
+                    exposure, printEv, Math.round(tone * 100), Math.round(printM), Math.round(printY), Math.round(strength * 100));
         }
 
         /**
@@ -395,8 +488,10 @@ public final class FilmSim {
             if (p.length < 7) return null;
             final Stock stock = stock(p[0]);
             if (stock == null) return null;
+            // P380: the couplers' amount the 8th field; a key of seven (before it) is at the default amount
+            final float couplers = p.length >= 8 ? clamp(number(p[7], DIR_DEFAULT), 0f, 1f) : DIR_DEFAULT;
             return new Settings(stock, print(p[1].equals("-") ? "" : p[1], stock), FORMATS[0], 0f, 0f, 0f, number(p[2], 0f),
-                    number(p[3], 0f), number(p[4], 0f), number(p[5], 0f), number(p[6], 0f), strength);
+                    number(p[3], 0f), number(p[4], 0f), number(p[5], 0f), number(p[6], 0f), strength, "", DIFFUSION_DEFAULT, couplers);
         }
     }
 
@@ -415,7 +510,7 @@ public final class FilmSim {
             if (stock == null) return null;
             final float strength = clamp(number(m.getString(scope, STRENGTH_KEY, "100"), 100f) / 100f, 0f, 1f);
             if (strength <= 0f) return null;
-            return new Settings(stock, print(m.getString(scope, PRINT_KEY, ""), stock), format(m.getString(scope, FORMAT_KEY, "135")),
+            return new Settings(stock, print(m.getString(scope, PRINT_KEY, ""), stock), format(m.getString(scope, FORMAT_KEY, DEFAULT_FORMAT)),
                     clamp(number(m.getString(scope, GRAIN_KEY, "100"), 100f) / 100f, 0f, 2f),
                     clamp(number(m.getString(scope, HALATION_KEY, "100"), 100f) / 100f, 0f, 4f),
                     clamp(number(m.getString(scope, SOFTNESS_KEY, "100"), 100f) / 100f, 0f, 3f),
@@ -423,10 +518,22 @@ public final class FilmSim {
                     clamp(number(m.getString(scope, PRINT_EV_KEY, "0"), 0f), -2f, 2f),
                     clamp(number(m.getString(scope, TONE_KEY, "0"), 0f) / 100f, -1f, 1f),
                     clamp(number(m.getString(scope, PRINT_M_KEY, "0"), 0f), -50f, 50f),
-                    clamp(number(m.getString(scope, PRINT_Y_KEY, "0"), 0f), -50f, 50f), strength);
+                    clamp(number(m.getString(scope, PRINT_Y_KEY, "0"), 0f), -50f, 50f), strength,
+                    m.getString(scope, DIFFUSION_KEY, ""), diffusionGrade(m.getString(scope, DIFFUSION_STRENGTH_KEY, "50")),
+                    couplers(m.getString(scope, DIR_KEY, "100")));
         } catch (RuntimeException e) {
             return null;
         }
+    }
+
+    /** P380: the stored diffusion grade (x 100, 0 .. 200; 50 by default) as the grade 0 .. 2. */
+    public static float diffusionGrade(@Nullable String stored) {
+        return clamp(number(stored, DIFFUSION_DEFAULT * 100f) / 100f, 0f, 2f);
+    }
+
+    /** P380: the stored couplers' amount (%, 0 .. 100; 100 by default) as 0 .. 1. */
+    public static float couplers(@Nullable String stored) {
+        return clamp(number(stored, DIR_DEFAULT * 100f) / 100f, 0f, 1f);
     }
 
     static float number(@Nullable String v, float fallback) {
@@ -765,7 +872,8 @@ public final class FilmSim {
     static FilmSpectral.Engine engine(Settings set) {
         if (set.stock.spectral == null) return null;
         try {
-            return FilmSpectral.engine(set.stock.spectral, set.print.id, set.exposure, set.printEv, set.printM, set.printY, gamma(set.tone));
+            return FilmSpectral.engine(set.stock.spectral, set.print.id, set.exposure, set.printEv, set.printM, set.printY, gamma(set.tone),
+                    set.couplers);
         } catch (java.io.IOException | RuntimeException e) {
             com.particlesdevs.photoncamera.util.Log.e("FilmSim", "film data " + set.stock.id + ": " + e);
             return null;

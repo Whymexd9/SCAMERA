@@ -100,4 +100,40 @@ public class ParametersBlockScanTest {
             assertEquals("the scan leaves the frame's buffer as it was", 0, data.position());
         }
     }
+
+    @Test public void aQuadStreamIsReadAtEachColoursOwnSites() {
+        // P386: a GRBG Quad (block 2) frame, each colour a 2x2 square of a 4x4 cell at its own level (G 300, R 100, B 200). Read as
+        // plain Bayer every channel was the top-left square's green; at block 2 the channels are G, R, B, G (sites (c & 1) x 2,
+        // (c >> 1) x 2), and a Tetra (block 4) frame the same at its 8x8 cells.
+        for (int block : new int[]{2, 4}) {
+            final int w = 1024, h = 768, bw = w / 2 / 32, bh = h / 2 / 32;
+            ByteBuffer b = ByteBuffer.allocateDirect(w * h * 2).order(ByteOrder.nativeOrder());
+            ShortBuffer s = b.asShortBuffer();
+            for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) {
+                final int phase = ((y / block) & 1) * 2 + ((x / block) & 1);
+                s.put(y * w + x, (short) (phase == 1 ? 100 : phase == 2 ? 200 : 300));
+            }
+            final float[] expected = {300, 100, 200, 300};
+            for (boolean bulk : new boolean[]{true, false}) {
+                final Parameters.BlockScan plain = Parameters.BlockScan.of(b.asShortBuffer(), w, bw, bh, 16f, bulk);
+                final Parameters.BlockScan scan = Parameters.BlockScan.of(b.asShortBuffer(), w, bw, bh, 16f, bulk, block);
+                for (int c = 0; c < 4; c++) for (int i = 0; i < bw * bh; i++) {
+                    assertEquals("read as plain Bayer: the top-left colour", 300f, plain.means[c][i], 0f);
+                    assertEquals("block " + block + " channel " + c, expected[c], scan.means[c][i], 0f);
+                    assertEquals((int) expected[c], scan.smallest[c][i]);
+                }
+            }
+        }
+    }
+
+    @Test public void blockOneIsThePlainScan() {
+        // block 1 (and any block that is not 2 or 4) reads the samples P371's scan read
+        final int w = 1024, h = 768, bw = w / 2 / 32, bh = h / 2 / 32;
+        for (int kind = 0; kind < 4; kind++) {
+            final ShortBuffer data = frame(w, h, 7L * kind + 3, kind);
+            final Old old = new Old(data, w, bw, bh, 16f);
+            assertSame(old, Parameters.BlockScan.of(data, w, bw, bh, 16f, true, 1));
+            assertSame(old, Parameters.BlockScan.of(data, w, bw, bh, 16f, false, 3));
+        }
+    }
 }

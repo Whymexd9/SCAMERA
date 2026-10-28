@@ -6534,6 +6534,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             m.crop = crop;
             m.block = block;
             m.sensorIso = colorResult.get(CaptureResult.SENSOR_SENSITIVITY);
+            // P383: the frame's own exposure for the viewfinder - only from its own result (the mosaic preview may develop a frame
+            // with an older result: unknown then, the viewfinder holds its exposure)
+            final Long resultTs = matchedResult.get(CaptureResult.SENSOR_TIMESTAMP);
+            if (resultTs != null && resultTs == img.getTimestamp()) m.exposureNs = colorResult.get(CaptureResult.SENSOR_EXPOSURE_TIME);
             m.analogIso = c == null ? null : c.get(CameraCharacteristics.SENSOR_MAX_ANALOG_SENSITIVITY);
             m.automatic = automatic;
             m.shotNoise = shotNoise;

@@ -219,6 +219,26 @@ public class SessionKeysTest {
                 SessionKeys.changed(null, Collections.singletonMap("pref_wide169_key", "true")));
     }
 
+    /**
+     * P384: the module's «Режим сенсора» row (SensorModePick, the session's RAW size and mode key) takes a new session of its own
+     * module: it is in the build's snapshot, another module's is not.
+     */
+    @Test
+    public void aModulesSensorModeRowTakesANewSession() {
+        final String back1 = com.particlesdevs.photoncamera.capture.SensorModePick.prefKey("back1");
+        assertEquals("pref_sensorconfig_back1_sensormoderow", back1);
+        assertTrue(SessionKeys.needsNewSession(back1));
+        assertTrue(SessionKeys.needsNewSession(com.particlesdevs.photoncamera.capture.SensorModePick.prefKey("front0")));
+        Map<String, Object> all = new HashMap<>();
+        all.put(back1, "3");
+        all.put(com.particlesdevs.photoncamera.capture.SensorModePick.prefKey("back0"), "1");
+        Map<String, String> built = SessionKeys.snapshot(all, "back1");
+        assertTrue(built.containsKey(back1));
+        assertFalse("another module's row", built.containsKey("pref_sensorconfig_back0_sensormoderow"));
+        all.put(back1, "-1");
+        assertEquals(Collections.singletonList(back1), SessionKeys.changed(built, SessionKeys.snapshot(all, "back1")));
+    }
+
     /** CaptureController compares the settings now with the ones its last session was built with. */
     @Test
     public void theControllerComparesWithItsLastSession() throws Exception {

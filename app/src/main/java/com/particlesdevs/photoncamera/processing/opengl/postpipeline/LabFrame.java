@@ -20,7 +20,9 @@ import org.json.JSONObject;
  *   <li>ScamRgb: the per-channel clip levels (highlight recovery);</li>
  *   <li>ScamDenoise: the brightness of the finish input (p50 / p90: its SNR, the sharpening's back-off) and the lens-shading
  *       term of the whole map;</li>
- *   <li>LensFilter: the frame's level and size (the knee, the streak length, the diffusion's PSF).</li>
+ *   <li>LensFilter: the frame's level and size (the knee, the streak length, the diffusion's PSF);</li>
+ *   <li>WhySky (P378 review): the sky cells of whyLow (WhySkyMask.Cells.pack, its grid): a fragment decides the sky on the whole
+ *       frame's cells and takes them at its place.</li>
  * </ul>
  */
 public final class LabFrame {
@@ -41,6 +43,17 @@ public final class LabFrame {
     boolean lscNone;
     float lensExpo = Float.NaN;
     int width, height;
+    /** P378 review: the whole frame's sky cells (WhySkyMask.Cells.pack) and their grid {nx, ny, cell, step}; null: not recorded. */
+    @Nullable float[] skyCells;
+    @Nullable int[] skyGrid;
+
+    /** P378 review: the whole frame's sky cells, scaled to {@code inScale} (null when none were recorded or they do not fit). */
+    @Nullable WhySkyMask.Cells skyCells(float inScale) {
+        if (skyCells == null || skyGrid == null || skyGrid.length != 4) return null;
+        final WhySkyMask.Cells c = WhySkyMask.Cells.unpack(skyGrid[0], skyGrid[1], skyGrid[2], skyGrid[3], skyCells);
+        if (c == null) return null;
+        return Float.isFinite(this.inScale) && this.inScale > 0f && inScale > 0f ? c.scaled(inScale / this.inScale) : c;
+    }
 
     @Nullable WhyAe.Stats stats(int mode) {
         return mode >= 0 && mode < MODES ? stats[mode] : null;
@@ -71,6 +84,11 @@ public final class LabFrame {
         o.put("lscNone", lscNone);
         put(o, "lensExpo", lensExpo);
         o.put("width", width).put("height", height);
+        if (skyCells != null && skyGrid != null) {
+            final JSONArray g = new JSONArray();
+            for (int v : skyGrid) g.put(v);
+            o.put("skyGrid", g).put("skyCells", floats(skyCells));
+        }
         return o;
     }
 
@@ -99,6 +117,12 @@ public final class LabFrame {
         f.lensExpo = get(o, "lensExpo");
         f.width = o.optInt("width", 0);
         f.height = o.optInt("height", 0);
+        if (o.has("skyCells") && o.has("skyGrid")) {
+            final JSONArray g = o.getJSONArray("skyGrid");
+            f.skyGrid = new int[g.length()];
+            for (int i = 0; i < g.length(); i++) f.skyGrid[i] = g.getInt(i);
+            f.skyCells = floats(o.getJSONArray("skyCells"));
+        }
         return f;
     }
 

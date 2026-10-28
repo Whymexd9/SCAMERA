@@ -117,6 +117,15 @@ public class ParseExif {
         data.IMAGE_DESCRIPTION = parameters.toString() + routeLine();
     }
 
+    /**
+     * P380: the description again once the shot's film is known (Parameters.filmRecipe, after PostPipeline.takeFilm): with a film it
+     * gains the recipe line; without one it is left as {@link #syncWithParameters} wrote it.
+     */
+    public static void describeFilm(ExifData data, Parameters parameters) {
+        if (parameters.filmRecipe == null || parameters.filmRecipe.isEmpty()) return;
+        data.IMAGE_DESCRIPTION = parameters.toString() + routeLine();
+    }
+
     /** "\n Route=SHDR": the merge every shot goes through (P129; older photos carry «Hybrid» / «SCAM HDR»). */
     static String routeLine() {
         return "\n Route=SHDR";

@@ -97,9 +97,6 @@ ALLOW = {
 
 # (e) Latin literals of the settings code shown as they are in both languages: file -> [(reason, literals)].
 ALLOW_LATIN = {
-    'com/particlesdevs/photoncamera/ui/settings/ModuleLensFragment.java': [
-        ('the camera id label (Camera ID is the term of the Russian text too)', [' · ID ', 'Camera ID · ']),
-    ],
     'com/particlesdevs/photoncamera/ui/settings/SettingsActivity.java': [
         ('the camera id label (Camera ID is the term of the Russian text too)', [' · ID ']),
         ('the photo file extension of the file name preview', ['.jpg']),

@@ -62,11 +62,12 @@ public final class FilmGrain extends Node {
                 com.particlesdevs.photoncamera.processing.opengl.GLFormat.DataType.FLOAT_16, 4));
         final GLTexture h = new GLTexture(in.mSize, noise.mFormat), v = new GLTexture(in.mSize, noise.mFormat);
         try {
-            // the white noise, blurred by the reference app's 11.8 um of film (P289), then seen through the print and the scan
+            // the white noise, blurred by the reference app's 11.8 um of film (P289) x (format / 35 mm)^0.62 (P380: spektrafilm-ofx's
+            // grainFinalBlurFormatScale), then seen through the print and the scan
             glProg.useAssetProgram("film/noise", false);
             glProg.setVar("seed", (float) (Math.abs(set.stock.id.hashCode()) % 9973));
             glProg.drawBlocks(noise);
-            final float blur = com.particlesdevs.photoncamera.processing.color.FilmSpectral.GRAIN_BLUR_UM / um;
+            final float blur = FilmSim.grainBlurUm(set.format) / um;
             glProg.useAssetProgram("film/blur", false);
             glProg.setTexture("InputBuffer", noise);
             glProg.setVar("dir", 1f, 0f);

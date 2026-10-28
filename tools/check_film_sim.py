@@ -47,8 +47,10 @@ GREY, LO, SPAN = 0.184, -10.0, 20.0          # FilmSim.FILM_GREY, LOG_LO, LOG_SP
 METER_TO_FILM = 0.184 / 0.15                 # FilmSim.METER_TO_FILM
 N = 41                                       # FilmSim.SCENE_SIZE
 VS = '#version 300 es\nvoid main(){vec2 p=vec2(float((gl_VertexID<<1)&2),float(gl_VertexID&2));gl_Position=vec4(p*2.-1.,0,1);}'
-# the defines WhyCombine sets (the photo) and LiveWhyTone's (the RAW viewfinder: POINT_FUSED, with RAW_SOURCE in the fused pass)
-PHOTO = ('P3_OUT', 'COLOUR_LOOK', 'TONE_OP', 'FILM_LUT', 'HL_LANDING', 'HEADROOM_WIDE', 'SUN_BLOOM')
+# the defines WhyCombine sets (the photo) and LiveWhyTone's (the RAW viewfinder: POINT_FUSED, with RAW_SOURCE in the fused pass);
+# P378's HL_OPPOSED with a film under 100 % (the landing kept: FILM_SIM + HL_LANDING + HL_OPPOSED), never SKY (WhySky.skip: none
+# with a film)
+PHOTO = ('P3_OUT', 'COLOUR_LOOK', 'TONE_OP', 'FILM_LUT', 'HL_LANDING', 'HEADROOM_WIDE', 'SUN_BLOOM', 'HL_OPPOSED')
 VIEW = ('P3_OUT', 'COLOUR_LOOK', 'TONE_OP', 'FILM_LUT')
 
 
@@ -449,7 +451,8 @@ def p3_part(gpu: Gpu) -> None:
 
 
 VARIANTS = ((), ('P3_OUT',), ('COLOUR_LOOK',), ('TONE_OP',), ('HL_LANDING',), ('HEADROOM_WIDE',), ('SUN_BLOOM',),
-            ('P3_OUT', 'COLOUR_LOOK', 'TONE_OP', 'HL_LANDING', 'HEADROOM_WIDE', 'SUN_BLOOM'), ('POINT_FUSED',),
+            ('HL_LANDING', 'HL_OPPOSED'), ('P3_OUT', 'COLOUR_LOOK', 'TONE_OP', 'HL_LANDING', 'HEADROOM_WIDE', 'SUN_BLOOM'),
+            ('P3_OUT', 'COLOUR_LOOK', 'TONE_OP', 'HL_LANDING', 'HEADROOM_WIDE', 'SUN_BLOOM', 'HL_OPPOSED'), ('POINT_FUSED',),
             ('POINT_FUSED', 'P3_OUT', 'COLOUR_LOOK', 'TONE_OP'), ('POINT_FUSED', 'RAW_SOURCE'),
             ('POINT_FUSED', 'RAW_SOURCE', 'P3_OUT', 'COLOUR_LOOK', 'TONE_OP'))
 

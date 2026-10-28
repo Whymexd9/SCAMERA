@@ -30,10 +30,13 @@ public final class DeviceDefaults {
      * developed-RAW viewfinder (pref_live_viewfinder_raw_key) on every module, which shows the photo's WHY tone. 7 (P365, owner,
      * 2026-10-27: «В арк камере тоже есть живой видоискатель, сделай его такимже по требованиям как там»): the Find X7 Ultra streams
      * RAW10 as the reference app does there (4096x3072 RAW10: its main camera's white level is 1023, nothing is lost), unpacked
-     * into the ZSL ring slot on arrival. A phone whose marker is older gets only the entries of the newer versions, so an update
-     * never resets the user's other settings.
+     * into the ZSL ring slot on arrival. 8 (P388, owner, 2026-10-28: «у оппо x8 ultra по дефолту на всех модулях должен быть Raw10
+     * чтобы не было проблем с уровнем чёрного»): the Find X8 Ultra's RAW10 again, on every module (v2 reached the main settings and
+     * the profiles of that day; the owner's log of 2026-10-27 opened cameras 2 and 4 at «auto»), and RAW10 is its default wherever
+     * none is stored ({@link #rawStreamDefault}). A phone whose marker is older gets only the entries of the newer versions, so an
+     * update never resets the user's other settings.
      */
-    static final int VERSION = 7;
+    static final int VERSION = 8;
     /** The package the Find X7 Ultra's camera service shows every lens to (owner's choice). */
     static final String X7U_SPOOF_PACKAGE = "com.ss.android.ugc.aweme";
     private DeviceDefaults() {}
@@ -77,7 +80,18 @@ public final class DeviceDefaults {
         }
         // v7 (P365): RAW10 on the Find X7 Ultra (CaptureController honours it only on a lens whose white level fits 10 bits)
         if (since < 7 && model.equals("PHY110")) out.put("pref_raw_stream_format", "raw10");
+        // v8 (P388): RAW10 on every module of the Find X8 Ultra once more (its RAW16 streams lose the black pedestal, P114 / P315)
+        if (since < 8 && model.equals("PKJ110")) out.put("pref_raw_stream_format", "raw10");
         return out;
+    }
+
+    /**
+     * P388: pref_raw_stream_format where none is stored (a module profile without the key, a reset, a config of another phone):
+     * RAW10 on the OPPO Find X8 Ultra and X7 Ultra (their factory values), else «auto».
+     */
+    public static String rawStreamDefault() {
+        final String model = Build.MODEL == null ? "" : Build.MODEL.toUpperCase(java.util.Locale.ROOT);
+        return "OPPO".equalsIgnoreCase(Build.MANUFACTURER) && (model.equals("PKJ110") || model.equals("PHY110")) ? "raw10" : "auto";
     }
 
     /**

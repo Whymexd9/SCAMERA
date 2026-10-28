@@ -62,6 +62,81 @@ public class PedestalFloorTest {
         assertTrue("a 64 -> 60 drift", Float.isNaN(measure(frame(60, 1.5, 0, 5))));
     }
 
+    /**
+     * P386: a daylight frame without its pedestal (vivo X200 Ultra camera 5, owner's zip 2026-10-28): the left half deep shade - each
+     * Bayer cell a dark gap (R 2, G 6, B 4 DN) or a lit twig (R 12, G 30, B 20) - the right half lit; the shot's noise model.
+     */
+    private static ByteBuffer daylight(long seed) {
+        Random random = new Random(seed);
+        ByteBuffer b = ByteBuffer.allocateDirect(W * H * 2).order(ByteOrder.nativeOrder());
+        ShortBuffer s = b.asShortBuffer();
+        for (int cy = 0; cy < H / 2; cy++) for (int cx = 0; cx < W / 2; cx++) {
+            final boolean gap = random.nextBoolean();
+            for (int p = 0; p < 4; p++) {
+                final int x = 2 * cx + (p & 1), y = 2 * cy + (p >> 1);
+                final int colour = p == 0 ? 0 : p == 3 ? 2 : 1;   // RGGB
+                final double[] rgb = x >= W / 2 ? new double[]{60, 120, 90} : gap ? new double[]{2, 6, 4} : new double[]{12, 30, 20};
+                final double signal = rgb[colour];
+                s.put(y * W + x, (short) Math.max(0, Math.round(signal + Math.sqrt(0.133 + 0.0678 * signal) * random.nextGaussian())));
+            }
+        }
+        return b;
+    }
+
+    @Test
+    public void aDaylightFrameWithoutItsPedestalTakesItsDarkestSamples() {
+        // its darkest block means still hold the twigs' light (~4.6 DN of red): taken as the black, the viewfinder subtracted that
+        // much too much - whites cool, red short in the shade; the smallest samples bound the black at ~1 DN
+        final float floor = measure(daylight(9));
+        assertFalse(Float.isNaN(floor));
+        assertTrue("the floor is the darkest samples', not the block means' ~4.6: " + floor, floor < 3f);
+    }
+
+    @Test
+    public void aPartlyLostPedestalKeepsTheBlockFloor() {
+        // P386 review: part of the pedestal lost at a high ISO (true black 20, read noise 5 DN): the smallest samples' noise tail
+        // reaches ~6 DN, the first fix took it - the viewfinder's shadows lifted magenta. Not near zero, nor held by dark blocks (they
+        // sit at ~22): the darkest block means are the floor
+        final float floor = measure(frame(20, 5, 0, 10));
+        assertFalse(Float.isNaN(floor));
+        assertTrue("the block means' floor, not the samples' tail: " + floor, floor > 17f && floor < 23f);
+        // a 2048x1536 frame (a 4096x3072 Quad stream's cell means): its noise tail reaches ~1 DN, in blocks that sit at ~22
+        final int w = 2048, h = 1536;
+        final Random random = new Random(12);
+        final ByteBuffer b = ByteBuffer.allocateDirect(w * h * 2).order(ByteOrder.nativeOrder());
+        final ShortBuffer s = b.asShortBuffer();
+        for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) {
+            final double signal = (x / 128 + y / 128) % 3 == 0 ? (((x ^ y) & 1) == 1 ? 120 : 60) : 2;
+            s.put(y * w + x, (short) Math.max(0, Math.round(20 + signal + 5 * random.nextGaussian())));
+        }
+        final float big = PedestalFloor.measure(b.duplicate().order(ByteOrder.nativeOrder()).asShortBuffer(), w, h, w, 1, 64f, 1023f);
+        assertTrue("full frame: " + big, big > 17f && big < 23f);
+    }
+
+    @Test
+    public void aSwitchedViewfinderGivesItsStreamTheFloor() throws Exception {
+        // P386: the photo of the session's stream without deep shade takes the floor the viewfinder proved (PedestalMemory)
+        MosaicBlockStore.setInstance(new MosaicBlockStore(MosaicBlockStore.memoryBacking()));
+        final String key = "5|4096x3072|vf-seed|5";
+        try {
+            MosaicStream.startSession(key);
+            PedestalFloor p = new PedestalFloor();
+            final float[] declared = {64, 64, 64, 64};
+            final ByteBuffer lost = daylight(11);
+            p.black(1, lost, W, H, W * 2, 1, declared, 1023f);
+            assertTrue("one measurement gives nothing", Float.isNaN(PedestalMemory.floor(key, 1023f)));
+            Thread.sleep(PedestalFloor.INTERVAL_NS / 1_000_000L + 20);
+            final float[] black = p.black(1, lost, W, H, W * 2, 1, declared, 1023f);
+            assertEquals("the viewfinder's floor is the stream's", black[0], PedestalMemory.floor(key, 1023f), 0f);
+            assertTrue(black[0] < 3f);
+            assertEquals("viewfinder", PedestalMemory.source(key));
+        } finally {
+            PedestalMemory.clear(key, "test");
+            MosaicStream.reset();
+            MosaicBlockStore.setInstance(null);
+        }
+    }
+
     @Test
     public void theViewfinderTakesTheFloorAfterTwoMeasurementsOfTheSession() throws Exception {
         PedestalFloor p = new PedestalFloor();

@@ -995,6 +995,22 @@ public class ScamLabFragment extends ModuleConceptFragment {
                 return slider(key, Lang.t(c, "Фильтр Y увеличителя, CC", "Enlarger Y filter, CC"), -30, 30, 1, "0");
             case com.particlesdevs.photoncamera.processing.color.FilmSim.STRENGTH_KEY:
                 return slider(key, Lang.t(c, "Сила симуляции", "Simulation strength"), 0, 100, 1, "100");
+            // P380: the film's camera diffusion, its grade (x 100) and the DIR couplers' amount
+            case com.particlesdevs.photoncamera.processing.color.FilmSim.DIFFUSION_KEY: {
+                s = new Spec(key, Spec.LIST);
+                final String[] ids = com.particlesdevs.photoncamera.processing.color.FilmSim.DIFFUSIONS;
+                s.values = ids.clone();
+                s.labels = new CharSequence[ids.length];
+                for (int i = 0; i < ids.length; i++) s.labels[i] = com.particlesdevs.photoncamera.processing.color.FilmSim.diffusionName(c, ids[i]);
+                s.def = "";
+                s.title = Lang.t(c, "Диффузия плёнки", "Film diffusion");
+                s.summary = Lang.t(c, "Диффузионный фильтр перед плёнкой, размер по формату кадра", "A diffusion filter in front of the film, sized by the frame format");
+                return s;
+            }
+            case com.particlesdevs.photoncamera.processing.color.FilmSim.DIFFUSION_STRENGTH_KEY:
+                return slider(key, Lang.t(c, "Сила диффузии, x100", "Diffusion grade, x100"), 0, 200, 5, "50");
+            case com.particlesdevs.photoncamera.processing.color.FilmSim.DIR_KEY:
+                return slider(key, Lang.t(c, "Цветоразделение (DIR), %", "Colour separation (DIR), %"), 0, 100, 1, "100");
             default:
                 return null;
         }
@@ -1141,6 +1157,12 @@ public class ScamLabFragment extends ModuleConceptFragment {
             if (FilmSim.stock(stock == null ? null : String.valueOf(stock)) == null) f.put(FilmSim.STOCK_KEY, FilmSim.STOCKS[0].id);
             if (!FilmSim.STRENGTH_KEY.equals(key) && PreferenceNumber.read(shot.get(FilmSim.STRENGTH_KEY), 100) <= 0)
                 f.put(FilmSim.STRENGTH_KEY, "100");
+            // P380 review: the diffusion's grade acts only with a diffusion family chosen (none: both sides equal)
+            if (FilmSim.DIFFUSION_STRENGTH_KEY.equals(key)) {
+                final Object family = shot.get(FilmSim.DIFFUSION_KEY);
+                if (family == null || !Arrays.asList(com.particlesdevs.photoncamera.processing.color.LensFilters.IDS).contains(String.valueOf(family)))
+                    f.put(FilmSim.DIFFUSION_KEY, com.particlesdevs.photoncamera.processing.color.LensFilters.PEARLESCENT);
+            }
         }
         if ((key.equals(HYBRID + "highlight_chroma") || key.equals(HYBRID + "highlight_defringe")) && !recoveryAt(shot))
             f.put(RECOVERY, "100");

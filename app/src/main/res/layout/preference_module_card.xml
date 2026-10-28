@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- P384 (owner, 2026-10-28: «Переместить эту группу настроек на главный экран… Сделай это меню красивым»): the header of a module
+     card on the settings' main page (ModuleSection) - the lens's zoom in a round badge, the module's name, its state and a chevron
+     that turns when the card opens. The cards share one group card (SettingsCardDecoration); an open card's rows follow it. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@drawable/settings_row"
+    android:gravity="center_vertical"
+    android:minHeight="64dp"
+    android:orientation="horizontal"
+    android:paddingStart="14dp"
+    android:paddingTop="12dp"
+    android:paddingEnd="14dp"
+    android:paddingBottom="12dp">
+    <TextView
+        android:id="@+id/settings_module_badge"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:layout_marginEnd="12dp"
+        android:background="@drawable/settings_module_badge"
+        android:fontFamily="sans-serif-medium"
+        android:gravity="center"
+        android:importantForAccessibility="no"
+        android:includeFontPadding="false"
+        android:maxLines="1"
+        android:textColor="@color/settings_text"
+        android:textSize="12.5sp" />
+    <ImageView
+        android:id="@android:id/icon"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:visibility="gone" />
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical">
+        <TextView
+            android:id="@android:id/title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:fontFamily="sans-serif-medium"
+            android:maxLines="2"
+            android:textColor="@color/settings_text"
+            android:textSize="15sp" />
+        <TextView
+            android:id="@android:id/summary"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:lineSpacingExtra="1dp"
+            android:textColor="@color/settings_summary"
+            android:textSize="12.5sp" />
+    </LinearLayout>
+    <ImageView
+        android:id="@+id/settings_module_chevron"
+        android:layout_width="16dp"
+        android:layout_height="20dp"
+        android:layout_marginStart="10dp"
+        android:importantForAccessibility="no"
+        android:src="@drawable/settings_ic_chevron"
+        android:tint="@color/settings_muted" />
+</LinearLayout>

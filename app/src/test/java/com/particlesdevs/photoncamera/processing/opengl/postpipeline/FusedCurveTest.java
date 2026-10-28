@@ -21,8 +21,13 @@ public class FusedCurveTest {
         return (x * (2.51f * x + b)) / (x * (2.43f * x + 0.59f) + e);
     }
 
-    /** why/gf.glsl fusedAt(I, 0) (float, the shader's defaults for unset values). */
+    /** why/gf.glsl fusedAt(I, 0) (float, the shader's defaults for unset values), deepFloorU 0. */
     private static float shaderFusedAt(float I, float[] em, float[] lw, float center, float smooth, float gammaInv, float toe) {
+        return shaderFusedAt(I, em, lw, center, smooth, gammaInv, toe, 0f);
+    }
+
+    /** The same with import why_fusion's deepFloorU (the bright layer's weight floor in deep shadows). */
+    private static float shaderFusedAt(float I, float[] em, float[] lw, float center, float smooth, float gammaInv, float toe, float floor) {
         center = center > 0f ? center : 0.6f;
         smooth = smooth > 0f ? smooth : 0.25f;
         gammaInv = gammaInv > 0f ? gammaInv : 1f / 2.2f;
@@ -32,6 +37,7 @@ public class FusedCurveTest {
             float l = (float) Math.pow(Math.max(acescg(I * em[k], toe), 0.000001f), gammaInv);
             float d = l - center;
             float w = (float) Math.exp(-0.5f * (d * d) / Math.max(smooth * smooth, 0.001f)) * lw[k] + 0.000001f;
+            if (k == 3 && floor > 0f && d < 0f) w = Math.max(w, (float) Math.exp(-0.5f * floor * floor) * lw[k] + 0.000001f);
             sw += w;
             swl += w * l;
         }
@@ -145,5 +151,39 @@ public class FusedCurveTest {
         // shader's) by a small fraction of it
         assertTrue("this curve falls without the envelope: " + plainDrop, plainDrop > 0.02f);
         assertTrue("the envelope keeps it from falling: " + liftedDrop + " of " + plainDrop, liftedDrop < 0.25f * plainDrop);
+    }
+
+    /**
+     * Window burst (2026-10-28: a room 7 EV under the window rendered black): with the deep-shadow floor the viewfinder's curve is
+     * the shader's fusedAt with deepFloorU, rises with the light everywhere, a deep shadow takes at most the bright layer's own
+     * exposure, and wherever the bright layer is within the floor's sigma of the centre nothing changes.
+     */
+    @Test
+    public void theDeepShadowFloorIsTheShadersAndRises() {
+        final float[] em = {0.0626f, 1f, 0.2502f, 2.6148f}, lw = {0.4f, 1f, 0.1f, 1f};
+        final float center = 0.75f, smooth = 0.25f, gammaInv = 1f / 2.2f, toe = 0.05f, floor = 2f;
+        try {
+            FusedCurve.DEEP_FLOOR[0] = floor;
+            float last = -1f;
+            for (int i = 0; i <= 2000; i++) {
+                final float I = (float) Math.pow(2.0, -16 + 18 * i / 2000.0);
+                final double want = shaderFusedAt(I, em, lw, center, smooth, gammaInv, toe, floor);
+                final float got = (float) FusedCurve.fusedAt(I, em, lw, center, smooth, gammaInv, toe);
+                assertEquals("I " + I, want, got, 2e-5);
+                assertTrue("rises at I " + I + ": " + got + " after " + last, got >= last - 1e-6f);
+                last = got;
+                // the bright layer's own luma bounds the lift
+                final float bright = (float) Math.pow(Math.max(acescg(I * em[3], toe), 0.000001f), gammaInv);
+                assertTrue("at most the bright layer at I " + I, got <= bright + 1e-5f);
+                if (bright >= center - floor * smooth)
+                    assertEquals("unchanged at I " + I, shaderFusedAt(I, em, lw, center, smooth, gammaInv, toe), got, 2e-5);
+            }
+            // the room: 7.2 EV under the window median at ae 2.42 - the bright layer's light, not the average's
+            final float room = 0.000495f * 2.42f;
+            final float before = shaderFusedAt(room, em, lw, center, smooth, gammaInv, toe), after = (float) FusedCurve.fusedAt(room, em, lw, center, smooth, gammaInv, toe);
+            assertTrue("the room lifted: " + before + " -> " + after, after > 1.2f * before);
+        } finally {
+            FusedCurve.DEEP_FLOOR[0] = 0f;
+        }
     }
 }

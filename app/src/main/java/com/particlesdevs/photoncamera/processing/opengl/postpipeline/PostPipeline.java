@@ -55,9 +55,28 @@ public class PostPipeline extends GLBasePipeline {
     public boolean signedRgb;
     /** WHY tone of the SCAM Hybrid: state handed from WhyStats to WhyCombine; null outside that route. */
     public WhyTone.State why;
-    /** P349: the glow share of the fully clipped cores (ScamRgb.sunBloom, WhyCombine's sun bloom) and the image size it covers. */
+    /**
+     * P349: the glow share of the fully clipped cores (ScamRgb.sunBloom, WhyCombine's sun bloom), the image size it covers and its
+     * block, px (P277: the whole frame's on a lab fragment).
+     */
     public GLTexture sunBloom;
     public Point sunBloomSize;
+    public int sunBloomBlock;
+    /**
+     * P378: the nearness of a light «Inpaint opposed» rebuilt (ScamRgb.opposedShare, WhyCombine's highlight landing), the image
+     * size it covers and its block, px (as the sun bloom's).
+     */
+    public GLTexture opposedShare;
+    public Point opposedShareSize;
+    public int opposedShareBlock;
+    /**
+     * P378 review (Ultra HDR keeps the sky term's change: the gain map's boost is the scene plane over the SDR, so a lower SDR sky
+     * came back to its old light on an HDR display): the SDR's own ratio of the sky term (WhyCombine: why/combine at whyLow with
+     * and without it, why/skyratio), per pixel of a grid of whyLow (sensor layout, its longer side at most WhyCombine.SKY_RATIO_SIDE),
+     * row-major; null without a non-backlit sky or Ultra HDR. RunHDRGainMap scales the scene plane by it, then lets it go.
+     */
+    public float[] skyHdrRatio;
+    public Point skyHdrRatioSize;
     /**
      * P277: a lab shot's run records the whole frame's statistics here ({@link LabFrame}); a lab run on a fragment of it sets
      * {@link #frozen} to those, used in place of the fragment's own. Both null in an ordinary run.
@@ -170,6 +189,24 @@ public class PostPipeline extends GLBasePipeline {
         }
     }
 
+    /**
+     * The nodes on the linear scene light before the tone: the lens filter of the shot (P228; none chosen: no node), P380 the
+     * film's camera diffusion (LensFilter.film: spektrafilm's order, the camera's filter before the film's halation; none
+     * without a film or its diffusion), P281 the film's halation and scatter (FilmHalation.from). Without a film: the lens
+     * filter's node alone, as before.
+     */
+    static java.util.List<com.particlesdevs.photoncamera.processing.opengl.nodes.Node> lightNodes(LensFilter.Choice shotFilter,
+            @androidx.annotation.Nullable com.particlesdevs.photoncamera.processing.color.FilmSim.Settings film) {
+        final java.util.List<com.particlesdevs.photoncamera.processing.opengl.nodes.Node> out = new java.util.ArrayList<>();
+        final LensFilter lensFilterNode = LensFilter.of(shotFilter);
+        if (lensFilterNode != null) out.add(lensFilterNode);
+        final LensFilter diffusion = LensFilter.film(film);
+        if (diffusion != null) out.add(diffusion);
+        final FilmHalation halation = FilmHalation.from(film);
+        if (halation != null) out.add(halation);
+        return out;
+    }
+
     /** The shot's lens filter: the press's ({@link #lensFilter}), else the settings now. */
     public LensFilter.Choice lensFilterOfShot() {
         return lensFilter != null ? lensFilter : LensFilter.Choice.now();
@@ -280,6 +317,12 @@ public class PostPipeline extends GLBasePipeline {
         signedRgb = false;
         sunBloom = null;
         sunBloomSize = null;
+        sunBloomBlock = 0;
+        opposedShare = null;
+        opposedShareSize = null;
+        opposedShareBlock = 0;
+        skyHdrRatio = null;
+        skyHdrRatioSize = null;
         // Drop any stale reference from a previous run; the texture itself is
         // reclaimed by GLTexture.closeAll().
         rawClipLevel = 1.0f;
@@ -526,7 +569,7 @@ public class PostPipeline extends GLBasePipeline {
                     + "; cannot measure scene plane");
         }
 
-        GLTexture gainTex = null;
+        GLTexture gainTex = null, skyRatioTex = null;
         try {
             demosaicLinear.rewind();
             GLTexture linTex;
@@ -565,6 +608,12 @@ public class PostPipeline extends GLBasePipeline {
                         BufferUtils.getFrom(new float[]{1f, 1f, 1f, 1f}), GL_LINEAR, GL_CLAMP_TO_EDGE);
             }
 
+            // P378 review: the sky term's ratio (WhyCombine), linear filter, made before the samplers are bound
+            if (skyHdrRatio != null && skyHdrRatioSize != null && skyHdrRatio.length == skyHdrRatioSize.x * skyHdrRatioSize.y)
+                skyRatioTex = new GLTexture(skyHdrRatioSize, new GLFormat(GLFormat.DataType.FLOAT_16, 1), BufferUtils.getFrom(skyHdrRatio),
+                        GL_LINEAR, GL_CLAMP_TO_EDGE);
+            skyHdrRatio = null;
+            skyHdrRatioSize = null;
             // Scene-luma plane at full resolution, pixel-aligned with the base.
             GLTexture lTex = new GLTexture(new Point(rotatedSize.x, rotatedSize.y),
                     new GLFormat(GLFormat.DataType.FLOAT_16, 4));
@@ -581,6 +630,13 @@ public class PostPipeline extends GLBasePipeline {
             // P370 (B3): the scene's luminance as the render sees it (its colour matrix and white balance), not Rec.709 on camera RGB
             final float[] w = sceneLumaWeights(WhyTone.colourMatrix(this), parameters.sensorToProPhoto, parameters.whitePoint);
             prog.setVar("wU", w[0], w[1], w[2]);
+            // P378 review: the scene plane takes the sky term's ratio (an HDR display shows the sky lowered as the SDR does)
+            if (skyRatioTex != null) {
+                prog.setTexture("SkyRatio", skyRatioTex);
+                prog.setVar("skyRatioU", 1);
+            } else {
+                prog.setVar("skyRatioU", 0);
+            }
             GLES30.glDisable(GLES30.GL_SCISSOR_TEST);
             GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, lTex.mBuffer);
             GLES30.glViewport(0, 0, rotatedSize.x, rotatedSize.y);
@@ -661,6 +717,10 @@ public class PostPipeline extends GLBasePipeline {
             sdrTex.close();
             linTex.close();
             lTex.close();
+            if (skyRatioTex != null) {
+                skyRatioTex.close();
+                skyRatioTex = null;
+            }
             outTex.close();
             if (quantTex != null) quantTex.close();
             if (gainTex != null) {
@@ -672,6 +732,10 @@ public class PostPipeline extends GLBasePipeline {
             if (gainTex != null) {
                 try { gainTex.close(); } catch (Exception ignored) {}
             }
+            if (skyRatioTex != null) {
+                try { skyRatioTex.close(); } catch (Exception ignored) {}
+            }
+            skyHdrRatio = null;
             GLTexture.closeAll();
             // Consume-once: the snapshot is only needed for this pass.
             releaseDemosaicLinear();
@@ -881,11 +945,9 @@ public class PostPipeline extends GLBasePipeline {
         final LensFilter.Choice shotFilter = lensFilterOfShot(), filterNow = lensFilter != null ? LensFilter.Choice.now() : shotFilter;
         if (!filterNow.toString().equals(shotFilter.toString()))
             Log.i("SCAM_PIPELINE", "lens filter of the press: " + shotFilter + " (the settings now: " + filterNow + ")");
-        final LensFilter lensFilterNode = LensFilter.of(shotFilter);
-        if (lensFilterNode != null) add(lensFilterNode);
-        // P281: the film simulation's halation, on the linear light too (none: no node); P369: of the shot's film snapshot
-        final FilmHalation halation = FilmHalation.from(film);
-        if (halation != null) add(halation);
+        // P281: the film simulation's halation, on the linear light too (none: no node); P369: of the shot's film snapshot; P380: the
+        // film's diffusion between the two (lightNodes)
+        for (com.particlesdevs.photoncamera.processing.opengl.nodes.Node n : lightNodes(shotFilter, film)) add(n);
         // The WhyCam 1.23 photo tone (tone_port.md 7.1): its own AE, fusion and AgX. LinearExposure only keeps the
         // Ultra HDR linear snapshot.
         if (captureDemosaic) add(new LinearExposure());

@@ -18,6 +18,7 @@ import android.util.Rational;
 import android.util.SizeF;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 
 import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.processing.parameters.ExposureIndex;
@@ -73,12 +74,24 @@ public class Parameters {
     /** P306: the whole shot's size when these are a lab fragment's (null otherwise): the 200 MP denoise is decided on it. */
     public Point labWholeSize;
     /**
+     * P378 review: a lab fragment's origin in the whole shot, a share of its width and height (null otherwise): WhySky takes the
+     * whole frame's sky cells (LabFrame) at the fragment's place.
+     */
+    public android.graphics.PointF labOrigin;
+    /**
      * P369: the share of the pipeline image's long side the saved photo keeps (the digital zoom's crop, the ISZ 4:3 crop: both
      * after the pipeline), 1 = all of it - the frame the film's grain, scatter and halation are sized for (FilmHalation.filmLongPx).
      * Set by ScamProcessor per shot, before the lab's snapshot: a lab render of the (uncropped) field sizes the effects as the
      * photo had them; a lab shot of an older build has none (FilmHalation reads 0 as 1).
      */
     public float filmFrameScale = 1f;
+    /**
+     * P380 (owner, 2026-10-28: the pair with Unspektrawesome's SPEKTRA - its JPEG carries its recipe, ours had none): the shot's
+     * film recipe (FilmSim.Settings.recipe of the film snapshot), set by ScamProcessor after PostPipeline.takeFilm; null without a
+     * film (the description then as before).
+     */
+    @Nullable
+    public String filmRecipe;
     /** P27: linear factor the RAW frames were binned by (RawBin) before the merge; 1 = as captured. Set before FillConstParameters. */
     public int rawBinning = 1;
     /**
@@ -568,13 +581,34 @@ public class Parameters {
      * clips the weaker R and B channels first and turns the shadows green.
      * Estimate: third-lowest mean of 32x32-sample blocks per CFA channel (one dead column
      * or defect block cannot drive it), common for all channels. Never raises black.
-     * buffer: packed 16-bit RAW, rowStride = width*2.
+     * buffer: packed 16-bit RAW, rowStride = width*2. A plain Bayer stream (colour block 1).
      */
     public void refineBlackLevel(java.nio.ByteBuffer buffer, int width, int height) {
+        refineBlackLevel(buffer, width, height, 1);
+    }
+
+    /**
+     * {@link #refineBlackLevel(java.nio.ByteBuffer, int, int)} of a stream of colour block {@code block} (2 Quad, 4 Tetra: each
+     * CFA colour a block x block square; anything else is read as plain Bayer). P386: the four channels are the sites
+     * ((c &amp; 1) x block, (c &gt;&gt; 1) x block) of each 2 block-wide cell - read as plain Bayer, every channel of a Quad
+     * stream was the top-left colour's (GRBG: green) and the red and blue floors were never seen.
+     */
+    public void refineBlackLevel(java.nio.ByteBuffer buffer, int width, int height, int block) {
+        refineBlackLevel(buffer, width, height, block, null);
+    }
+
+    /**
+     * {@link #refineBlackLevel(java.nio.ByteBuffer, int, int, int)} of a frame of the stream {@code stream} (MosaicStream's key
+     * of the shot, MosaicBlockStore.shotKey; null, "" or "off": none). P386: a frame of a stream whose pedestal was proven lost
+     * (PedestalMemory: an earlier shot's frame or the RAW viewfinder's) takes the stream's floor when it cannot prove the loss
+     * itself - no deep shade - and its darkest block means stay below PedestalMemory.BACK x the declared black.
+     */
+    public void refineBlackLevel(java.nio.ByteBuffer buffer, int width, int height, int block, String stream) {
         if (buffer == null || width < 128 || height < 128) return;
+        block = block == 2 || block == 4 ? block : 1;
         final boolean floorOn = !blackOverride() && PreferenceKeys.isRawBlackFromData();
         // Same frame again (SCAM re-reads the reference metadata): reuse what it showed.
-        if (buffer == blackFloorSource) {
+        if (buffer == blackFloorSource && block == blackFloorBlock && java.util.Objects.equals(stream, blackFloorStream)) {
             widenToSamples(blackFloorMax, blackFloorLow);
             if (floorOn && blackFloorEstimate != Float.MAX_VALUE) applyBlackFloor(blackFloorEstimate);
             return;
@@ -592,49 +626,181 @@ public class Parameters {
         for (float b : blackLevel) reportedMin = Math.min(reportedMin, b);
         final float paddingBelow = reportedMin > 4f ? reportedMin * 0.25f : -1f;
         final int blocks = bw * bh;
-        final BlockScan scan = BlockScan.of(data, width, bw, bh, paddingBelow, PreferenceKeys.scamDevSwitch("black_scan_bulk", true));
+        // P386: the level at or below which a floor is the black itself (~3 DN of a 10-bit range), counted per block by the scan
+        final float nearZero = com.particlesdevs.photoncamera.processing.PedestalMemory.nearZero(whiteLevel);
+        final BlockScan scan = BlockScan.of(data, width, bw, bh, paddingBelow, PreferenceKeys.scamDevSwitch("black_scan_bulk", true), block,
+                nearZero);
         final float[][] means = scan.means;
-        final boolean[][] low = scan.low, zero = scan.zero;
-        final int padding = scan.padding, max2 = scan.max2;
+        final boolean[][] low = scan.low, zero = scan.zero, hit = scan.hit;
+        final int[][] smallest = scan.smallest, near = scan.near;
+        final int max2 = scan.max2;
         final float lowest = scan.lowest;
         // P127: the frame's own samples beyond its white: a wider stream than the session had shown (black and white rescaled; the
         // padding test below depends on the black, so the blocks are read again at the new levels)
         final float darkest = lowest == Float.MAX_VALUE ? -1f : lowest;
         if (widenToSamples(max2, darkest)) {
-            refineBlackLevel(buffer, width, height);
+            refineBlackLevel(buffer, width, height, block, stream);
             return;
         }
         blackFloorSource = buffer;
+        blackFloorBlock = block;
+        blackFloorStream = stream;
         blackFloorMax = max2;
         blackFloorLow = darkest;
         blackFloorEstimate = Float.MAX_VALUE;
+        pedestalGone = false;
+        pedestalRemembered = false;
         if (!floorOn) return;
+        // P386 (review): a strip of small non-zero values at an edge (padding or a masked area that is not exact zeros) is not the
+        // scene: its blocks count neither for the proof of a lost pedestal nor for the floors (else a frame with its pedestal drops
+        // to the strip's ~2 DN: the X200 Pro's pink). Zero padding is left out by nearZeroBlock as before.
+        final boolean[] strip = paddingBelow > 0 ? edgeStrips(low, means, bw, bh, 2f * paddingBelow) : new boolean[blocks];
+        int stripBlocks = 0, padding = 0, hits = 0;
+        for (int i = 0; i < blocks; i++) {
+            if (strip[i]) { stripBlocks++; continue; }
+            for (int c = 0; c < 4; c++) {
+                if (low[c][i]) padding++;
+                if (hit[c][i]) hits++;
+            }
+        }
+        final int counted = 4 * (blocks - stripBlocks);
         // P114: padding is a strip of the frame (X200 Pro: 4.6 % of it), a noisy night dips below the quarter now and then. When
         // most of the frame holds such samples the HAL delivered the RAW without its black pedestal (OPPO Find X8 Ultra, owner's
         // log 2026-10-13 11:51-12:43 until the phone was restarted: 80-97 % of the blocks, data floor 18-23 DN for a reported 64,
         // the bracket's measured gains +20 % / -20 %, teal shadows): the floor is then measured over every block but the zero
         // padding (blocks of exact zeros and their neighbours), else the darkest blocks of the frame are the ones left out.
-        final boolean pedestalLost = paddingBelow > 0 && padding > 2 * blocks;
-        if (pedestalLost) Log.w(TAG, "RAW black floor: " + padding + " of " + (4 * blocks) + " blocks hold samples below " + paddingBelow
-                + " DN: not padding, the RAW came without its black pedestal; measured over every block but zero padding");
-        else if (padding > 0) Log.i(TAG, "RAW black floor: " + padding + " of " + (4 * blocks) + " blocks below " + paddingBelow
-                + " DN skipped (padding / masked area, not signal)");
-        float estimate = Float.MAX_VALUE;
+        final boolean pedestalLost = paddingBelow > 0 && 2 * padding > counted;
+        // The three floors: of the blocks without a sample below the quarter (P114's padding rule), of every block but zero padding
+        // and edge strips, and (P386) the smallest non-zero samples of those; and the blocks of those that are dark themselves
+        // (mean within 3 x nearZero) with 1 / 16 of their samples at or below nearZero.
+        float skipFloor = Float.MAX_VALUE, allFloor = Float.MAX_VALUE, sampleFloor = Float.MAX_VALUE;
+        int nearBlocks = 0;
+        final int nearQuota = (BlockScan.BS / 4) * (BlockScan.BS / 4) / 16;
         for (int c = 0; c < 4; c++) {
-            float low1 = Float.MAX_VALUE, low2 = Float.MAX_VALUE, low3 = Float.MAX_VALUE;
+            float s1 = Float.MAX_VALUE, s2 = Float.MAX_VALUE, s3 = Float.MAX_VALUE;
+            float a1 = Float.MAX_VALUE, a2 = Float.MAX_VALUE, a3 = Float.MAX_VALUE;
+            int m1 = Integer.MAX_VALUE, m2 = Integer.MAX_VALUE, m3 = Integer.MAX_VALUE;
             for (int by = 0; by < bh; by++) for (int bx = 0; bx < bw; bx++) {
                 final int i = by * bw + bx;
-                if (pedestalLost ? nearZeroBlock(zero[c], bw, bh, bx, by) : low[c][i]) continue;
                 final float mean = means[c][i];
-                if (mean < low1) { low3 = low2; low2 = low1; low1 = mean; }
-                else if (mean < low2) { low3 = low2; low2 = mean; }
-                else if (mean < low3) low3 = mean;
+                if (!low[c][i]) {
+                    if (mean < s1) { s3 = s2; s2 = s1; s1 = mean; }
+                    else if (mean < s2) { s3 = s2; s2 = mean; }
+                    else if (mean < s3) s3 = mean;
+                }
+                if (strip[i] || nearZeroBlock(zero[c], bw, bh, bx, by)) continue;
+                if (mean < a1) { a3 = a2; a2 = a1; a1 = mean; }
+                else if (mean < a2) { a3 = a2; a2 = mean; }
+                else if (mean < a3) a3 = mean;
+                if (near[c][i] >= nearQuota && mean <= 3f * nearZero) nearBlocks++;
+                final int m = smallest[c][i];
+                if (m <= 0) continue;
+                if (m < m1) { m3 = m2; m2 = m1; m1 = m; }
+                else if (m < m2) { m3 = m2; m2 = m; }
+                else if (m < m3) m3 = m;
             }
-            estimate = Math.min(estimate, low3);
+            skipFloor = Math.min(skipFloor, s3);
+            allFloor = Math.min(allFloor, a3);
+            if (m3 != Integer.MAX_VALUE) sampleFloor = Math.min(sampleFloor, m3);
         }
+        // P386 (vivo X200 Ultra camera 5, a 4096x3072 GRBG Quad stream, owner's zip 2026-10-28 15:38: the 2.4x photo teal all over):
+        // the RAW came without its 64 DN pedestal in daylight. Only a third of the blocks held a sample below 16 DN (the shadows),
+        // so P114 took the floor of the rest, 24 DN: every channel lost 24 DN, red (x2.41 white balance) went negative on the brick
+        // wall. P315's proof of the viewfinder decides as well: non-zero samples below the quarter in >= 2 % of the blocks (zero
+        // padding is exactly 0, read noise around a pedestal and a drift never reach it) - taken only when the darkest block means
+        // themselves sit below half the black, which no noise of a 64-sample mean and no drift reach either.
+        final boolean belowHalf = paddingBelow > 0 && allFloor < 2f * paddingBelow;
+        final boolean proven = pedestalLost || (paddingBelow > 0 && hits >= com.particlesdevs.photoncamera.processing.PedestalFloor.SHARE * counted);
+        final boolean lost = proven && belowHalf;
+        // The black of a RAW proven without its pedestal: the darkest block means are only an upper bound of it (the darkest 64x64 px
+        // of a daylight frame still hold light: ~6 DN of red on the shot). The floor of the smallest non-zero samples (~1 DN there)
+        // is taken only when it is near zero AND dark blocks hold it - at least 3 blocks whose mean is within 3 x nearZero (~9 DN)
+        // with 1 / 16 of their samples at or below nearZero: the noise tail of a black left partly above zero (a high-ISO night,
+        // read noise 5 - 15 DN around 20) reaches ~1 DN in a full 4096x3072 frame too, but its blocks sit at ~20 - that black keeps
+        // the block means' floor (P386 review: the samples' floor under-subtracted it by 11-16 DN, magenta shadows). A black the
+        // rule takes for ~1 is at most the mean of such blocks: ~9 DN.
+        final boolean atZero = sampleFloor <= nearZero && nearBlocks >= 3;
+        float estimate = lost ? (atZero ? Math.min(allFloor, sampleFloor) : allFloor) : pedestalLost ? allFloor : skipFloor;
+        if (lost) Log.w(TAG, "RAW black floor: " + hits + " of " + counted + " blocks hold non-zero samples below " + paddingBelow
+                + " DN (" + padding + " any below it), the darkest block means at " + allFloor + " DN, the smallest samples at "
+                + (sampleFloor == Float.MAX_VALUE ? "-" : sampleFloor) + " DN (" + nearBlocks + " dark blocks hold samples at or below "
+                + nearZero + (atZero ? "" : ": not the black") + "; colour block " + block
+                + "): not padding, the RAW came without its black pedestal; measured over every block but zero padding");
+        else if (pedestalLost) Log.w(TAG, "RAW black floor: " + padding + " of " + counted + " blocks hold samples below " + paddingBelow
+                + " DN: not padding, the RAW came without its black pedestal; measured over every block but zero padding");
+        else if (padding > 0) Log.i(TAG, "RAW black floor: " + padding + " of " + counted + " blocks below " + paddingBelow
+                + " DN skipped (padding / masked area, not signal)");
+        if (stripBlocks > 0) Log.i(TAG, "RAW black floor: " + stripBlocks + " of " + blocks + " block places in edge strips below "
+                + paddingBelow + " DN left out (padding / masked area)");
+        // P386 (review): a frame of the same stream without deep shade (a sunlit facade, the sky) proves nothing - its floor was 18.8 /
+        // 39.6 DN for a true 0 - and lost that much of every channel: the stream's proven floor applies to it (PedestalMemory), while
+        // its darkest block means stay below PedestalMemory.BACK x the declared black (no frame with its pedestal sits there); a frame
+        // whose darkest block means come back to that clears it (P114: the X8U's pedestal came back after a restart).
+        if (estimate != Float.MAX_VALUE && reportedMin > 4f && allFloor != Float.MAX_VALUE
+                && com.particlesdevs.photoncamera.processing.PedestalMemory.storable(stream)
+                && PreferenceKeys.scamDevSwitch("pedestal_memory", true)) {
+            final float known = com.particlesdevs.photoncamera.processing.PedestalMemory.floor(stream, whiteLevel);
+            if (allFloor >= com.particlesdevs.photoncamera.processing.PedestalMemory.BACK * reportedMin) {
+                com.particlesdevs.photoncamera.processing.PedestalMemory.clear(stream, "the photo's darkest block means at " + allFloor
+                        + " DN of a declared " + reportedMin);
+            } else if (known < estimate && !(lost && atZero)) {
+                Log.w(TAG, "RAW black floor: the stream " + stream + " came without its black pedestal ("
+                        + com.particlesdevs.photoncamera.processing.PedestalMemory.source(stream) + "): black " + known
+                        + " DN instead of the frame's own " + estimate + " (its darkest block means at " + allFloor
+                        + " DN: no deep shade proves it here)");
+                estimate = known;
+                pedestalRemembered = true;
+            } else if (lost) {
+                com.particlesdevs.photoncamera.processing.PedestalMemory.remember(stream, estimate, whiteLevel, "photo");
+            }
+        }
+        pedestalGone = lost || pedestalRemembered;
         if (estimate == Float.MAX_VALUE) return;
         blackFloorEstimate = estimate;
         applyBlackFloor(estimate);
+    }
+
+    /** P386: no edge strip is wider than this share of its side (as RawCrop.MAX_BAND_DIVISOR). */
+    static final int STRIP_DIVISOR = 8;
+
+    /**
+     * P386 (review): the block places of the frame's edge strips - whole block rows / columns from an edge in which every block of
+     * every channel holds a sample below the quarter of the black ({@code low}), at most 1 / STRIP_DIVISOR of the side, followed
+     * inward by a row / column whose block means all reach {@code clear} (half the black): a padded or masked strip, which ends on a
+     * pixel row / column. A dark part of the scene at an edge (a shaded foreground, a night sky) neither ends straight nor is
+     * followed by a line lit above half the black in every colour, so its blocks still prove a lost pedestal.
+     */
+    static boolean[] edgeStrips(boolean[][] low, float[][] means, int bw, int bh, float clear) {
+        final boolean[] strip = new boolean[bw * bh];
+        for (int side = 0; side < 4; side++) {
+            final int lines = side < 2 ? bh : bw, along = side < 2 ? bw : bh;
+            final int max = Math.max(1, lines / STRIP_DIVISOR);
+            int k = 0;
+            while (k <= max && k < lines && stripLine(low, means, bw, bh, side, k, along, clear, true)) k++;
+            if (k == 0 || k > max || k >= lines || !stripLine(low, means, bw, bh, side, k, along, clear, false)) continue;
+            for (int j = 0; j < k; j++) for (int a = 0; a < along; a++) strip[stripIndex(bw, bh, side, j, a)] = true;
+        }
+        return strip;
+    }
+
+    /** {@code low}: every block of the line low in every channel; else: every block mean of the line at or above {@code clear}. */
+    private static boolean stripLine(boolean[][] low, float[][] means, int bw, int bh, int side, int line, int along, float clear,
+                                     boolean lowLine) {
+        for (int c = 0; c < 4; c++) for (int a = 0; a < along; a++) {
+            final int i = stripIndex(bw, bh, side, line, a);
+            if (lowLine ? !low[c][i] : means[c][i] < clear) return false;
+        }
+        return true;
+    }
+
+    /** Block index of place {@code a} on the {@code line}-th row / column from edge {@code side} (0 top, 1 bottom, 2 left, 3 right). */
+    private static int stripIndex(int bw, int bh, int side, int line, int a) {
+        switch (side) {
+            case 0: return line * bw + a;
+            case 1: return (bh - 1 - line) * bw + a;
+            case 2: return a * bw + line;
+            default: return a * bw + (bw - 1 - line);
+        }
     }
 
     /**
@@ -643,33 +809,55 @@ public class Parameters {
      * row of a block row into an array first - the 786 k single reads through the frame's ShortBuffer view took ~20 ms of the
      * shot's Java prep (X8U 41.600 -> 41.620) - and visits the same samples: the same sums, blocks, padding and largest values
      * (none of them depends on the order). scam_dev black_scan_bulk 0: a read per sample, as before.
+     * P386: {@code block} 2 / 4 (a Quad / Tetra stream) reads channel c at the sites ((c &amp; 1) x block, (c &gt;&gt; 1) x block) of
+     * its 2 block-wide cells - the 8 px sample step is a whole number of cells for blocks 1, 2 and 4, so each sample of a channel is
+     * that colour's; block 1 reads exactly the samples it read before. Also counted: the blocks with a non-zero sample below
+     * {@code paddingBelow} (hits, P315's proof; {@code hit} per block), the smallest non-zero sample of each block (0: none) and
+     * (P386 review) its samples at or below {@code nearZero} (zeros too; none counted when {@code nearZero} is negative).
      */
     static final class BlockScan {
         static final int BS = 32;
         final float[][] means;
-        final boolean[][] low, zero;
-        int padding, max, max2;
+        final boolean[][] low, zero, hit;
+        final int[][] smallest, near;
+        int padding, hits, max, max2;
         float lowest = Float.MAX_VALUE;
 
         private BlockScan(int blocks) {
             means = new float[4][blocks];
             low = new boolean[4][blocks];
             zero = new boolean[4][blocks];
+            hit = new boolean[4][blocks];
+            smallest = new int[4][blocks];
+            near = new int[4][blocks];
         }
 
         static BlockScan of(java.nio.ShortBuffer data, int width, int bw, int bh, float paddingBelow, boolean bulk) {
-            final int bs = BS, blocks = bw * bh;
+            return of(data, width, bw, bh, paddingBelow, bulk, 1);
+        }
+
+        static BlockScan of(java.nio.ShortBuffer data, int width, int bw, int bh, float paddingBelow, boolean bulk, int block) {
+            return of(data, width, bw, bh, paddingBelow, bulk, block, -1f);
+        }
+
+        static BlockScan of(java.nio.ShortBuffer data, int width, int bw, int bh, float paddingBelow, boolean bulk, int block,
+                            float nearZero) {
+            final int bs = BS, blocks = bw * bh, b = block == 2 || block == 4 ? block : 1;
             final BlockScan s = new BlockScan(blocks);
             final short[] row = bulk ? new short[bw * bs * 2] : null;
             final java.nio.ShortBuffer view = bulk ? data.duplicate() : null;
             final long[] sums = new long[bw];
-            final boolean[] padded = new boolean[bw], allZero = new boolean[bw];
+            final int[] small = new int[bw], nearCount = new int[bw];
+            final boolean[] padded = new boolean[bw], allZero = new boolean[bw], hit = new boolean[bw];
             for (int c = 0; c < 4; c++) {
-                final int ox = c % 2, oy = c / 2;
+                final int ox = (c % 2) * b, oy = (c / 2) * b;
                 for (int by = 0; by < bh; by++) {
                     java.util.Arrays.fill(sums, 0L);
+                    java.util.Arrays.fill(small, Integer.MAX_VALUE);
+                    java.util.Arrays.fill(nearCount, 0);
                     java.util.Arrays.fill(padded, false);
                     java.util.Arrays.fill(allZero, true);
+                    java.util.Arrays.fill(hit, false);
                     for (int y = 0; y < bs; y += 4) {
                         final int rowIndex = (by * bs + y) * 2 + oy;
                         if (bulk) {
@@ -679,17 +867,26 @@ public class Parameters {
                         for (int bx = 0; bx < bw; bx++) {
                             final int base = bx * bs * 2 + ox;
                             long sum = 0;
-                            boolean pad = false, zeros = true;
+                            int least = small[bx], atZero = 0;
+                            boolean pad = false, zeros = true, under = false;
                             for (int x = 0; x < bs; x += 4) {
                                 final int v = (bulk ? row[base + x * 2] : data.get(rowIndex * width + base + x * 2)) & 0xffff;
                                 sum += v;
+                                if (v <= nearZero) atZero++;
                                 if (v > s.max) { s.max2 = s.max; s.max = v; } else if (v > s.max2) s.max2 = v;
                                 pad |= v < paddingBelow; // a block on the border of the padding: its mean is half signal
                                 zeros &= v == 0;
+                                if (v > 0) {
+                                    under |= v < paddingBelow;
+                                    if (v < least) least = v;
+                                }
                             }
                             sums[bx] += sum;
+                            small[bx] = least;
+                            nearCount[bx] += atZero;
                             padded[bx] |= pad;
                             allZero[bx] &= zeros;
+                            hit[bx] |= under;
                         }
                     }
                     for (int bx = 0; bx < bw; bx++) {
@@ -698,7 +895,11 @@ public class Parameters {
                         if (!allZero[bx]) s.lowest = Math.min(s.lowest, s.means[c][i]);
                         s.low[c][i] = padded[bx];
                         s.zero[c][i] = allZero[bx];
+                        s.smallest[c][i] = small[bx] == Integer.MAX_VALUE ? 0 : small[bx];
+                        s.near[c][i] = nearCount[bx];
+                        s.hit[c][i] = hit[bx];
                         if (padded[bx]) s.padding++;
+                        if (hit[bx]) s.hits++;
                     }
                 }
             }
@@ -745,12 +946,18 @@ public class Parameters {
     }
 
     private java.nio.ByteBuffer blackFloorSource;
+    private int blackFloorBlock = 1;
+    private String blackFloorStream;
     private int blackFloorMax;
     private float blackFloorLow = -1f;
+    /** P386: the shot's RAW proved to have come without its black pedestal (refineBlackLevel), itself or by its stream's floor. */
+    private boolean pedestalGone, pedestalRemembered;
     /** Where the black and white levels of the shot came from (diagnostics): bit depth, override / data floor / dynamic / static. */
     public String levelSources() {
         String black = blackOverride() ? "override" : blackFloorSource != null && blackFloorEstimate != Float.MAX_VALUE
-                ? "data floor (" + blackFloorEstimate + ")" : usedDynamic ? "dynamic" : "static";
+                ? "data floor (" + blackFloorEstimate + (pedestalRemembered ? ", the stream's RAW without its pedestal"
+                : pedestalGone ? ", the RAW without its pedestal" : "")
+                + (blackFloorBlock > 1 ? ", colour block " + blackFloorBlock : "") + ")" : usedDynamic ? "dynamic" : "static";
         String white = whiteOverride() ? "override" : useDynamicWhiteLevel ? "dynamic if reported" : "static";
         return levelBits + " bit, black=" + black + " white=" + white + " [" + levelSource + "]";
     }
@@ -1722,7 +1929,13 @@ public class Parameters {
                 "\n Align=" + ScameraApp.getSettings().alignAlgorithm +
                 "\n Color=" + ScameraApp.getSettings().colorMethod +
                 "\n FocalL=" + FltFormat(focalLength) +
-                "\n Version=" + ScameraApp.getVersion();
+                "\n Version=" + ScameraApp.getVersion() +
+                filmLine(filmRecipe);
+    }
+
+    /** P380: "\n Film=<recipe>" with a film, "" without one. */
+    public static String filmLine(@Nullable String recipe) {
+        return recipe == null || recipe.isEmpty() ? "" : "\n Film=" + recipe;
     }
 
     @SuppressLint("DefaultLocale")

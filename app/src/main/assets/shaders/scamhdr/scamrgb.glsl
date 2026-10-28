@@ -240,7 +240,24 @@ void main(){
                     // the blown core pink): neutral at its brightest level, as the P368 guard; eased in from 0.85 of the clip in
                     // the lowest channel, so a lamp's coloured rim (a channel well below its clip) keeps RT's reconstruction
                     float full = smoothstep(0.85, 1.0, min(min(c.r / max(clipW.r, 1.0e-6), c.g / max(clipW.g, 1.0e-6)), c.b / max(clipW.b, 1.0e-6)));
-                    r = mix(r, vec3(max(max(r.r, r.g), r.b)), full);
+                    // P378 (owner, 2026-10-28: a pink / orange ring round a sun clipped at the sensor's shortest exposure, «us skipped
+                    // (sensor floor)», «везде»): after the white balance a neutral light clips G, B and R in turn over ~1.2 EV (G
+                    // 0.99, B 1.65, R 2.28 on that shot), and in that band the reference rebuilt G and B from R and the other clipped
+                    // channel, below R: a neutral sun's band at 2.03 came out 2.03 / 1.85 / 1.73, hue 65 deg. Once a second channel
+                    // clips its colour is no longer measured, and where the channel left is as bright as the clipped ones (a neutral
+                    // light is at least the second's clip in every channel) the band goes neutral as well, eased in from 0.85 of the
+                    // second channel's clip. A coloured light keeps the reconstruction: one channel clipped (a red sunset rim, G and
+                    // B far below their clips) or the channel left under 0.8 of the brightest (an orange lamp's B under its R and G).
+                    // The ease is part of the neutral ramp out of the core (owner: neutral, not a hue): a light whose G alone clipped
+                    // with R and B measured, R / B within ~0.8 - 1.4 after the white balance, goes towards neutral just below B's clip
+                    // (R / B 1.2: chroma 0.026 -> 0.000 at worst, the zone's median kept; from 1.5 untouched) - no step at that clip.
+                    // At an equal ratio of the two lowest channels the band term is at most full: continuous where they swap.
+                    vec3 tc = c / max(clipW, vec3(1.0e-6));
+                    float tLo = min(min(tc.r, tc.g), tc.b);
+                    float tMid = max(min(tc.r, tc.g), min(max(tc.r, tc.g), tc.b));
+                    float left = tc.r == tLo ? c.r : (tc.g == tLo ? c.g : c.b);
+                    float band = smoothstep(0.85, 1.0, tMid) * smoothstep(0.80, 0.95, left / max(max(max(c.r, c.g), c.b), 1.0e-6));
+                    r = mix(r, vec3(max(max(r.r, r.g), r.b)), max(full, band));
                     Output = mix(c, r, clamp(hlStrengthU, 0.0, 1.0));
                     return;
                 }

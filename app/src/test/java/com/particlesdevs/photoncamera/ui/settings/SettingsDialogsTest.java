@@ -27,6 +27,7 @@ import com.particlesdevs.photoncamera.processing.FileNamePattern;
 import com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamLab;
 import com.particlesdevs.photoncamera.settings.ModuleRegistry;
 import com.particlesdevs.photoncamera.settings.ModuleSensorSettings;
+import com.particlesdevs.photoncamera.ui.settings.custompreferences.ModuleRowPreference;
 import com.particlesdevs.photoncamera.settings.PreferenceKeys;
 import com.particlesdevs.photoncamera.settings.SettingsManager;
 import com.particlesdevs.photoncamera.ui.settings.custompreferences.BackupPreferences;
@@ -65,7 +66,8 @@ import static org.mockito.Mockito.*;
 /**
  * The settings' alert dialogs after their move to DialogStyle (owner, 2026-10-28: one look for every dialog): each still shows
  * its texts and its buttons do what they did - the page reset, the module reset, the module page's name / zoom / Camera ID /
- * copy / crop dialogs, the settings copy, «Название фото», the PNG picker and the lab's dialogs.
+ * copy / crop dialogs, the settings copy, «Название фото», the PNG picker and the lab's dialogs. P384: the module dialogs open from
+ * the module rows of the main page; Camera ID is a sheet with a typed id checked as it is typed.
  */
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = 35, application = Application.class, qualifiers = "w400dp-h880dp-mdpi")
@@ -260,7 +262,10 @@ public class SettingsDialogsTest {
             idle();
             sensor.when(() -> ModuleSensorSettings.reset(anyString())).thenAnswer(inv -> null);
             sensor.clearInvocations();
-            page.findPreference("pref_reset_sensor_config_settings").performClick();
+            // P384: each module's sensor rows end with its own reset (was one row of the sensor page)
+            assertTrue(page.findPreference("pref_reset_sensor_config_settings_back1").isShown());
+            assertEquals("Reset the sensor of “3×”", String.valueOf(page.findPreference("pref_reset_sensor_config_settings_back1").getTitle()));
+            page.findPreference("pref_reset_sensor_config_settings_back1").performClick();
             idle();
             AlertDialog d = latest();
             assertEquals("Reset the module settings?", title(d));
@@ -268,7 +273,7 @@ public class SettingsDialogsTest {
             assertEquals("Cancel", button(d, DialogInterface.BUTTON_NEGATIVE));
             click(d, DialogInterface.BUTTON_NEGATIVE);
             sensor.verify(() -> ModuleSensorSettings.reset(anyString()), never());
-            page.findPreference("pref_reset_sensor_config_settings").performClick();
+            page.findPreference("pref_reset_sensor_config_settings_back1").performClick();
             idle();
             d = latest();
             assertEquals("Reset", button(d, DialogInterface.BUTTON_POSITIVE));
@@ -277,19 +282,40 @@ public class SettingsDialogsTest {
         }
     }
 
-    // ───── The module page (ModuleLensFragment, ModuleConceptFragment) ─────
+    // ───── The module rows of the main page (ModuleActions, CameraIdSheet; were the module page's dialogs) ─────
+
+    private static SettingsActivity.SettingsFragment root(SettingsActivity activity) {
+        Fragment f = top(activity);
+        assertTrue(String.valueOf(f), f instanceof SettingsActivity.SettingsFragment);
+        return (SettingsActivity.SettingsFragment) f;
+    }
+
+    private static void tap(androidx.preference.Preference p) {
+        assertNotNull(p);
+        p.performClick();
+        idle();
+    }
+
+    /** The texts of a dialog's or sheet's views. */
+    private static List<String> texts(View root) {
+        List<String> out = new ArrayList<>();
+        for (TextView t : views(root, TextView.class, new ArrayList<>())) out.add(t.getText().toString());
+        return out;
+    }
+
+    private static TextView text(View row) {
+        List<TextView> all = views(row, TextView.class, new ArrayList<>());
+        assertFalse(all.isEmpty());
+        return all.get(0);
+    }
 
     @Test public void theModulePageDialogsKeepTheirTextsAndActions() {
         try (ActivityController<SettingsActivity> controller = Robolectric.buildActivity(SettingsActivity.class)) {
             SettingsActivity activity = controller.setup().get();
-            FragmentManager fm = activity.getSupportFragmentManager();
-            ModuleLensFragment page = ModuleLensFragment.module("back0");
-            fm.beginTransaction().replace(R.id.settings_container, page).commitNow();
-            idle();
+            SettingsActivity.SettingsFragment root = root(activity);
 
             // name
-            page.requireView().findViewWithTag("Name").performClick();
-            idle();
+            tap(root.findPreference("module_row_name_back0"));
             AlertDialog d = latest();
             assertEquals("Module name", title(d));
             EditText name = first(d, EditText.class);
@@ -298,16 +324,14 @@ public class SettingsDialogsTest {
             name.setText("Wide");
             click(d, DialogInterface.BUTTON_NEGATIVE);
             assertEquals("", prefs.getString("module_name_back0", ""));
-            page.requireView().findViewWithTag("Name").performClick();
-            idle();
+            tap(root.findPreference("module_row_name_back0"));
             d = latest();
             first(d, EditText.class).setText("Wide");
             click(d, DialogInterface.BUTTON_POSITIVE);
             assertEquals("Wide", prefs.getString("module_name_back0", ""));
 
             // zoom and sensor crop
-            page.requireView().findViewWithTag("Zoom and sensor crop").performClick();
-            idle();
+            tap(root.findPreference("module_row_zoom_back0"));
             d = latest();
             assertEquals("Zoom · Wide · ID 3", title(d));
             EditText ratio = first(d, EditText.class);
@@ -321,49 +345,58 @@ public class SettingsDialogsTest {
             click(d, DialogInterface.BUTTON_POSITIVE);
             assertEquals("1.5", prefs.getString("module_zoom_back0", ""));
             assertTrue(prefs.getBoolean("module_sensorcrop_back0", false));
-            page.requireView().findViewWithTag("Zoom and sensor crop").performClick();
-            idle();
+            tap(root.findPreference("module_row_zoom_back0"));
             click(latest(), DialogInterface.BUTTON_NEUTRAL);
             assertFalse(prefs.contains("module_zoom_back0"));
             assertFalse(prefs.contains("module_sensorcrop_back0"));
 
-            // Camera ID: the list, then a typed one
-            page.requireView().findViewWithTag("Camera ID").performClick();
+            // Camera ID: the sheet of «Camera ID модулей» - Auto, the cameras, a typed one checked as it is typed
+            tap(root.findPreference("module_row_id_back0"));
+            BottomSheetDialog sheet = (BottomSheetDialog) ShadowDialog.getLatestDialog();
+            View body = sheet.findViewById(android.R.id.content);
+            assertNotNull(body.findViewWithTag("camera_id_sheet"));
+            assertTrue(texts(body).toString(), texts(body).contains("Camera ID · Wide"));
+            assertEquals("Auto · ID 3", text(body.findViewWithTag("camera_id_auto")).getText().toString());
+            assertEquals("Enter Camera ID manually", text(body.findViewWithTag("camera_id_manual")).getText().toString());
+            View block = body.findViewWithTag("camera_id_manual_block");
+            assertEquals("the typed id unfolds on a tap", View.GONE, block.getVisibility());
+            body.findViewWithTag("camera_id_manual").performClick();
             idle();
-            d = latest();
-            assertEquals("Camera ID · Wide", title(d));
-            assertEquals("Auto", d.getListView().getAdapter().getItem(0).toString());
-            assertEquals("Enter Camera ID manually", d.getListView().getAdapter().getItem(1).toString());
-            pick(d, 1);
-            assertFalse(d.isShowing());
-            AlertDialog manual = latest();
-            assertEquals("Manual Camera ID", title(manual));
-            EditText id = first(manual, EditText.class);
-            assertEquals("For example: 3", id.getHint().toString());
+            assertEquals(View.VISIBLE, block.getVisibility());
+            EditText id = body.findViewWithTag("camera_id_field");
+            TextView status = body.findViewWithTag("camera_id_status"), save = body.findViewWithTag("camera_id_save");
+            assertEquals("For example: 3 or 0-3", id.getHint().toString());
+            id.setText("");
+            assertFalse("nothing to save", save.isEnabled());
+            id.setText("3a!");
+            assertEquals("Digits or Latin letters, e.g. 3 or 0-3", status.getText().toString());
+            assertFalse(save.isEnabled());
             id.setText("7");
-            click(manual, DialogInterface.BUTTON_POSITIVE);
+            assertTrue(status.getText().toString(), status.getText().toString().contains("does not offer camera 7"));
+            assertTrue(save.isEnabled());
+            assertEquals("Save anyway", save.getText().toString());
+            save.performClick();
+            idle();
+            assertFalse(sheet.isShowing());
             assertEquals("7", prefs.getString("module_id_back0", ""));
             assertTrue(prefs.getStringSet("user_camera_ids", null).contains("7"));
-            page.requireView().findViewWithTag("Camera ID").performClick();
+            tap(root.findPreference("module_row_id_back0"));
+            sheet = (BottomSheetDialog) ShadowDialog.getLatestDialog();
+            sheet.findViewById(android.R.id.content).findViewWithTag("camera_id_auto").performClick();
             idle();
-            pick(latest(), 0);
             assertEquals("auto", "", prefs.getString("module_id_back0", "x"));
         }
     }
 
     @Test public void aCopyOfAModuleIsCroppedAndDeletedThroughItsDialogs() {
+        String copy = ModuleRegistry.duplicate("back0", 1.3f);
+        assertNotNull(copy);
         try (ActivityController<SettingsActivity> controller = Robolectric.buildActivity(SettingsActivity.class)) {
             SettingsActivity activity = controller.setup().get();
-            FragmentManager fm = activity.getSupportFragmentManager();
-            String copy = ModuleRegistry.duplicate("back0", 1.3f);
-            assertNotNull(copy);
-            ModuleLensFragment page = ModuleLensFragment.module(copy);
-            fm.beginTransaction().replace(R.id.settings_container, page).commitNow();
-            idle();
+            SettingsActivity.SettingsFragment root = root(activity);
 
             // the crop of the copy, typed
-            page.requireView().findViewWithTag("Copy crop").performClick();
-            idle();
+            tap(root.findPreference("module_row_crop_" + copy));
             BottomSheetDialog sheet = (BottomSheetDialog) ShadowDialog.getLatestDialog();
             sheet.findViewById(android.R.id.content).findViewWithTag("option_crop_custom").performClick();
             idle();
@@ -375,8 +408,7 @@ public class SettingsDialogsTest {
             value.setText("1.4");
             click(d, DialogInterface.BUTTON_NEGATIVE);
             assertEquals(1.3f, ModuleRegistry.crop(copy), 1e-4f);
-            page.requireView().findViewWithTag("Copy crop").performClick();
-            idle();
+            tap(root.findPreference("module_row_crop_" + copy));
             ((BottomSheetDialog) ShadowDialog.getLatestDialog()).findViewById(android.R.id.content).findViewWithTag("option_crop_custom").performClick();
             idle();
             d = latest();
@@ -384,20 +416,21 @@ public class SettingsDialogsTest {
             click(d, DialogInterface.BUTTON_POSITIVE);
             assertEquals(1.4f, ModuleRegistry.crop(copy), 1e-4f);
 
-            // delete it
-            page = (ModuleLensFragment) top(activity);
-            page.requireView().findViewWithTag("Delete copy").performClick();
-            idle();
+            // delete it: the warning row, asked first; its card goes, the slot is free again
+            assertTrue(((ModuleRowPreference) root.findPreference("module_row_delete_" + copy)).warn());
+            tap(root.findPreference("module_row_delete_" + copy));
             d = latest();
             assertEquals("Delete “" + ModuleRegistry.label(copy) + "”?", title(d));
             assertEquals("Delete", button(d, DialogInterface.BUTTON_POSITIVE));
             assertEquals("Cancel", button(d, DialogInterface.BUTTON_NEGATIVE));
             click(d, DialogInterface.BUTTON_NEGATIVE);
             assertEquals("back0", ModuleRegistry.duplicateOf(copy));
-            page.requireView().findViewWithTag("Delete copy").performClick();
-            idle();
+            tap(root.findPreference("module_row_delete_" + copy));
             click(latest(), DialogInterface.BUTTON_POSITIVE);
             assertNull("the copy is gone", ModuleRegistry.duplicateOf(copy));
+            assertNull("its card is gone", root.findPreference("module_card_" + copy));
+            assertNull("its Camera ID row too", root.findPreference("module_row_id_" + copy));
+            assertTrue("its slot is free again", ModuleRegistry.freeSlot(copy));
         }
     }
 

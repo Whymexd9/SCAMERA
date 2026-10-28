@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- P384: the icon tile of a row inside an open module card (preference_card_nested): 30dp, 10dp corners. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#FF262E33"/>
+    <corners android:radius="10dp"/>
+</shape>

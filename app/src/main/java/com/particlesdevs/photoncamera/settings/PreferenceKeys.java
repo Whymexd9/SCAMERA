@@ -1393,9 +1393,12 @@ public class PreferenceKeys {
         } catch(RuntimeException error) { return fallback; }
     }
 
-    /** RAW stream format: auto | raw16 (RAW_SENSOR) | raw10 | raw12 — the camera must offer it, else auto order. */
+    /**
+     * RAW stream format: auto | raw16 (RAW_SENSOR) | raw10 | raw12 — the camera must offer it, else auto order. P388: none stored
+     * is the phone's factory value (RAW10 on the OPPO Find X8 / X7 Ultra).
+     */
     public static String getRawStreamFormat() {
-        return preferenceKeys.settingsManager.getString("default_scope", "pref_raw_stream_format", "auto");
+        return preferenceKeys.settingsManager.getString("default_scope", "pref_raw_stream_format", DeviceDefaults.rawStreamDefault());
     }
 
 

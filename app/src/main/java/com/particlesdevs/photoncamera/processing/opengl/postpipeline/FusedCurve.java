@@ -10,6 +10,8 @@ package com.particlesdevs.photoncamera.processing.opengl.postpipeline;
  * fills it after each viewfinder AE run (SIZE fusedAt evaluations) and uploads it as an R32F SIZE x 1 texture.
  */
 final class FusedCurve {
+    /** The deep-shadow floor of the fusion's bright layer (WhyTone.deepFloor), set by the caller before fill. */
+    static final float[] DEEP_FLOOR = {0f};
     private FusedCurve() {}
 
     /** log2 I of the first and the last entry: below the first the curve is the toe's ~0, above the last the shoulder's 1. */
@@ -35,7 +37,9 @@ final class FusedCurve {
         double sw = 0, swl = 0;
         for (int k = 0; k < 4; k++) {
             final double l = Math.pow(Math.max(acescg(I * em[k], t), 1e-6), gi);
-            final double w = Math.exp(-0.5 * (l - c) * (l - c) / var) * lw[k] + 1e-6;
+            double w = Math.exp(-0.5 * (l - c) * (l - c) / var) * lw[k] + 1e-6;
+            // import why_fusion deepFloorU (the viewfinder's curve = the photo's): the brightest layer (k = 3) floors in deep shadows
+            if (k == 3 && DEEP_FLOOR[0] > 0f && l < c) w = Math.max(w, Math.exp(-0.5 * DEEP_FLOOR[0] * DEEP_FLOOR[0]) * lw[k] + 1e-6);
             sw += w;
             swl += w * l;
         }

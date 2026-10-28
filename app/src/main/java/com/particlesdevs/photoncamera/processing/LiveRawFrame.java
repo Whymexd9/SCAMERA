@@ -77,6 +77,8 @@ public final class LiveRawFrame {
     private static int width, height, rowStride;
     private static float[] crop = {0,0,1,1};
     private static int cfaPattern, cfaBlock=1, iso=100, maxAnalogIso=6400;
+    /** P383: the published frame's SENSOR_EXPOSURE_TIME (0: unknown). */
+    private static long exposureNs;
     private static boolean autoExposure=true;
     /** P314: the frame is a Quad / Tetra frame's cell means (see {@link Frame#cellMean}). */
     private static boolean cellMean;
@@ -511,7 +513,7 @@ public final class LiveRawFrame {
         // P314: nothing is binned or copied while the GL thread has not taken the last frame (drop-when-busy)
         if (plane == null || !takesFrame()) return;
         publishFrame(plane,w,h,stride,cfa,white,black,gains,ccm,lensShading,sw,sh,cropRect,block,sensorIso,analogIso,automatic,shotNoise,readNoise,
-                format,minGain,maxGain,sceneLuma,false,false,System.nanoTime());
+                format,minGain,maxGain,sceneLuma,false,false,System.nanoTime(),0L);
     }
 
     /**
@@ -524,15 +526,24 @@ public final class LiveRawFrame {
         public float white = 1023f, minGain = 0f, maxGain = Float.POSITIVE_INFINITY;
         public float[] black, gains, ccm, shading, crop;
         public Integer sensorIso, analogIso;
+        /** P383: the frame's SENSOR_EXPOSURE_TIME, from the same result as {@link #sensorIso} (null: unknown). */
+        public Long exposureNs;
         public boolean automatic = true, sceneLuma = true;
         public double shotNoise, readNoise;
     }
 
     /** P365: {@link #publish} with the parameters of {@code m} (the camera's plane, copied as before). */
     public static void publish(ByteBuffer plane, Meta m) {
-        if (m == null) return;
-        publish(plane, m.width, m.height, m.rowStride, m.cfa, m.white, m.black, m.gains, m.ccm, m.shading, m.shadingWidth, m.shadingHeight,
-                m.crop, m.block, m.sensorIso, m.analogIso, m.automatic, m.shotNoise, m.readNoise, m.format, m.minGain, m.maxGain, m.sceneLuma);
+        // P314: nothing is binned or copied while the GL thread has not taken the last frame (drop-when-busy)
+        if (m == null || plane == null || !takesFrame()) return;
+        publishFrame(plane, m.width, m.height, m.rowStride, m.cfa, m.white, m.black, m.gains, m.ccm, m.shading, m.shadingWidth,
+                m.shadingHeight, m.crop, m.block, m.sensorIso, m.analogIso, m.automatic, m.shotNoise, m.readNoise, m.format, m.minGain,
+                m.maxGain, m.sceneLuma, false, false, System.nanoTime(), exposureOf(m));
+    }
+
+    /** P383: the exposure time a Meta carries, 0 when unknown. */
+    static long exposureOf(Meta m) {
+        return m == null || m.exposureNs == null ? 0L : Math.max(0L, m.exposureNs);
     }
 
     /**
@@ -550,7 +561,7 @@ public final class LiveRawFrame {
         try {
             if (m != null) pinned = publishFrame(view, m.width, m.height, m.rowStride, m.cfa, m.white, m.black, m.gains, m.ccm, m.shading,
                     m.shadingWidth, m.shadingHeight, m.crop, m.block, m.sensorIso, m.analogIso, m.automatic, m.shotNoise, m.readNoise, m.format,
-                    m.minGain, m.maxGain, m.sceneLuma, false, true, System.nanoTime());
+                    m.minGain, m.maxGain, m.sceneLuma, false, true, System.nanoTime(), exposureOf(m));
         } finally {
             if (!pinned) free(view);
         }
@@ -573,7 +584,7 @@ public final class LiveRawFrame {
      * when it was copied or not taken. {@code startNs}: when the caller began (P365: the copy time of a published frame).
      */
     private static boolean publishFrame(ByteBuffer plane,int w,int h,int stride,int cfa,float white,float[] black,float[] gains,float[] ccm,float[] lensShading,int sw,int sh,float[] cropRect,int block,Integer sensorIso,Integer analogIso,boolean automatic,double shotNoise,double readNoise,int format,
-                               float minGain,float maxGain,boolean sceneLuma,boolean means,boolean pin,long startNs){
+                               float minGain,float maxGain,boolean sceneLuma,boolean means,boolean pin,long startNs,long exposureTimeNs){
         if (!enabled || plane == null) return false;
         // P108: a full-resolution Quad-Bayer frame (Pixel 10 Pro: 8160x6144 RAW10, the ISP's own viewfinder is green in that
         // mode) is shown 2x2-binned as the plain Bayer 4080x3072, at most every QUAD_BIN_INTERVAL_NS (the camera thread); P194 a
@@ -590,7 +601,8 @@ public final class LiveRawFrame {
             if (binned == null) return false;
             // P365: a ring view was read by the bin (cached memory) and is not kept
             publishFrame(binned, w / cell, h / cell, w / cell * 2, cfa, white, black, gains, ccm, lensShading, sw, sh, cropRect, 1, sensorIso, analogIso,
-                    automatic, shotNoise, readNoise, android.graphics.ImageFormat.RAW_SENSOR, minGain, maxGain, sceneLuma, cellMeans, false, startNs);
+                    automatic, shotNoise, readNoise, android.graphics.ImageFormat.RAW_SENSOR, minGain, maxGain, sceneLuma, cellMeans, false, startNs,
+                    exposureTimeNs);
             return false;
         }
         // P266: the module's «Разрешение видоискателя RAW» - a plain Bayer frame halved until it fits. P316 (settings audit): a
@@ -703,7 +715,7 @@ public final class LiveRawFrame {
         // P315 (OPPO Find X8 Ultra, sensor mode 8: the RAW without its 64 DN black pedestal, the viewfinder green and half black):
         // the frame's own floor when its samples prove the pedestal lost (the GL develop, LiveWhyMeter and LiveRawMeter read it)
         if (black != null && blackFromData && com.particlesdevs.photoncamera.settings.PreferenceKeys.scamDevSwitch("vf_black_floor", true))
-            black = PEDESTAL.black(generation, target, w, h, w * 2, block, black);
+            black = PEDESTAL.black(generation, target, w, h, w * 2, block, black, white);
         ByteBuffer replaced;
         synchronized (LOCK) {
             if (!enabled || session != generation) return false;
@@ -729,6 +741,7 @@ public final class LiveRawFrame {
             cellMean = means;
             iso = sensorIso==null ? 100 : Math.max(1,sensorIso);
             maxAnalogIso = analogIso==null ? 6400 : Math.max(101,analogIso);
+            exposureNs = Math.max(0L, exposureTimeNs);
             autoExposure = automatic;
             minDisplayGain = Float.isNaN(minGain) ? 0f : Math.max(0f, minGain);
             maxDisplayGain = Float.isNaN(maxGain) ? Float.POSITIVE_INFINITY : Math.max(minDisplayGain, maxGain);
@@ -794,7 +807,7 @@ public final class LiveRawFrame {
         f.cfaPattern = cfaPattern;
         f.cfaBlock = cfaBlock;
         f.cellMean = cellMean;
-        f.iso = iso; f.maxAnalogIso = maxAnalogIso; f.autoExposure = autoExposure;
+        f.iso = iso; f.maxAnalogIso = maxAnalogIso; f.autoExposure = autoExposure; f.exposureNs = exposureNs;
         f.minDisplayGain = minDisplayGain; f.maxDisplayGain = maxDisplayGain; f.sceneLuma = sceneLuma;
         f.noiseS=noiseS;f.noiseO=noiseO;
         f.whiteLevel = whiteLevel;
@@ -835,6 +848,8 @@ public final class LiveRawFrame {
         public ByteBuffer buffer;
         public int width, height, rowStride, cfaPattern, version, session;
         public int cfaBlock=1, iso=100, maxAnalogIso=6400;
+        /** P383: SENSOR_EXPOSURE_TIME of the frame's result (0: unknown); with {@link #iso} its exposure (FrameExposure). */
+        public long exposureNs;
         public boolean autoExposure=true;
         /**
          * P314: the sites are the cell means of a Quad / Tetra frame (block 1 here): drawn one colour per 2 x 2 of them (cfa_mode 0),

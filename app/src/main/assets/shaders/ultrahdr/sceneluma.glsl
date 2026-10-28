@@ -21,6 +21,12 @@ uniform ivec2 rawSize;
 // sensorToProPhoto . diag(neutral) (PostPipeline: the render's own colour matrix): Rec.709 weights on camera RGB gave the
 // HDR boost by hue (the X8U's blue +0.41 EV, orange -0.14 EV). Unset (0): Rec.709 on the input as before.
 uniform vec3 wU;
+// P378 review (Ultra HDR keeps the sky term's change): the SDR's own ratio of the sky term (WhyCombine: why/combine at whyLow with
+// and without it, why/skyratio; sensor layout as InputBuffer, normalised coordinates, linear filter) - the plane takes it, so the
+// HDR rendition is the lowered SDR sky times the scene's headroom over the SDR before the term, not the scene's old light. 0 /
+// unset: none (the plane as before).
+uniform sampler2D SkyRatio;
+uniform int skyRatioU;
 
 out vec4 Output;
 
@@ -35,28 +41,29 @@ void main() {
     switch (rotate) {
         case 0:
             xy += ivec2(0, (rawSize.y - cropSize.y));
+            // P387: the last texel is size - 1, as addwatermark_rotate.glsl (the plane stays aligned with the base)
             if (mirror)
-                xy.y = texSize.y - xy.y;
+                xy.y = texSize.y - 1 - xy.y;
             srcCoord = xy;
             c = texelFetch(InputBuffer, srcCoord, 0).rgb;
             break;
         case 1:
             xy += ivec2((rawSize.y - cropSize.y), 0);
             if (mirror)
-                xy.x = cropSize.y - xy.x;
-            srcCoord = ivec2(texSize.x - xy.y, xy.x);
+                xy.x = cropSize.y - 1 - xy.x;
+            srcCoord = ivec2(texSize.x - 1 - xy.y, xy.x);
             c = texelFetch(InputBuffer, srcCoord, 0).rgb;
             break;
         case 2:
             if (mirror)
-                xy.y = texSize.y - xy.y;
-            srcCoord = ivec2(texSize.x - xy.x, texSize.y - xy.y);
+                xy.y = texSize.y - 1 - xy.y;
+            srcCoord = ivec2(texSize.x - 1 - xy.x, texSize.y - 1 - xy.y);
             c = texelFetch(InputBuffer, srcCoord, 0).rgb;
             break;
         case 3:
             if (mirror)
-                xy.x = cropSize.y - xy.x;
-            srcCoord = ivec2(xy.y, texSize.y - xy.x);
+                xy.x = cropSize.y - 1 - xy.x;
+            srcCoord = ivec2(xy.y, texSize.y - 1 - xy.x);
             c = texelFetch(InputBuffer, srcCoord, 0).rgb;
             break;
         default:
@@ -74,5 +81,6 @@ void main() {
     gains.rgb = vec3(gains.r, (gains.g + gains.b) / 2.0, gains.a);
     float gainsVal = dot(gains.rgb, vec3(1.0 / 3.0));
     float l = (wU == vec3(0.0) ? lum709(max(c, vec3(0.0))) : max(dot(wU, c), 0.0)) * gainsVal;
+    if (skyRatioU == 1) l *= max(texture(SkyRatio, (vec2(srcCoord) + 0.5) / vec2(texSize)).r, 0.0);
     Output = vec4(l, l, l, 1.0);
 }

@@ -10,7 +10,9 @@ import java.nio.FloatBuffer;
 import java.util.Locale;
 import java.util.Random;
 
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
@@ -301,6 +303,45 @@ public class LiveWhyMeterTest {
         // at night a frame's noise (sigma ~40 % of a site 15 DN above black) lifts the cells' p98 / p995 well above the merged
         // photo's (here +37 % / +74 %; the exposure is at its noise clamp either way): the risk the design names
         compare("2x ISZ cell means, night", frame(1024, 768, 1, true, 1.5, 8, 0.03), frame(1024, 768, 1, true, 0, 8, 0.03), 960, 720, 0.15, 1.0, 0.15);
+    }
+
+    /**
+     * P378 review (the sky term on the viewfinder): the quads the meter keeps are each cell's own - their mean is the cell, top
+     * left / top right / bottom left / bottom right in the frame's order; the cells cover the crop's whole quads (cover).
+     */
+    @Test
+    public void theQuadsAreTheCellsOwn() {
+        LiveRawFrame.Frame f = frame(256, 192, 1, false, 0.5, 11, 0.25);
+        float[] id = {1, 0, 0, 0, 1, 0, 0, 0, 1};
+        LiveWhyMeter.View v = new LiveWhyMeter.View(f, 0, 0, 256, 192, id);
+        int[] n = new int[2];
+        int[] g = LiveWhyMeter.grid(v);
+        float[] quads = new float[g[0] * g[1] * 12];
+        float[] c = LiveWhyMeter.cells(v, 1.5f, n, null, quads);
+        for (int i = 0; i < n[0] * n[1]; i++) {
+            for (int ch = 0; ch < 3; ch++) {
+                float mean = 0f;
+                for (int q = 0; q < 4; q++) mean += quads[i * 12 + 3 * q + ch] / 4f;
+                assertEquals("cell " + i + " channel " + ch, c[i * 3 + ch], mean, 1e-5f * Math.max(1f, c[i * 3 + ch]));
+            }
+        }
+        assertArrayEquals(c, LiveWhyMeter.cells(v, 1.5f, n), 0f);
+        // the meter keeps them only when asked
+        LiveWhyMeter m = new LiveWhyMeter();
+        m.measure(v, 1.5f, settings(), f.iso, f.maxAnalogIso);
+        assertNull(m.lastQuads());
+        m.keepQuads = true;
+        m.measure(v, 1.5f, settings(), f.iso, f.maxAnalogIso);
+        assertArrayEquals(quads, java.util.Arrays.copyOf(m.lastQuads(), quads.length), 0f);
+        assertArrayEquals(n, m.lastGrid());
+        // the cover: all of a crop of whole cells
+        float[] cover = LiveWhyMeter.cover(v);
+        assertEquals(1f, cover[0], 1e-6f);
+        assertEquals(1f, cover[1], 1e-6f);
+        // the view keeps the rotation and mirror it was drawn with (identity / none by default)
+        assertEquals(1f, v.rotation[0], 0f);
+        assertEquals(1f, v.rotation[5], 0f);
+        assertFalse(v.mirror);
     }
 
     @Test

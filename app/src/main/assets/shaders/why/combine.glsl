@@ -76,11 +76,29 @@ precision highp int;
 #define RAW_SOURCE 0
 // P349 SUN_BLOOM 1: the glow round fully clipped cores (SunBloom); 0: the shader before P349, token for token.
 #define SUN_BLOOM 0
+// P378 HL_OPPOSED 1 (with HL_LANDING 1; WhyCombine sets it when ScamRgb's OppShare has a block a light clipped without
+// ultrashort data fills, «Inpaint opposed» rebuilt): the low-chroma glow round such a light lands on white; 0: the shader before
+// P378, token for token.
+#define HL_OPPOSED 0
+// Crushed room (window burst 2026-10-28) MACRO_TOE 1: the macro contrast below its pivot as a power (no black offset; WhyCombine and
+// the viewfinder set it, scam_dev hybrid macro_toe 0 takes it off); 0: the line, the shader before it token for token
+#define MACRO_TOE 0
 // P369 FILM_SIM 1 (WhyCombine and LiveWhyTone set it with a film simulation, never with FILM_LUT): the film is fed the exposed
 // scene light - the colour source x ae before the fusion's gain, the shoulders, OKLab, AgX and the display chain, with the
 // full-size detail as a luminance ratio - through a log-encoded table of the model (FilmChain.scene), and its print replaces our
 // output (mixed by the simulation's strength below 1). FILM_SIM 0: every block below drops out (tools/check_film_sim.py).
 #define FILM_SIM 0
+// P378 SKY 1 (WhyCombine, a photo with a sky: WhySky's mask; LiveWhyTone, the viewfinder in the same sky: its cells; owner,
+// 2026-10-28: «Нет, только небо», «наш тонмапинг не должен затемнять небо в контровых сценах»): the sky term under the mask,
+// nothing on the ground - C1 the clouds neutral (the vibrance's neutral gate and the sky vibrance on clearly blue colour only, the
+// blue itself less of it: the reference's gaps x0.87 the chroma of ours), L2 the sky's level (its gain and macro contrast - a share
+// of «Контраст», not in place of it) and L3 its top (the gain fading out over the clouds' tops, the shoulders above white given
+// more room; L2 / L3 off in a backlit scene: skyU.x 0), M1 the clouds' modelling (the guided share of the fusion and the detail
+// cuts towards white relaxed in the clear sky), L4 less of the highlight landing's glow in the clear sky. With POINT_FUSED 1 (the
+// viewfinder, P301: «Результат должен совпадать с итоговым фото») WhySky holds the decision's cells and the pixel's own gate of
+// why/skymask.glsl is taken here (utils/import_skygate.glsl). SKY 0: every block below drops out (the shader before P378, token
+// for token; a pixel outside the mask takes the same operations bit for bit).
+#define SKY 0
 #import interpolation
 uniform sampler2D InputBuffer;      // full-size white-balanced linear camera RGB (the merge after denoising)
 uniform sampler2D GainMap;          // lens shading gains
@@ -147,6 +165,22 @@ uniform ivec2 vpSizeU;              // P365: the viewport's size (the tone size)
 #if HL_LANDING == 1
 uniform float hlSoftU;              // P154 highlight landing: where it starts below the data ceiling (fraction, 0 = off)
 uniform sampler2D WhyHl;            // P154: the blurred share of the ceiling (why/hlmask.glsl), whyLow size, linear filter
+#if HL_OPPOSED == 1
+uniform sampler2D OppShare;         // P378: the nearness of a light «Inpaint opposed» rebuilt (scamhdr/suncore.glsl MODE 2, 3, 1),
+                                    // linear; .g that light's gate (1: its glow lands on white)
+uniform vec2 oppGridU;              // output uv -> OppShare uv (its blocks cover a little more than the image)
+#endif
+#endif
+#if SKY == 1
+uniform sampler2D WhySky;           // P378: the sky mask (why/skymask.glsl, whyLow or reduced, linear filter): r the sky, g the clear sky
+                                    // (POINT_FUSED 1: the cells in the tone's orientation, b the local sky level as log2 Y of the frame)
+uniform vec4 skyU;                  // P378: x the sky's level share (L2, L3; 0 backlit), y its gain, z its share of «Контраст», w the room x
+uniform vec4 skyMU;                 // P378: the strengths of x C1 (the clouds neutral), y M1 (their modelling), z L4 (the landing's glow);
+                                    // w the share of the sky vibrance the sky's blue keeps (C1)
+uniform vec2 skyTopU;               // P378 (L3): the clouds' tops, log2 Y of whyLow: the sky's gain fades out from x to y
+#if POINT_FUSED == 1
+#import skygate
+#endif
 #endif
 #if COLOUR_LOOK == 1
 uniform vec3 skinU;                 // skin: protection of positive gains 0..1, hue shift -1..1 (x 12 deg), evenness 0..1
@@ -204,6 +238,14 @@ vec3 sceneLinear(ivec2 xy, ivec2 size) {
 }
 
 float max3(vec3 v) { return max(v.r, max(v.g, v.b)); }
+#if SKY == 1
+// P378 (C1): the share of the sky vibrance a sky pixel takes - a clearly coloured blue only (OKLab chroma from 0.015 .. 0.03 up,
+// a hue on the blue side, a / C under 0 .. 0.3): the grey-blue cloud bases (chroma ~0.01 with the white balance's slightly magenta
+// a) went lavender under it (C* 6.0 against the reference's 2.9, hue 284 against 256); the blue gaps (chroma 0.06 - 0.08) keep it
+float skyBlue(vec3 lab, float sat) {
+    return smoothstep(0.015, 0.03, sat) * (1.0 - smoothstep(0.0, 0.3, lab.y / sat));
+}
+#endif
 #if FILM_SIM == 1
 #if P3_OUT == 1
 // P369: the film's sRGB print to the P3 file (whose transfer is the sRGB curve): decode, P3 primaries, encode
@@ -600,6 +642,14 @@ vec3 landingColour(ivec2 xy, int fc, float clipCeiling, vec3 own) {
 }
 #endif
 
+#if MACRO_TOE == 1
+// Crushed room (window burst 2026-10-28): the line about L 0.40 took 0.04 L off every shadow (-1.1 EV at L 0.12, black below L 0.036;
+// the AgX black point rose 1.45 EV); below the pivot the same contrast as a power about it (slope m at 0.40 on both sides, 0 stays 0)
+float macroLine(float x, float m) {
+    return x < 0.40 ? max(0.40 * pow(max(x, 0.0) / 0.40, m), 0.0001) : max(0.40 + (x - 0.40) * m, 0.0001);
+}
+#endif
+
 void main() {
 #if RAW_SOURCE == 1
     // P365: the tone grid is the viewport (drawn on the screen at its origin, or into the tone target at 0, 0); the frame
@@ -621,6 +671,20 @@ void main() {
     vec4 agxA = agxAU.x > 0.0 ? agxAU : vec4(2.7, 1.35, 1.6, 1.0);
     vec4 agxB = agxBU == vec4(0.0) ? vec4(-8.5, 3.5, 0.3, 4.0) : agxBU;
     int look = int(agxB.w + 0.5);
+#if SKY == 1
+    // P378: the sky mask at the pixel and the shares of its terms (all 0 off the mask: every sky branch below is skipped)
+#if POINT_FUSED == 1
+    // the viewfinder: the cells (bilinear), the pixel's own gate below once its colour is known
+    vec4 skyC = texture(WhySky, (vec2(xy) + 0.5) / vec2(size));
+    vec2 skyM = clamp(skyC.rg, 0.0, 1.0);
+#else
+    vec2 skyM = clamp(texture(WhySky, (vec2(xy) + 0.5) / vec2(size)).rg, 0.0, 1.0);
+#endif
+    float skyLevel = skyM.r * skyU.x;   // L2, L3
+    float skyNeutral = skyM.r * skyMU.x; // C1
+    float skyModel = skyM.g * skyMU.y;  // M1
+    float skyGlow = skyM.g * skyMU.z;   // L4
+#endif
 
     // === 1. B-spline colour, fused luma and Y_low [:1450-1497] ===
     vec3 orig = vec3(0.0);
@@ -756,12 +820,37 @@ void main() {
 #endif
     }
 
+#if SKY == 1
+#if POINT_FUSED == 1
+    // P378 review (the viewfinder): why/skymask.glsl's gate of the pixel - its luminance against the cell's local sky level, its hue
+    if (skyM.r + skyM.g > 0.0) {
+        float skyG = skyFine(orig, skyC.b);
+        skyLevel *= skyG;
+        skyNeutral *= skyG;
+        skyModel *= skyG;
+        skyGlow *= skyG;
+    }
+#endif
+#endif
     // === 2. ACES inversion and base gain [:1500-1509] ===
     float targetLin = inverseAcescg(pow(max(fused, 0.0), 2.2), toe);
     float origLuma = max(max(dot(orig, LUMA), max3(orig) * 0.5), 0.0001);
     float gain = targetLin / max(origLuma * ae, 0.0001);
     vec3 lin = orig * ae * gain;
     float linScale = ae * gain;  // P370: every scale lin takes before OKLab, for the signed colour
+#if SKY == 1
+    // P378 (L2, the owner's flats against the reference app: the reference's sky ~x0.86 of ours in linear output from its gaps to
+    // the clouds' middle, fading to x1 - x1.05 at the brightest tops; its ground as ours): the sky's scene light x skyU.y here and
+    // its macro contrast skyU.z below; (L3) the gain fades out over the clouds' tops (skyTopU: from x to y, log2 Y of whyLow - the
+    // sky's own level and up), so the brightest clouds keep their light and the clouds gain contrast, as the reference's
+    float skyGain = 1.0;
+    if (skyLevel > 0.0) {
+        float skyTopShare = smoothstep(skyTopU.x, skyTopU.y, log2(max(dot(max(orig, vec3(0.0)), LUMA), 0.000001)));
+        skyGain = mix(1.0, skyU.y, skyLevel * (1.0 - skyTopShare));
+        lin *= skyGain;
+        linScale *= skyGain;
+    }
+#endif
     // Saturation of the light (0 neutral .. 1 one channel): the shoulders below act on the max channel for low-saturation
     // colours (as the kernel) and on the luminance for saturated ones, so a saturated light keeps its tonal separation
     // instead of being pinned at its max channel (P11: the LED wall band of the X9 Ultra collapsed to one flat colour).
@@ -772,6 +861,22 @@ void main() {
     // P216: WhyCam 1.58's shoulder (before the AgX below) in place of the kernel's ceiling and roll-off
     bool wide = hrU > clipCeiling;
     if (wide) headroom = false;
+#endif
+#if SKY == 1
+    // P378 (L3: ours topped out at Y 0.82 - 0.85 where the reference's clouds reach 0.95): in the sky the ceiling and the roll-off
+    // below take skyU.w x their room (the same curves, so a pixel at the mask's edge meets the ground's tone without a step)
+    bool skyTop = headroom && skyLevel > 0.0;
+    float skyRoom = skyTop ? mix(1.0, skyU.w, skyLevel) : 1.0;
+    if (skyTop) {
+        headroom = false;
+        float mfS = mix(max3(lin), dot(lin, LUMA), satW);
+        if (mfS > 1.0) {
+            float exS = mfS - 1.0, capS = 0.35 * skyRoom;
+            float kS = (1.0 + exS * capS / (exS + capS)) / mfS;
+            lin *= kS;
+            linScale *= kS;
+        }
+    }
 #endif
     // Bento headroom ceiling: everything above 1 softly into <= 1.35 [:1515-1526]; only with real headroom (clipped data
     // or Bento), not for the WB headroom of unclipped saturated colour.
@@ -810,7 +915,12 @@ void main() {
             // white stays with hrDetailU); the delta is unchanged bit for bit where no tap is a light.
             if (delta > 0.0) delta *= 1.0 - smoothstep(0.0, 1.0, lightW);
             // P349: nor on a pixel above white (the window's edge by the sun drew a bright tick at every rung's corner)
+#if SKY == 1
+            // P378 (M1): the clear sky (no edge, no light near) keeps it - a cloud's top is above white
+            if (delta > 0.0) delta *= 1.0 - smoothstep(0.8, 1.2, yFull * ae) * (1.0 - skyModel);
+#else
             if (delta > 0.0) delta *= 1.0 - smoothstep(0.8, 1.2, yFull * ae);
+#endif
         } else {
             delta = cbrtp(max(yFull * ae, 0.000001)) - cbrtp(max(yLow * ae, 0.000001));
         }
@@ -882,11 +992,35 @@ void main() {
         signedW = signedHueWeight(origS, orig);
         if (signedW > 0.0) lab = mix(lab, toOklabSigned(origS * linScale), signedW);
     }
+#if SKY == 1
+    // P378 (L2): the sky's macro contrast (the global 1.1 pivots at L 0.40: +18 % of a cloud's light at L 0.9) - a share of the
+    // user's «Контраст» (P378 review: a fixed 1.0 in its place brightened the sky at «Контраст» 0.8, x1.014, and lowered it x0.73
+    // at 1.5; as a share the mid sky goes down by about the same ratio at every setting)
+    float macroSky = skyLevel > 0.0 ? macro * mix(1.0, skyU.z, skyLevel) : macro;
+#if MACRO_TOE == 1
+    if (abs(macroSky - 1.0) > 0.001) lab.x = macroLine(lab.x, macroSky);
+#else
+    if (abs(macroSky - 1.0) > 0.001) lab.x = max(0.40 + (lab.x - 0.40) * macroSky, 0.0001);
+#endif
+#else
+#if MACRO_TOE == 1
+    if (abs(macro - 1.0) > 0.001) lab.x = macroLine(lab.x, macro);
+#else
     if (abs(macro - 1.0) > 0.001) lab.x = max(0.40 + (lab.x - 0.40) * macro, 0.0001);
+#endif
+#endif
     float sat = max(length(lab.yz), 0.0001);
     float protect = max(1.0 - sat * 2.0, 0.0);
     float satMult = 1.0 + vibU.x * protect;
+#if SKY == 1
+    // P378 (C1): in the sky only a clearly blue colour takes the sky vibrance (skyBlue), and skyMU.w of it (P378 review: the blue
+    // gaps went x1.06 in chroma where the reference's are x0.87 of ours)
+    if (abs(vibU.y) > 0.001 && lab.z < 0.0)
+        satMult += vibU.y * clamp(-lab.z / sat, 0.0, 1.0) * protect
+                   * (skyNeutral > 0.0 ? mix(1.0, skyBlue(lab, sat) * skyMU.w, skyNeutral) : 1.0);
+#else
     if (abs(vibU.y) > 0.001 && lab.z < 0.0) satMult += vibU.y * clamp(-lab.z / sat, 0.0, 1.0) * protect;
+#endif
     if (abs(vibU.z) > 0.001 && lab.y < 0.0) satMult += vibU.z * clamp(-lab.y / sat, 0.0, 1.0) * protect;
     lab.yz *= satMult;
     // P341 (owner, 2026-10-26: «нам нужно получить цвет у неба как у стока, при этом чтобы небо не темнило», «сделай чтобы было
@@ -896,10 +1030,21 @@ void main() {
     // has its colour already stays (the 3.7x sunset's glow at chroma 34 went to 66, red-orange, under a plain x 2.2; LMC 9.6 /
     // ArkCam 33 - 38), none on a neutral (its hue is noise below chroma 0.004). Host replay: the 1x sky 8 / 22 -> ~20 / ~33,
     // the 3.7x glow 34 -> ~42.
+#if SKY == 1
+    // P378 (C1): in the sky the neutral gate is 0.015 .. 0.03 - a cloud tinted at chroma 0.004 - 0.012 (the white balance's cast)
+    // took x2.1 - 2.4 of it and read cream / lavender (cloud C* 4.55 against the reference's 2.65); a blue gap is far above it
+    if (vibHlU > 0.0) {
+        float c0 = length(lab.yz);
+        float neutralGate = skyNeutral > 0.0 ? mix(smoothstep(0.002, 0.008, c0), smoothstep(0.015, 0.03, c0), skyNeutral)
+                                             : smoothstep(0.002, 0.008, c0);
+        lab.yz *= 1.0 + 1.6 * vibHlU * smoothstep(0.45, 0.75, lab.x) * neutralGate * max(1.0 - c0 / 0.10, 0.0);
+    }
+#else
     if (vibHlU > 0.0) {
         float c0 = length(lab.yz);
         lab.yz *= 1.0 + 1.6 * vibHlU * smoothstep(0.45, 0.75, lab.x) * smoothstep(0.002, 0.008, c0) * max(1.0 - c0 / 0.10, 0.0);
     }
+#endif
 #if COLOUR_LOOK == 1
     float skinW = 0.0;
     if (length(lab.yz) > 0.000001) {
@@ -983,6 +1128,17 @@ void main() {
         if (mw > knee) {
             float ex = mw - knee;
             scene *= (knee + ex * room / (ex + room)) / mw;
+        }
+    }
+#endif
+#if SKY == 1
+    // P378 (L3): the sky's roll-off with skyU.w x the room
+    if (skyTop) {
+        float mlS = mix(max3(scene), dot(scene, LUMA), satW);
+        if (mlS > 0.5) {
+            float exS = mlS - 0.5;
+            float roomS = max((clipCeiling - 0.5) * 0.35, 1.5) * skyRoom;
+            scene *= (0.5 + exS / (1.0 + exS / roomS)) / mlS;
         }
     }
 #endif
@@ -1112,10 +1268,21 @@ void main() {
         // its square. A ladder rung 10 x darker than the sun's glow around it (2 - 4 x white, compressed ~0.3) kept 9 % of its
         // detail and read as glow; the fused base carries it only at half size. Brightening detail keeps the square (no
         // white rims around lights).
+#if SKY == 1
+        // P378 (M1): in the clear sky brightening detail scales with the compression as darkening detail does (no light there to
+        // draw a white rim round)
+        delta *= delta < 0.0 ? compression : compression * mix(compression, 1.0, skyModel);
+#else
         delta *= delta < 0.0 ? compression : compression * compression;
+#endif
     }
     float lBefore = post.x;
+#if SKY == 1
+    // P378 (M1): the clear sky's detail is not halved towards white (the clouds' tops: 1.8x flatter than the reference's)
+    post.x = clamp(post.x + delta * (1.0 - smoothstep(0.75, 1.0, post.x) * 0.5 * (1.0 - skyModel)), 0.0001, 1.0);
+#else
     post.x = clamp(post.x + delta * (1.0 - smoothstep(0.75, 1.0, post.x) * 0.5), 0.0001, 1.0);
+#endif
 #if HEADROOM_WIDE == 1
     // P216: the bounded reference (min(ae Y, 1)) gives no detail above white, and the colour / fusion grid is the 2 x 2 box:
     // with real headroom a bright pixel keeps hrDetailU of its log contrast against that grid (L ~ Y^(1/3)), only where it
@@ -1178,8 +1345,19 @@ void main() {
 #if HL_LANDING == 1
     if (headroomU != 0 && hlSoftU > 0.0) {
         float rBlur = texture(WhyHl, (vec2(xy) + 0.5) / vec2(size)).r;
+#if SKY == 1
+        // P378 (L4): less glow of the landing in the clear sky - the blurred share spread the brightest clouds' landing over their
+        // darker neighbours (near a low ceiling, no Bento: a soft white veil, the bases lifted towards the tops); there the landing
+        // follows the pixel's own share of the ceiling (WhyHl before its blur) by skyMU.z, so the clouds keep their modelling at
+        // about the same brightness. A clipped core's landing (the sun, its glow: 2 cells round it are not clear sky) stays. (L2)
+        // the sky's light lands as the sky's gain left it (a landing on the ungained light undid the lower sky under a low ceiling).
+        if (skyGlow > 0.0) rBlur = mix(rBlur, clamp(max3(orig) / clipCeiling, 0.0, 4.0), skyGlow);
+        float t = clamp((rBlur * skyGain - (1.0 - hlSoftU)) / hlSoftU, 0.0, 1.0);
+        float landing = (1.0 - (1.0 - t) * (1.0 - t)) * smoothstep(0.15, 0.45, max3(orig) * skyGain / clipCeiling);
+#else
         float t = clamp((rBlur - (1.0 - hlSoftU)) / hlSoftU, 0.0, 1.0);
         float landing = (1.0 - (1.0 - t) * (1.0 - t)) * smoothstep(0.15, 0.45, max3(orig) / clipCeiling);
+#endif
         if (landing > 0.0) {
             // P159: a coloured light lands on ITS colour at full brightness, taken from the colour source before the tone
             // (the shoulder had bleached a blown orange to pale pink: the inside of a cone on an LED screen); a near-neutral
@@ -1194,6 +1372,24 @@ void main() {
 #endif
             sTop /= max(max3(sTop), 0.000001);
             vec3 top = mix(sTop, vec3(1.0), 1.0 - smoothstep(0.08, 0.30, satS));
+#if HL_OPPOSED == 1
+            // P378 (owner, 2026-10-28: a pink / orange ring round a sun clipped at the sensor floor, «везде»; a light clipped with
+            // no ultrashort data keeps a neutral core and a neutral ramp out of it, not a hue): the ring is the light's own warm,
+            // low-chroma glow beside the clipped core - the zone where G alone clipped and on beyond the flags (R 255, G 212 - 222,
+            // B 182 - 194 on the owner's sun) - painted at full brightness here. Near such a light (OppShare: ScamRgb's max-
+            // gaussian exp(-d^2 / R^2) of the blocks it fills, d the distance, R 3.3 % of the frame's shorter side; in full out to
+            // ~R, none past ~1.7 R; a light one block wide or the sun, the same) the glow lands on white by that light's gate
+            // (OppShare .g, decided once per light - P378 review: a per-pixel cut-off drew a white ring where the glow paled with
+            // distance): a pale warm aureole white, an orange lamp, a red sunset rim or a saturated LED as before over the whole
+            // glow - and white where the pixel's own colour is neutral (the colour source under 0.02 .. 0.08: a blown core
+            // «Inpaint opposed» left neutral inside its tinted light; not a core of a few px, nor an LED's 3 px dot, which the
+            // colour source's B-spline mixes with the light's tint). textureLod: the landing's branch is not uniform.
+            vec3 own = max(orig, vec3(0.0));
+            float satOwn = 1.0 - min(own.r, min(own.g, own.b)) / max(max3(own), 0.000001);
+            vec2 opp = textureLod(OppShare, (vec2(xy) + 0.5) / vec2(size) * oppGridU, 0.0).rg;
+            float nearOpp = smoothstep(0.05, 0.35, opp.r);
+            top = mix(top, vec3(1.0), nearOpp * max(opp.g, 1.0 - smoothstep(0.02, 0.08, satOwn)));
+#endif
             outRgb = mix(outRgb, top, landing);
         }
     }

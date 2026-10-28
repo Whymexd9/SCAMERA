@@ -26,17 +26,40 @@ import static android.opengl.GLES20.GL_LINEAR;
  * wide (lensgauss/blur.glsl, the y pass adding it to the level's sum), the levels summed from the coarsest up
  * (lensgauss/up.glsl). The filter is linear: no knee, no level of the frame. No filter (or strength 0): the node only passes
  * its input on.
+ * P380 (owner, 2026-10-28: the pair with Unspektrawesome's SPEKTRA, a Pro-Mist 2.0 in its film recipe): {@link #film} is the film's
+ * own camera diffusion, a node "FilmDiffusion" right after the lens filter's and before FilmHalation (spektrafilm's order: the
+ * camera's diffusion filter, then the film's halation): the same plan and passes, its share FilmSim.Settings.diffusionP and its
+ * PSF sized on the film format's frame over FilmHalation.filmLongPx (the frame rule of the film's grain and halation). With a
+ * lens filter on too, both run, one after the other.
  */
 public final class LensFilter extends Node {
     private final String id;
     private final float strength;
     private final LensFilters.Tune tune;
+    /** P380: the film snapshot whose diffusion this node draws (FilmDiffusion); null: the lens filter. */
+    @Nullable private final com.particlesdevs.photoncamera.processing.color.FilmSim.Settings film;
 
     public LensFilter(String id, float strength, LensFilters.Tune tune) {
         super("", "LensFilter");
         this.id = id;
         this.strength = strength;
         this.tune = tune;
+        this.film = null;
+    }
+
+    private LensFilter(com.particlesdevs.photoncamera.processing.color.FilmSim.Settings film) {
+        super("", "FilmDiffusion");
+        this.id = film.diffusion;
+        this.strength = 1f;
+        this.tune = LensFilters.Tune.defaults(film.diffusion);
+        this.film = film;
+    }
+
+    /** P380: the film snapshot's diffusion node (PostPipeline.film); null without a film, a diffusion or a share above 0. */
+    @Nullable
+    public static LensFilter film(@Nullable com.particlesdevs.photoncamera.processing.color.FilmSim.Settings film) {
+        if (film == null || film.diffusion.isEmpty() || !(film.diffusionP() > 0)) return null;
+        return new LensFilter(film);
     }
 
     /**
@@ -87,15 +110,22 @@ public final class LensFilter extends Node {
         WorkingTexture = in;
         if (LensFilters.index(id) <= 0 || strength <= 0f) return;
         final long started = System.currentTimeMillis();
-        // P277: a lab fragment takes the whole frame's size for the PSF, a lab shot records it
-        final LabFrame frozen = pipeline.frozen;
-        final boolean whole = frozen != null && frozen.width > 0 && frozen.height > 0;
-        if (pipeline.record != null) {
-            pipeline.record.width = in.mSize.x;
-            pipeline.record.height = in.mSize.y;
+        final DiffusionGauss.Plan plan;
+        if (film != null) {
+            // P380: the film's diffusion on the film's frame (the photo's field: zoom / ISZ crop, a lab fragment's whole shot)
+            final int filmLong = FilmHalation.filmLongPx(Math.max(in.mSize.x, in.mSize.y), basePipeline.mParameters);
+            plan = DiffusionGauss.plan(id, film.diffusionP(), tune, in.mSize.x, in.mSize.y, filmLong, film.diffusionFrameUm());
+        } else {
+            // P277: a lab fragment takes the whole frame's size for the PSF, a lab shot records it
+            final LabFrame frozen = pipeline.frozen;
+            final boolean whole = frozen != null && frozen.width > 0 && frozen.height > 0;
+            if (pipeline.record != null) {
+                pipeline.record.width = in.mSize.x;
+                pipeline.record.height = in.mSize.y;
+            }
+            final int frameW = whole ? frozen.width : in.mSize.x, frameH = whole ? frozen.height : in.mSize.y;
+            plan = DiffusionGauss.plan(id, strength, tune, in.mSize.x, in.mSize.y, Math.max(frameW, frameH));
         }
-        final int frameW = whole ? frozen.width : in.mSize.x, frameH = whole ? frozen.height : in.mSize.y;
-        final DiffusionGauss.Plan plan = DiffusionGauss.plan(id, strength, tune, in.mSize.x, in.mSize.y, Math.max(frameW, frameH));
         if (plan == null) return;
         final GLFormat rgba = new GLFormat(GLFormat.DataType.FLOAT_16, 4);
         final List<GLTexture> temp = new ArrayList<>();
@@ -141,6 +171,10 @@ public final class LensFilter extends Node {
                     glProg.setVar("hasAccU", sum != null ? 1 : 0);
                     glProg.drawBlocks(next);
                     passes += 2;
+                    // P380 review: a texture goes as soon as no later pass reads it (GL keeps it for the passes queued on it) - the
+                    // film's diffusion sized on a large format puts many Gaussians at full size: 15 - 23 live textures, 6 - 9 GB at 50 MP
+                    release(temp, h);
+                    if (sum != null) release(temp, sum);
                     sum = next;
                 }
                 final GLTexture target;
@@ -159,14 +193,24 @@ public final class LensFilter extends Node {
                 glProg.setVar("pU", (float) plan.p);
                 glProg.drawBlocks(target);
                 passes++;
+                // this level's sum, the coarser level's result and this level's image are read by no later pass
+                if (sum != null) release(temp, sum);
+                if (coarse != null) release(temp, coarse);
+                if (l > 0) release(temp, level[l]);
                 coarse = target;
             }
             glProg.closed = true;
             WorkingTexture = coarse;
-            Log.i("SCAM_PIPELINE", "lens filter " + id + String.format(java.util.Locale.ROOT, " p %.3f", plan.p) + " gaussians "
+            Log.i("SCAM_PIPELINE", (film != null ? "film diffusion " + film.format.id + String.format(java.util.Locale.ROOT, " grade %.2f ",
+                    film.diffusionGrade) : "lens filter ") + id + String.format(java.util.Locale.ROOT, " p %.3f", plan.p) + " gaussians "
                     + plan.blurs.size() + " levels " + (plan.top + 1) + " passes " + passes + " ms=" + (System.currentTimeMillis() - started));
         } finally {
             for (GLTexture t : temp) t.close();
         }
+    }
+
+    /** P380 review: a temporary texture closed at once and taken off the list the node closes at its end. */
+    private static void release(List<GLTexture> temp, GLTexture t) {
+        if (temp.remove(t)) t.close();
     }
 }

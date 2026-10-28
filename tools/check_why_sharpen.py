@@ -326,6 +326,20 @@ def main():
     check(all(abs(a - b) / b < 0.06 for a, b in zip(m1[:2], g1[:2])), 'R1: detail up to 0.1 cycles / px keeps the plain gain (within 6 %)')
     check(all(1.0 < a < b for a, b in zip(m1[2:], g1[2:4])), 'R1: finer detail is still sharpened, less than by the plain chain')
 
+    # ---- 4b. the guided filter's local contrast on the dark side of a bright edge (owner's window burst: a frame at 1 - 3 % of the
+    # pane lost 78 - 98 % of itself over 5 - 12 px, a dark violet outline): the frame keeps >= 1 - gf_lc - 0.1 of itself 4 .. 14 px
+    # from the edge, in the compose and in the whole chain on the lattice-free source; the pane's overshoot as before
+    xx = np.arange(128)[None, :].repeat(64, 0).astype(np.float32)
+    frame = 0.010 + 0.39 / (1 + np.exp(-(xx - 63.5) / 0.9))
+    frame = (frame * (1 + 0.03 * np.random.default_rng(7).normal(size=frame.shape))).astype(np.float32)
+    for name, out in (('compose', gpu_sharpen(frame)[1]['compose']), ('X8U chain', gpu_lattice(frame)[0])):
+        r = (out / frame)[8:-8]
+        keep = float(np.median(r[:, 64 - 14:64 - 3], 0).min())
+        over = float(np.median(r[:, 64:70], 0).max())
+        print(f'     {name}: dark frame keeps {keep:.3f} of itself 4 .. 14 px from a bright pane; pane overshoot {over:.3f}')
+        check(keep >= 1 - R.X8U['gf_lc'] - 0.1, f'{name}: a dark frame beside a bright pane keeps >= {1 - R.X8U["gf_lc"] - 0.1:.2f} of itself (no trench)')
+        check(over < 1.10, f'{name}: the pane overshoot stays below 10 %')
+
     # ---- 5. P337 lattice-free source of a plain Bayer shot
     lf_out, lf_src = gpu_lattice(img)
     dl = np.abs(lf_src - lattice_free(ya16))[2:-2, 2:-2]

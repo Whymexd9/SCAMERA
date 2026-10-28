@@ -200,6 +200,117 @@ public class FilmSimTest {
         }
     }
 
+    /**
+     * P380 (owner, 2026-10-28: the pair with Unspektrawesome's SPEKTRA): the film's diffusion, its grade and the DIR couplers' amount
+     * - stored keys (in KEYS: the lab, the backups, the pages' and the tray's resets), their parsing and clamps, the diffusion only a
+     * LensFilters.IDS family, its share x the simulation's strength, its frame the format's.
+     */
+    @Test public void theDiffusionAndTheCouplersSettings() {
+        final java.util.List<String> keys = java.util.Arrays.asList(FilmSim.KEYS);
+        for (String k : new String[]{FilmSim.DIFFUSION_KEY, FilmSim.DIFFUSION_STRENGTH_KEY, FilmSim.DIR_KEY}) assertTrue(k, keys.contains(k));
+        assertEquals(new java.util.HashSet<>(keys).size(), keys.size());
+        assertEquals("the default grade, spektrafilm's 0.5", .5f, FilmSim.diffusionGrade(null), 0f);
+        assertEquals(.5f, FilmSim.diffusionGrade("50"), 0f);
+        assertEquals(2f, FilmSim.diffusionGrade("200"), 0f);
+        assertEquals("clamped", 2f, FilmSim.diffusionGrade("350"), 0f);
+        assertEquals(0f, FilmSim.diffusionGrade("-5"), 0f);
+        assertEquals(.5f, FilmSim.diffusionGrade("abc"), 0f);
+        assertEquals("the couplers at 100 % by default", 1f, FilmSim.couplers(null), 0f);
+        assertEquals(0f, FilmSim.couplers("0"), 0f);
+        assertEquals(.5f, FilmSim.couplers("50"), 0f);
+        assertEquals("clamped at the stocks' own amount (review: greys go off above it)", 1f, FilmSim.couplers("260"), 0f);
+        assertEquals(1f, FilmSim.couplers("150"), 0f);
+        assertEquals(0f, FilmSim.couplers("-1"), 0f);
+        final FilmSim.Stock portra = FilmSim.stock("kodak_portra_160");
+        final FilmSim.Print premier = FilmSim.print("kodak_endura_premier");
+        final FilmSim.Settings off = new FilmSim.Settings(portra, premier, FilmSim.format("imax70"), 1, 1, 1, 0, 0, 0, 0, 0, 1);
+        assertEquals("", off.diffusion);
+        assertEquals(0.0, off.diffusionP(), 0);
+        assertEquals(1f, off.couplers, 0f);
+        for (String id : LensFilters.IDS) {
+            final FilmSim.Settings on = new FilmSim.Settings(portra, premier, FilmSim.format("imax70"), 1, 0, 0, 0, 0, 0, 0, 0, 1, id, 2f, 0f);
+            assertEquals(id, on.diffusion);
+            assertEquals(DiffusionModel.scatterAtGrade(id, 2.0), on.diffusionP(), 1e-12);
+            final FilmSim.Settings half = new FilmSim.Settings(portra, premier, FilmSim.format("imax70"), 1, 0, 0, 0, 0, 0, 0, 0, .5f, id, 2f, 0f);
+            assertEquals("x the simulation's strength, as the halation", .5 * DiffusionModel.scatterAtGrade(id, 2.0), half.diffusionP(), 1e-9);
+        }
+        assertEquals("the owner's pair: Pro-Mist 2.0", .7875, new FilmSim.Settings(portra, premier, FilmSim.format("imax70"), 1, 0, 0, 0, 0, 0,
+                0, 0, 1, LensFilters.PEARLESCENT, 2f, 0f).diffusionP(), 1e-9);
+        // only the offered diffusion families (a stored lens filter of another kind is none)
+        for (String id : new String[]{LensFilters.FOG, LensFilters.STREAK, "nonsense", null})
+            assertEquals(String.valueOf(id), "", new FilmSim.Settings(portra, premier, FilmSim.format("135"), 1, 1, 1, 0, 0, 0, 0, 0, 1, id, 1f, 1f).diffusion);
+        // the frame: the format's long edge, the lens filter's 36 mm without a format
+        assertEquals(70410.0, new FilmSim.Settings(portra, premier, FilmSim.format("imax70"), 1, 1, 1, 0, 0, 0, 1).diffusionFrameUm(), 0.01);
+        assertEquals(36000.0, new FilmSim.Settings(portra, premier, FilmSim.format("135"), 1, 1, 1, 0, 0, 0, 1).diffusionFrameUm(), 0.01);
+        assertEquals(DiffusionModel.FRAME_UM, new FilmSim.Settings(portra, premier, FilmSim.format("off"), 1, 1, 1, 0, 0, 0, 1).diffusionFrameUm(), 0);
+        // the table's key: the couplers' amount its 8th field; a 7-field key (before P380) parses at 100 %
+        final FilmSim.Settings dir0 = new FilmSim.Settings(portra, premier, FilmSim.format("135"), 1, 1, 1, 0, 0, 0, 0, 0, 1, "", .5f, 0f);
+        assertEquals(8, dir0.lutKey().split("\\|", -1).length);
+        assertTrue(dir0.lutKey(), dir0.lutKey().endsWith("|0.00"));
+        assertNotEquals(dir0.lutKey(), off.lutKey());
+        assertEquals("the diffusion is an effect, not the table's", off.lutKey(), new FilmSim.Settings(portra, premier, FilmSim.format("135"), 2, 0,
+                3, 0, 0, 0, 0, 0, .4f, LensFilters.CINEBLOOM, 2f, 1f).lutKey());
+        assertEquals(0f, FilmSim.Settings.forLut(dir0.lutKey(), 1).couplers, 0f);
+        final String seven = "kodak_portra_160|kodak_endura_premier|0.00|0.00|0.00|0.00|0.00";
+        final FilmSim.Settings old = FilmSim.Settings.forLut(seven, 1);
+        assertNotNull(old);
+        assertEquals(1f, old.couplers, 0f);
+        assertEquals(seven + "|1.00", old.lutKey());
+        assertEquals("kodak_endura_premier", old.print.id);
+        assertEquals(.5f, FilmSim.Settings.forLut(seven + "|0.50", 1).couplers, 0f);
+        assertEquals("over 100 % clamped", 1f, FilmSim.Settings.forLut(seven + "|1.50", 1).couplers, 0f);
+        assertEquals("a key's further fields are left", .5f, FilmSim.Settings.forLut(seven + "|0.50|0.80|look|1.00", 1).couplers, 0f);
+        // the couplers reach the colour: a red at 0 % is paler than at 100 %
+        final float[] red0 = FilmSim.applyScene(dir0, .4, .1, .08), red1 = FilmSim.applyScene(off, .4, .1, .08);
+        assertTrue((red0[0] - red0[2]) + " vs " + (red1[0] - red1[2]), red0[0] - red0[2] < red1[0] - red1[2] - .03f);
+    }
+
+    /**
+     * P380: 65 mm and IMAX 70 (spektrafilm-ofx's long edges), the default found by its id, and the grain's final blur x (format /
+     * 35 mm)^0.62 on every format (the reference stocks' grain; our black-and-white grain does not take it).
+     */
+    @Test public void theFormatsAndTheGrainBlur() {
+        assertEquals(52.48f, FilmSim.format("65mm").longMm, 0f);
+        assertEquals("65 mm", FilmSim.format("65mm").name);
+        assertEquals(70.41f, FilmSim.format("imax70").longMm, 0f);
+        assertEquals("IMAX 70", FilmSim.format("imax70").name);
+        assertEquals("the default by its id", "135", FilmSim.format(null).id);
+        assertEquals("135", FilmSim.format("no_such_format").id);
+        assertEquals(FilmSim.DEFAULT_FORMAT, FilmSim.format("").id);
+        final String[] ids = {"135", "8mm", "super8", "16mm", "super16", "super35", "645", "67", "65mm", "imax70"};
+        final float[] scale = {1.018f, .29f, .33f, .47f, .53f, .81f, 1.34f, 1.54f, 1.29f, 1.54f};
+        for (int i = 0; i < ids.length; i++) {
+            final FilmSim.Format f = FilmSim.format(ids[i]);
+            assertEquals(ids[i], f.id);
+            assertEquals(ids[i], scale[i], FilmSim.grainBlurScale(f.longMm), .006f);
+            assertEquals(ids[i], 11.8f * (float) Math.pow(f.longMm / 35.0, .62), FilmSim.grainBlurUm(f), 1e-4f);
+        }
+        // the blur's size in the picture still falls with a larger frame (its micrometres grow slower than the frame's)
+        final float um35 = FilmSim.grainBlurUm(FilmSim.format("135")) / (36000f / 4000), umImax = FilmSim.grainBlurUm(FilmSim.format("imax70")) / (70410f / 4000);
+        assertTrue(umImax + " px vs " + um35 + " px", umImax < um35);
+        // our classic stocks' grain is FilmSim's own (no final blur)
+        final FilmSim.Settings trix = new FilmSim.Settings(FilmSim.stock("trix400"), FilmSim.print(""), FilmSim.format("imax70"), 1, 1, 1, 0, 0, 0, 1);
+        assertEquals(FilmSim.grainSigma(17f, 6f, 17.6f) * 2.7f * FilmSim.GRAIN_SCALE, FilmSim.classicGrainSigma(trix, 17.6f), 1e-7f);
+    }
+
+    /** P380: the recipe in the photo's description (only with a film: Parameters.filmLine). */
+    @Test public void theRecipeInThePhoto() {
+        final FilmSim.Settings theirs = new FilmSim.Settings(FilmSim.stock("kodak_portra_160"), FilmSim.print("kodak_endura_premier"),
+                FilmSim.format("imax70"), 1, 0, 0, 0, 0, 0, 0, 0, 1, LensFilters.PEARLESCENT, 2f, 0f);
+        final String r = theirs.recipe();
+        for (String part : new String[]{"Kodak Portra 160", "print Kodak Endura Premier", "format IMAX 70", "diffusion Pro-Mist 2.00",
+                "grain 100 %", "halation 0 %", "softness 0 %", "DIR couplers 0 %", "film exposure +0.0 EV", "print exposure +0.00 EV",
+                "contrast 0", "enlarger M 0 Y 0 CC", "strength 100 %"})
+            assertTrue(r + " has " + part, r.contains(part));
+        for (char ch : r.toCharArray()) assertTrue("EXIF ASCII: " + r, ch >= 32 && ch < 127);
+        assertTrue(new FilmSim.Settings(FilmSim.stock("kodak_portra_400"), FilmSim.print(""), FilmSim.format("67"), 1, 1, 1, 0, 0, 0, 1).recipe()
+                .contains("format 6x7; diffusion none"));
+        assertTrue(new FilmSim.Settings(FilmSim.stock("fujifilm_velvia_100"), FilmSim.print(""), FilmSim.format("off"), 1, 1, 1, 0, 0, 0, 1).recipe()
+                .contains("print none (projected); format off"));
+        assertEquals("\n Film=" + r, com.particlesdevs.photoncamera.processing.render.Parameters.filmLine(r));
+        assertEquals("without a film: nothing", "", com.particlesdevs.photoncamera.processing.render.Parameters.filmLine(null));
+    }
+
     /** Values for a look at the model (printed, not asserted). */
     @Test public void printSamples() {
         for (String st : new String[]{"portra400", "ektar100", "velvia50", "vision500t", "trix400", "trix7266"}) {

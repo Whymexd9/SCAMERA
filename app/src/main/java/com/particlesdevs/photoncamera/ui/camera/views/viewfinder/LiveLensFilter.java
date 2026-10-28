@@ -28,6 +28,10 @@ import java.util.concurrent.Executors;
  * Owner, 2026-10-18: the diffusion filters are the photo's physical model (DiffusionModel) here too - the frame's weight and
  * its levels' per-channel weights fitted for this viewport's size and the mip pyramid's widths, refitted when the size, the
  * filter or its settings change.
+ * P380 (owner, 2026-10-28: the pair with Unspektrawesome's SPEKTRA, a Pro-Mist 2.0 in its film recipe): the film's own diffusion
+ * (FilmSim.Settings.diffusion, its share and the format's frame) here too - alone it is drawn as its family's filter with the
+ * film's weights; with a lens diffusion filter on as well the two level sets are combined (DiffusionModel.combine: the photo runs
+ * the lens filter, then the film's diffusion).
  */
 final class LiveLensFilter {
     static final String MARKER = "//#lensfilter_live";
@@ -48,6 +52,9 @@ final class LiveLensFilter {
     private String filterId = "";
     private float filterStrength;
     private LensFilters.Tune filterTune;
+    /** P380: a lens filter chosen (else the film's diffusion alone), and the film whose diffusion is shown (null: none). */
+    private boolean lensOn;
+    @androidx.annotation.Nullable private com.particlesdevs.photoncamera.processing.color.FilmSim.Settings filmDiffusion;
     private int uHiTex, uLinTex, uSqrt, uView;
     private int uLut, uLutOn, uLutStrength, uLutSize, uLutMin, uLutScale;
     private int lutTex, dummyTex;
@@ -182,10 +189,12 @@ final class LiveLensFilter {
         int w = half(viewport[2]), h = half(viewport[3]);
         if (!targets(w, h)) return;
         if (filter >= 1 && filter <= 6) {
-            String key = filterId + "|" + filterStrength + "|" + (filterTune == null ? "" : filterTune.serialize()) + "|" + viewport[2] + "x" + viewport[3];
+            String key = (lensOn ? filterId + "|" + filterStrength + "|" + (filterTune == null ? "" : filterTune.serialize()) : "-") + "|"
+                    + viewport[2] + "x" + viewport[3] + "|" + filmKey(filmDiffusion);
             if (!key.equals(diffusionKey)) {
                 diffusionKey = key;
-                diffusion = weights(filterId, filterStrength, filterTune, Math.max(viewport[2], viewport[3]), levels(w, h));
+                diffusion = weights(lensOn ? filterId : null, filterStrength, filterTune, filmDiffusion, Math.max(viewport[2], viewport[3]),
+                        levels(w, h));
             }
         }
         GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, fbo);
@@ -372,11 +381,22 @@ final class LiveLensFilter {
             String id = PreferenceKeys.lensFilter();
             float s = PreferenceKeys.lensFilterStrength();
             int index = LensFilters.index(id);
-            if (index <= 0 || s <= 0f) {
-                filter = 0;
-                return;
+            // P380: the film's diffusion (none without a film, a diffusion or a share above 0)
+            final com.particlesdevs.photoncamera.processing.color.FilmSim.Settings film =
+                    com.particlesdevs.photoncamera.processing.color.FilmSim.current();
+            filmDiffusion = film != null && film.diffusionP() > 0 ? film : null;
+            lensOn = index > 0 && s > 0f;
+            if (!lensOn) {
+                if (filmDiffusion == null) {
+                    filter = 0;
+                    return;
+                }
+                // the film's diffusion alone: its family's filter, its weights the film's (weights)
+                id = filmDiffusion.diffusion;
+                s = 1f;
+                index = LensFilters.index(id);
             }
-            LensFilters.Tune tune = PreferenceKeys.lensFilterTune(id);
+            LensFilters.Tune tune = lensOn ? PreferenceKeys.lensFilterTune(id) : LensFilters.Tune.defaults(id);
             fill(values, id, s, tune);
             filterId = id;
             filterStrength = s;
@@ -385,6 +405,11 @@ final class LiveLensFilter {
         } catch (RuntimeException e) {
             filter = 0;   // no settings yet
         }
+    }
+
+    /** P380: what the film's diffusion weights depend on ("" none). */
+    static String filmKey(@androidx.annotation.Nullable com.particlesdevs.photoncamera.processing.color.FilmSim.Settings film) {
+        return film == null ? "" : film.diffusion + "|" + film.diffusionP() + "|" + film.diffusionFrameUm();
     }
 
     /**
@@ -414,6 +439,24 @@ final class LiveLensFilter {
         int n = Math.min(12, mipLevels);
         return com.particlesdevs.photoncamera.processing.color.DiffusionModel.levelWeights(id, s, tune, longPx,
                 com.particlesdevs.photoncamera.processing.color.DiffusionModel.mipSigmas(n));
+    }
+
+    /**
+     * P380: the weights of the lens filter {@code id} (null: none) at {@code s} with {@code tune}, then the film's diffusion of
+     * {@code film} (null: none; its share, its family as designed, on its format's frame over the viewport) - one of them alone,
+     * or both combined (DiffusionModel.combine); null when neither diffuses.
+     */
+    @androidx.annotation.Nullable
+    static float[][] weights(@androidx.annotation.Nullable String id, float s, @androidx.annotation.Nullable LensFilters.Tune tune,
+                             @androidx.annotation.Nullable com.particlesdevs.photoncamera.processing.color.FilmSim.Settings film,
+                             int longPx, int mipLevels) {
+        final float[][] lens = id == null ? null : weights(id, s, tune, longPx, mipLevels);
+        if (film == null) return lens;
+        final int n = Math.min(12, mipLevels);
+        final double[] sigmas = com.particlesdevs.photoncamera.processing.color.DiffusionModel.mipSigmas(n);
+        final float[][] own = com.particlesdevs.photoncamera.processing.color.DiffusionModel.levelWeights(film.diffusion, film.diffusionP(),
+                LensFilters.Tune.defaults(film.diffusion), longPx, film.diffusionFrameUm(), sigmas);
+        return com.particlesdevs.photoncamera.processing.color.DiffusionModel.combine(lens, own, sigmas, longPx);
     }
 
 }

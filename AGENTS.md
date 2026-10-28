@@ -56,3 +56,15 @@ instruction to push only to a `claude/*` branch. The rest still applies: push
 only when the owner's current plan is done, never commit `*.key`,
 `local.properties` or changes to `app/version.properties`, and the APK the
 owner gets is the CI artifact verified against `SHA256SUMS.txt`.
+
+Owner, 2026-10-28: «мы работаем только в мейн ветке, никаких других». Work goes
+to `main` only; no other work branches are pushed. The one exception, the owner's
+(«claude/stitching-noise-reduction-uktsf9 можешь использовать для резервного
+копирования»): `claude/stitching-noise-reduction-uktsf9` holds backups of work in
+progress until the delivery commit on `main`.
+
+Owner, 2026-10-28: «апк тут кидать не надо» - the APK is not sent in the chat;
+the push to `main` builds it and the workflow posts it to Telegram. Owner, the same
+day: «если будет недостаточно места, можешь залить то что уже сделал одним
+комитом» - when the session's disk runs short, the finished work may go to `main`
+as one commit before the whole plan is done.

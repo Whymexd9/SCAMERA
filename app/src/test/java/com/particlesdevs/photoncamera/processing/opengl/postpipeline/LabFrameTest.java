@@ -117,6 +117,38 @@ public class LabFrameTest {
         assertArrayEquals(base.hm, LabFrame.scaled(base, 1f).hm, 0);
     }
 
+    /**
+     * P378 review (P277): the whole frame's sky cells come back exactly, and a side with another «Масштаб входа, EV» takes them
+     * scaled (the cells of whyLow x k); a frame recorded without them gives none.
+     */
+    @Test public void theWholeFramesSkyCellsComeBackAndScale() throws Exception {
+        final LabFrame f = new LabFrame();
+        f.stats[0] = new WhyAe.Stats();
+        f.inScale = 1f;
+        f.lowWidth = 256;
+        f.lowHeight = 192;
+        final WhySkyMask.Cells c = new WhySkyMask.Cells(2, 1, 4, 1);
+        c.r[0] = .4f; c.g[0] = .45f; c.b[0] = .5f; c.l[0] = -1.2f; c.sd[0] = .05f; c.tex[0] = .02f; c.max[0] = .55f; c.clip[0] = 0f;
+        c.r[1] = .04f; c.g[1] = .03f; c.b[1] = .02f; c.l[1] = -5f; c.sd[1] = .5f; c.tex[1] = .3f; c.max[1] = 1.2f; c.clip[1] = .25f;
+        assertNull("none recorded", f.skyCells(1f));
+        f.skyCells = c.pack();
+        f.skyGrid = new int[]{c.nx, c.ny, c.cell, c.step};
+        final LabFrame g = LabFrame.fromJson(new JSONObject(f.toJson().toString()));
+        assertArrayEquals(f.skyCells, g.skyCells, 0);
+        assertArrayEquals(f.skyGrid, g.skyGrid);
+        final WhySkyMask.Cells same = g.skyCells(1f), twice = g.skyCells(2f);
+        assertEquals(-1.2f, same.l[0], 0);
+        assertEquals(.25f, same.clip[1], 0);
+        assertEquals(-0.2f, twice.l[0], 1e-6f);
+        assertEquals(.9f, twice.g[0], 1e-6f);
+        assertEquals(.3f, twice.tex[1], 0);
+        assertEquals(.25f, twice.clip[1], 0);
+        // a grid that does not fit its values
+        g.skyGrid = new int[]{3, 1, 4, 1};
+        assertNull(g.skyCells(1f));
+        assertNull(LabFrame.fromJson(new JSONObject(new LabFrame().toJson().toString())).skyCells);
+    }
+
     /** A frame with shadows, mid-tones, coloured light and Bento highlights up to 6 x the clip, times {@code k}. */
     private static WhyAe.Rows scene(int w, float k) {
         return (y, row) -> {

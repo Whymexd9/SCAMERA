@@ -8,6 +8,8 @@
     <!-- P139: a row's description, a step dimmer than settings_muted; titles are medium weight (UiTokens.SUMMARY / title) -->
     <color name="settings_summary">#FF959EAD</color>
     <color name="settings_line">#FF30363C</color>
+    <!-- P384: the rows of an open module card, a step lighter than the card (SettingsStyle.CARD_NESTED) -->
+    <color name="settings_card_nested">#FF1F2528</color>
     <color name="settings_field">#FF121417</color>
     <color name="settings_sheet">#FF202428</color>
     <color name="settings_warn">#FFFFB4A8</color>

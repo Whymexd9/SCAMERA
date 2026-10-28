@@ -19,13 +19,14 @@ import static org.junit.Assert.assertTrue;
  * P369 (tone-colour-3, viewfinder-vibhl: the RAW viewfinder never set vibHlU, the photo's light-tone vibrance, so the film was
  * shown on less saturated pale tones than the photo gets; P301: the viewfinder's tone is the photo's): every uniform and texture
  * WhyCombine.Run sets on why/combine is set by LiveWhyTone's combine passes too, but those a single viewfinder frame cannot have
- * (the Bento headroom, the highlight landing and its mask, the sun bloom, the full-size image) - and every one is declared by the
- * shader.
+ * (the Bento headroom, the highlight landing and its mask, the sun bloom, the full-size image, P378's share of the pixels «Inpaint
+ * opposed» rebuilt: the merge's clip flags) - and every one is declared by the shader. P378 review: the sky term is the
+ * viewfinder's too (LiveWhyTone decides it on the meter's cells: WhySky, skyU, skyMU, skyTopU are not photo-only).
  */
 public class WhyCombineUniformParityTest {
-    /** What the viewfinder's frame has not (LiveWhyTone's class comment): headroom, landing, sun bloom, the full-size merge. */
+    /** What the viewfinder's frame has not (LiveWhyTone's class comment): headroom, landing, sun bloom, the full-size merge, clip flags. */
     static final Set<String> PHOTO_ONLY = new HashSet<>(Arrays.asList("hrU", "hrKneeU", "hrRoomU", "hrDetailU", "hlSoftU", "sunBloomU",
-            "sunGridU", "fullInputU", "WhyHl", "SunBloom"));
+            "sunGridU", "fullInputU", "WhyHl", "SunBloom", "oppGridU", "OppShare"));
 
     private static String read(String path) throws IOException {
         File f = new File(path);
@@ -75,6 +76,9 @@ public class WhyCombineUniformParityTest {
         missing.removeAll(PHOTO_ONLY);
         assertTrue("WhyCombine sets these on why/combine, LiveWhyTone does not: " + missing, missing.isEmpty());
         assertTrue("the light-tone vibrance", photo.contains("vibHlU") && view.contains("vibHlU"));
+        // P378 review (P301): the sky term on both
+        assertTrue("the sky term on both", photo.containsAll(Arrays.asList("WhySky", "skyU", "skyMU", "skyTopU"))
+                && view.containsAll(Arrays.asList("WhySky", "skyU", "skyMU", "skyTopU")));
         assertTrue("the film's scene feed on both", photo.containsAll(Arrays.asList("filmExpU", "filmLogU", "lutU", "FilmLut"))
                 && view.containsAll(Arrays.asList("filmExpU", "filmLogU", "lutU", "FilmLut")));
         // every name is the shader's

@@ -112,7 +112,9 @@ public final class SessionKeys {
     }
 
     private static boolean sessionField(String field) {
-        return VENDOR_FIELD.equals(field) || sessionFields().contains(field);
+        // P384: the module's row of the camera's sensor mode table (SensorModePick, read when the session is built: its RAW
+        // stream size and the mode key) - it had no restart pill, and a camera beside the settings (multi-window) kept its old mode
+        return VENDOR_FIELD.equals(field) || ModuleDuplicates.SENSOR_MODE_SUFFIX.equals(field) || sessionFields().contains(field);
     }
 
     /** True when a new camera session is needed for a change of this preference to reach the camera. */
