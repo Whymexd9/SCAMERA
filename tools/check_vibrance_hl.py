@@ -366,7 +366,7 @@ def main():
         sys.exit(1)
     print('PASS: the light-tone vibrance raises no white-balance cast, keeps pale light tones at the mid-tones\' saturation, keeps '
           'clearly coloured surfaces (skin, warm colours), the sky as P341 / P378, the bright pale sky >= 90 %, is no steeper in '
-          'chroma than P341 by more than 10 %, under ACES / Uchimura the reference's light-tone term with the cast gate; its off-switch is P341 / P378 bit for bit')
+          'chroma than P341 by more than 10 %, under ACES / Uchimura the reference light-tone term with the cast gate; its off-switch is P341 / P378 bit for bit')
 
 
 if __name__ == '__main__':

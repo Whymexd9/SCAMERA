@@ -399,4 +399,107 @@ public class HybridPlanTest {
         assertEquals(4, five.requests.size());
         assertTrue(five.description, five.description.endsWith("FULLRES: 1 of 3 long frames"));
     }
+
+    /**
+     * P409 (owner, 2026-10-29: «Нам нужно чтобы длинный давал больше информации в тенях»; the window burst: the room at 1-16 DN of
+     * 1023 in N, one gain-first x2 frame worth 1.5-2.3 N frames there): deep shadows in the buffered frame take the bracketed frames
+     * to +2 EV with their light from the shutter first (up to 1/60 s, within the handheld / motion cap), the gain part at most x2;
+     * without them, or with the switch off, the plan is the one before.
+     */
+    @Test public void deepShadowsTakeLongerBracketedFrames() {
+        pinned.put("shasta_frames", 3f);
+        try {
+            // a bright room under a window: N 2 ms ISO 100 -> 8 ms at ISO 100 (x4 of real light)
+            HybridPlan.setDeepShadow(0.6f);
+            HybridPlan p = HybridPlan.build(2_000_000L, 100, 0f, camera(6400));
+            HybridPlan.Request l = longOf(p);
+            assertEquals(p.description, 8_000_000L, l.shutterNs);
+            assertEquals(100, l.iso);
+            assertEquals(4.0, l.ratio, 1e-6);
+            assertTrue(p.description, p.description.contains("deep shadows 60%: +2 EV"));
+            // N 10 ms ISO 659: the shutter to 1/60 s, the gain x2 at most -> x3.33 (no longer shutter, no more gain)
+            p = HybridPlan.build(10_000_000L, 659, 0f, camera(6400));
+            l = longOf(p);
+            assertEquals(16_666_667L, l.shutterNs);
+            assertEquals(1318, l.iso);
+            // N at 1/60 s already: the gain x2 as before (x2)
+            l = longOf(HybridPlan.build(20_000_000L, 400, 0f, camera(6400)));
+            assertEquals(20_000_000L, l.shutterNs);
+            assertEquals(800, l.iso);
+            // the HAL's motion cap holds the shutter
+            HybridPlan.setMotionCap(5_000_000L);
+            l = longOf(HybridPlan.build(2_000_000L, 100, 0f, camera(6400)));
+            assertEquals(5_000_000L, l.shutterNs);
+            assertEquals(160, l.iso);
+            HybridPlan.setMotionCap(0);
+            // mains light: N on whole 10 ms periods keeps the bracketed shutter on them (16.7 -> 10 ms, the gain x2)
+            prefs.when(PreferenceKeys::getAntibandingHz).thenReturn(100);
+            l = longOf(HybridPlan.build(10_000_000L, 659, 0f, camera(6400)));
+            assertEquals(10_000_000L, l.shutterNs);
+            assertEquals(1318, l.iso);
+            prefs.when(PreferenceKeys::getAntibandingHz).thenReturn(0);
+            // too few deep samples: as before (gain first, +1 EV)
+            HybridPlan.setDeepShadow(0.1f);
+            l = longOf(HybridPlan.build(2_000_000L, 100, 0f, camera(6400)));
+            assertEquals(2_000_000L, l.shutterNs);
+            assertEquals(200, l.iso);
+            // the switch off: as before
+            HybridPlan.setDeepShadow(0.6f);
+            prefs.when(() -> PreferenceKeys.hybridSwitch(eq("shasta_deep"), anyBoolean())).thenReturn(false);
+            l = longOf(HybridPlan.build(2_000_000L, 100, 0f, camera(6400)));
+            assertEquals(2_000_000L, l.shutterNs);
+            assertEquals(200, l.iso);
+        } finally {
+            HybridPlan.setDeepShadow(0f);
+            HybridPlan.setMotionCap(0);
+        }
+    }
+
+    /**
+     * P410 (owner, 2026-10-29: «Делаем также динамический подбор количества длинных кадров от 1 до 3»): the bracketed frames by
+     * the ring frame's shadow share - 1 under 10 %, 2 from 10 %, 3 from 30 % or with deep shadows - within the set count, at
+     * most 2 under the HAL's motion; the set count when the share is unknown or the switch is off.
+     */
+    @Test public void bracketedFramesByTheShadows() {
+        pinned.put("shasta_frames", 3f);
+        try {
+            assertEquals("unknown: the set count", 3, countLongs(HybridPlan.build(10_000_000L, 659, 0f, camera(6400))));
+            HybridPlan.setShadow(0.05f);
+            HybridPlan p = HybridPlan.build(10_000_000L, 659, 0f, camera(6400));
+            assertEquals(1, countLongs(p));
+            assertTrue(p.description, p.description.contains("shadows 5%: 1 of 3 long frames"));
+            HybridPlan.setShadow(0.2f);
+            assertEquals(2, countLongs(HybridPlan.build(10_000_000L, 659, 0f, camera(6400))));
+            HybridPlan.setShadow(0.4f);
+            assertEquals(3, countLongs(HybridPlan.build(10_000_000L, 659, 0f, camera(6400))));
+            HybridPlan.setShadow(0.2f);
+            HybridPlan.setDeepShadow(0.2f);
+            assertEquals("deep shadows: 3", 3, countLongs(HybridPlan.build(10_000_000L, 659, 0f, camera(6400))));
+            HybridPlan.setMotionCap(8_000_000L);
+            assertEquals("motion: at most 2", 2, countLongs(HybridPlan.build(10_000_000L, 659, 0f, camera(6400))));
+            HybridPlan.setMotionCap(0);
+            pinned.put("shasta_frames", 2f);
+            assertEquals("the set count is the maximum", 2, countLongs(HybridPlan.build(10_000_000L, 659, 0f, camera(6400))));
+            pinned.put("shasta_frames", 3f);
+            HybridPlan.setDeepShadow(0f);
+            HybridPlan.setShadow(0.05f);
+            prefs.when(() -> PreferenceKeys.hybridSwitch(eq("shasta_auto_count"), anyBoolean())).thenReturn(false);
+            assertEquals("the switch off: the set count", 3, countLongs(HybridPlan.build(10_000_000L, 659, 0f, camera(6400))));
+        } finally {
+            HybridPlan.setShadow(Float.NaN);
+            HybridPlan.setDeepShadow(0f);
+            HybridPlan.setMotionCap(0);
+        }
+    }
+
+    private static int countLongs(HybridPlan p) {
+        int n = 0;
+        for (HybridPlan.Request r : p.requests) if (r.role == ImageFrame.CaptureRole.LONG) n++;
+        return n;
+    }
+
+    private static HybridPlan.Request longOf(HybridPlan p) {
+        for (HybridPlan.Request r : p.requests) if (r.role == ImageFrame.CaptureRole.LONG) return r;
+        throw new AssertionError("no long frame: " + p.description);
+    }
 }

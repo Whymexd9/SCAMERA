@@ -1071,4 +1071,10 @@
     <string name="prefs_scam_hybrid_why_dynamic_cct_strength_summary">Насколько смягчать матрицу к ISO 6400. 0 — выкл., 1 — до чистого баланса белого.</string>
     <string name="prefs_scam_hybrid_mosaic_wb_mode_title">Баланс белого Quad / Tetra</string>
     <string name="prefs_scam_hybrid_mosaic_wb_mode_summary">%s. Откуда снимок 50/200 Мп берёт баланс белого: видоискатель в момент нажатия или своя оценка кадра.</string>
+    <!-- P409: the bracketed frames for deep shadows -->
+    <string name="prefs_scam_hybrid_shasta_deep_title">Длинные кадры для глубоких теней</string>
+    <string name="prefs_scam_hybrid_shasta_deep_summary">При глубоких тенях в кадре длинные кадры идут на +2 EV и берут свет выдержкой до 1/60 с.</string>
+    <!-- P410: the number of bracketed frames by the scene -->
+    <string name="prefs_scam_hybrid_shasta_auto_count_title">Число длинных кадров по сцене</string>
+    <string name="prefs_scam_hybrid_shasta_auto_count_summary">От 1 до 3 по доле теней в кадре; «Кадры теней: число» — максимум.</string>
 </resources>

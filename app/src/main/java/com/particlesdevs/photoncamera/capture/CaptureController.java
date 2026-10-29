@@ -6957,7 +6957,14 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     /** Fraction of clipped RAW samples in the newest buffered ZSL frame (sparse sample). */
     /** Clipped fraction of the newest buffered RAW at the last plan (the ring is drained before the hybrid plan is built). */
     private float mLastZslClipFraction;
+    /** P409: the deep-shadow share of the frame zslClipFraction last read (HybridPlan.setDeepShadow; 0: unknown / packed). */
+    private volatile float mLastZslDeepShadow;
+    /** P410: the shadow share (within 1/16 of the range above black) of that frame; NaN: unknown. */
+    private volatile float mLastZslShadow = Float.NaN;
+
     private float zslClipFraction() {
+        mLastZslDeepShadow = 0f;
+        mLastZslShadow = Float.NaN;
         // The newest ring frame whose RAW is plain 16-bit: a packed payload reads as ~62 % clipped (X100 Ultra) and planned
         // the bracket from garbage. None plain: no clipping is assumed (the shot then takes N after the shutter).
         RingFrame newest = null;
@@ -7005,17 +7012,31 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             }
             java.nio.ShortBuffer data = newest.buffer().duplicate().order(java.nio.ByteOrder.nativeOrder()).asShortBuffer();
             int stride = newest.rowStride() / 2, w = newest.getWidth(), h = newest.getHeight();
-            long clipped = 0, total = 0;
+            // P409: samples within 1/64 of the range above black: the deep shadows the bracketed frames are for (HybridPlan)
+            final com.particlesdevs.photoncamera.processing.RawLevels.Levels levels =
+                    com.particlesdevs.photoncamera.processing.RawLevels.current(lc == null ? mCameraCharacteristics : lc, null);
+            float black = 0f;
+            for (float b : levels.black) black += b / levels.black.length;
+            final int deepBelow = Math.round(black + (levels.white - black) / 64f);
+            final int shadowBelow = Math.round(black + (levels.white - black) / 16f);   // P410
+            long clipped = 0, deep = 0, shadow = 0, total = 0;
             // Bulk row reads: per-sample get() on the direct view cost ~10 ms per press.
             short[] row = new short[w];
             for (int y = 0; y < h; y += 8) {
                 data.position(y * stride);
                 data.get(row, 0, w);
                 for (int x = 0; x < w; x += 4) {
-                    if ((row[x] & 0xffff) >= limit) clipped++;
+                    final int v = row[x] & 0xffff;
+                    if (v >= limit) clipped++;
+                    else if (v <= shadowBelow) {
+                        shadow++;
+                        if (v <= deepBelow) deep++;
+                    }
                     total++;
                 }
             }
+            mLastZslDeepShadow = total == 0 ? 0f : (float) deep / total;
+            mLastZslShadow = total == 0 ? Float.NaN : (float) shadow / total;
             return total == 0 ? 0f : (float) clipped / total;
         } catch (RuntimeException e) {
             Log.w("SCAM_CAPTURE", "ZSL clip estimate unavailable: " + e);
@@ -7475,14 +7496,14 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         final int nIso = baseIso != null && baseIso > 0 ? baseIso : ae != null ? ae.iso() : mPreviewIso;
         logUnsettledPress(ae, "50 MP ZSL", nNs, nIso);
         HybridPlan plan;
-        HybridPlan.setMotionCap(HalMotion.motionCapNs(base));
+        HybridPlan.setMotionCap(HalMotion.motionCapNs(base)); HybridPlan.setDeepShadow(mLastZslDeepShadow); HybridPlan.setShadow(mLastZslShadow); // P409 / P410
         try {
             plan = HybridPlan.build(nNs, nIso, clip, mCameraCharacteristics, mExposureLimits);
         } catch (RuntimeException noPlan) {
             Log.w("SCAM_CAPTURE", "50 MP ZSL: hybrid plan unavailable (" + noPlan.getMessage() + "): one more N frame after the shutter");
             plan = HybridPlan.single(nNs, nIso);
         } finally {
-            HybridPlan.setMotionCap(0);
+            HybridPlan.setMotionCap(0); HybridPlan.setDeepShadow(0f); HybridPlan.setShadow(Float.NaN);
         }
         // P219: every ultrashort frame of the plan, one long frame (HybridPlan.fullResLongFrames)
         plan = plan.withLongFrames(HybridPlan.fullResLongFrames(true, Math.max(1, profile.nativeBlock), PreferenceKeys.isHybridMosaicRemosaic()))
@@ -7534,11 +7555,11 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 final int nIso = manualIso > 0 ? manualIso : previewIso == null ? 0 : previewIso;
                 if (nNs <= 0 || nIso <= 0) return null;
                 logUnsettledPress(mNativeAe, "50 MP PSL", nNs, nIso);
-                HybridPlan.setMotionCap(HalMotion.motionCapNs(latest));
+                HybridPlan.setMotionCap(HalMotion.motionCapNs(latest)); HybridPlan.setDeepShadow(mLastZslDeepShadow); HybridPlan.setShadow(mLastZslShadow); // P409 / P410
                 try {
                     plan = HybridPlan.build(nNs, nIso, clip, mCameraCharacteristics, mExposureLimits);
                 } finally {
-                    HybridPlan.setMotionCap(0);
+                    HybridPlan.setMotionCap(0); HybridPlan.setDeepShadow(0f); HybridPlan.setShadow(Float.NaN);
                 }
             }
             // P219: every ultrashort frame of the plan, one long frame (HybridPlan.fullResLongFrames); the N take the slots freed
@@ -8262,7 +8283,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 IsoExpoSelector.fullpairs.clear();
                 HybridPlan plan;
                 // P98: while the HAL reports motion, a bracketed frame's shutter stays within its motion-safe exposure
-                HybridPlan.setMotionCap(manualPsl?0:HalMotion.motionCapNs(mNativeZslBase!=null?mNativeZslBase:mPreviewCaptureResult));
+                HybridPlan.setMotionCap(manualPsl?0:HalMotion.motionCapNs(mNativeZslBase!=null?mNativeZslBase:mPreviewCaptureResult)); HybridPlan.setDeepShadow(mLastZslDeepShadow); HybridPlan.setShadow(mLastZslShadow); // P409 / P410
                 try {
                 if(hybridZsl) {
                     // N = the newest ring frame (the base of the selection): its own exposure, not the cutoff plan's.
@@ -8288,7 +8309,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                                     paramController.motionCeilingNs())
                             : HybridPlan.autoExposure(4);
                 }
-                } finally { HybridPlan.setMotionCap(0); }
+                } finally { HybridPlan.setMotionCap(0); HybridPlan.setDeepShadow(0f); HybridPlan.setShadow(Float.NaN); }
                 // P219: a full-resolution session (Pixel / Snapdragon MAXIMUM_RESOLUTION) asks for one long frame; its colour block
                 // is the stream's (0 here: «Наш ремозаик» off keeps every frame for the binned merge)
                 if(mFullResSession) plan=plan.withLongFrames(HybridPlan.fullResLongFrames(true,0,PreferenceKeys.isHybridMosaicRemosaic()));
