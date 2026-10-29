@@ -333,6 +333,9 @@ public final class DevKeys {
         k.add(n(post, "hybrid_why_fusion_edge_hi", "1.0", Lang.t("Тон: у резких границ guided filter полностью (EV); при включённых полосах пирамиды — выкл., если строка не задана явно", "Tone: at strong edges the guided filter fully (EV); off with the pyramid's bands on unless the line is set explicitly")));
         k.add(n(post, "hybrid_why_fusion_edge_floor", "0.0078125", Lang.t("Тон: порог света (яркость x AE), ниже которого глубокие тени считаются одним уровнем (без доли на их шуме)", "Tone: the light floor (luminance x AE) under which the deep shadows count as one level (no share on their noise)")));
         // P391: the edge-aware bands of the WHY pyramid, its continuous depth, the noise-bound deep floor and band gain
+        // P395: the orange-yellows towards yellow
+        k.add(n(post, "hybrid_why_yellow_hue", "1.0", Lang.t("Цвет: насыщенные жёлто-оранжевые (фасады, жёлтая листва, машины) поворачиваются к жёлтому до 8°, как у ArkCam; кожа, оранжевые, зелень и бледные стены как раньше; 0 — выкл.",
+                "Colour: saturated orange-yellows (facades, yellow foliage, cars) turn up to 8 deg towards yellow, as ArkCam's; skin, oranges, greens and pale walls as before; 0: off")));
         // P394: the sharpening's overshoot held and the pixel steps smoothed along strong edges
         k.add(n(post, "hybrid_why_edge_hold", "1.0", Lang.t("Тон: на резких границах (рама окна, край лампы на фоне света) резкость сглаживается вдоль границы и не выходит за яркость соседей — без тёмной обводки и лесенки; текстура как раньше; 0 — выкл.",
                 "Tone: at strong edges (a window frame, a lamp's rim against light) the sharpening is smoothed along the edge and held within its neighbours' light - no dark outline, no pixel steps; texture as before; 0: off")));

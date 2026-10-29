@@ -8987,4 +8987,19 @@ Owner, same day: «сделай гпу выравнивание и дай воз
   Host: the lamp's rim without the outline, the steps smoothed, sharp across; the window burst 0.01 % of the pixels change,
   texture high-pass 3.319 -> 3.319. Checks: WhyEdgeHoldTest (CI), check_shader_fp16, check_why_sharpen / sky / highlights /
   headroom, check_vibrance_hl, check_light_chroma pass.
+- CI fix: the edge hold sat in the P3_OUT 0 token stream check_colour_output compares (and in P311's rim pattern) - now under its
+  own define EDGE_HOLD (WhyCombine sets it with the full-size merge), applied to the sharpened luma where it is read (yS).
+
+### P395 - saturated yellow orange-ochre beside ArkCam's (owner, 2026-10-29, vivo X200 Ultra: the «Лента» facade, the burst scam_burst-20261029-102753 with its .json and preview; the pair SCAMERA / ArkCam of the same scene): DONE (host), not tried on a phone
+- The host chain (the burst merged with the app's tuning, the shot's DNG_FM colour: sensorToProPhoto then proPhotoToSRGB, its
+  neutral, WHY) matches the phone's preview: the facade L* 56 C* 59 h 81 (phone 61 / 61 / 81). Scene hue after the camera matrix
+  CIELAB 82 (OKLab 82), the tone keeps it (hue lock on / off: 81); ArkCam 87 (OKLab ~90), the brand's yellow 87.5. The birches of
+  P393 B: ours 67 - 75, ArkCam 78 - 84 - the same matrix bias on saturated orange-yellows.
+- DONE: why/combine YELLOW_HUE (yellowHueU, WhyTone.yellowHue 1, scam_dev hybrid_why_yellow_hue; the photo and the RAW viewfinder):
+  the scene's OKLab hue 64 .. 100 deg (full 74 .. 88), C / L from 0.10 (full 0.14), turned up to 8 deg towards yellow before the hue
+  lock. Host: the facade 81 -> 87 deg (L* and C* kept), dry grass 69 -> 71, 4.5 % of the frame's pixels change > 2 codes.
+  tools/check_yellow_hue.py (CI): the facade colour +5.8 .. +6.8 deg up to the light tones (towards yellow, not past 94, where
+  LIGHT_CHROMA turns it already), skin (ColorChecker, Fitzpatrick III - V), a deep orange, a sunset glow, pale colours, greens and
+  blues bit for bit, hue and saturation sweeps without a step.
+- Not changed: ArkCam's darker exposure of the pair (the owner: «Арк камера в этой паре сильно темнит, нам такое не нужно»).
 

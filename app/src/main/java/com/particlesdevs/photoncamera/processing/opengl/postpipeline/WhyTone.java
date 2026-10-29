@@ -384,6 +384,15 @@ public final class WhyTone {
         return Math.max(0f, Math.min(1f, value("edge_hold", 1f)));
     }
 
+    /**
+     * P395 (owner, 2026-10-29: the yellow «Лента» facade and sunlit birches orange-ochre beside ArkCam's yellow): why/combine
+     * yellowHueU - the saturated orange-yellow scene hues (OKLab 74 .. 88 deg, fading out at 64 / 100; C / L from 0.10) turned up to
+     * 8 deg towards yellow, the photo and the RAW viewfinder alike. scam_dev hybrid_why_yellow_hue 0..1 (0 = off, as before).
+     */
+    static float yellowHue() {
+        return Math.max(0f, Math.min(1f, value("yellow_hue", 1f)));
+    }
+
     static float vibranceHl() {
         return Math.max(0f, value("vibrance_hl", 1.0f));
     }

@@ -24,12 +24,15 @@ public class WhyEdgeHoldTest {
 
     @Test public void thePhotoHoldsItsStrongEdges() throws IOException {
         final String glsl = read("src/main/assets/shaders/why/combine.glsl");
-        assertTrue(glsl.contains("uniform float edgeHoldU;"));
+        assertTrue(glsl.contains("#if EDGE_HOLD == 1\nuniform float edgeHoldU;"));
         assertTrue("off without the full-size merge or the uniform",
                 glsl.contains("if (fullInputU != 1 || edgeHoldU <= 0.0) return yD;"));
-        assertTrue("the sharpened luma only", glsl.contains("if (sharpU == 1) yD = edgeHold(yD, xy, size, refDomain);"));
+        assertTrue("the sharpened luma only", glsl.contains("if (sharpU == 1 && bounded) yS = edgeHold(yS, xy, size, refDomain);"));
         final String src = "src/main/java/com/particlesdevs/photoncamera/processing/opengl/postpipeline/";
-        assertTrue(read(src + "WhyCombine.java").contains("glProg.setVar(\"edgeHoldU\", WhyTone.edgeHold());"));
+        final String why = read(src + "WhyCombine.java");
+        assertTrue("its define only with the full-size merge (0: the shader before, token for token)",
+                why.contains("if (WhyTone.edgeHold() > 0f && !st.inputReleased) glProg.setDefine(\"EDGE_HOLD\", 1);"));
+        assertTrue(why.contains("glProg.setVar(\"edgeHoldU\", WhyTone.edgeHold());"));
         assertTrue("on by default", read(src + "WhyTone.java").contains("value(\"edge_hold\", 1f)"));
         assertTrue("the dev line", read("src/main/java/com/particlesdevs/photoncamera/settings/DevKeys.java").contains("\"hybrid_why_edge_hold\", \"1.0\""));
     }

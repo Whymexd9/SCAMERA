@@ -106,6 +106,12 @@ precision highp int;
 // own; skin, pale colours, other hues, lights at the AgX white and the sky as before (see main). 0: the shader before P393, token for
 // token.
 #define LIGHT_CHROMA 0
+// P394 (owner, 2026-10-29: «нам нужно сделать грань максимально гладкой без зубчиков»): 1 = edgeHold, the sharpened luma averaged along
+// a strong edge and held within the full-size merge's 3 x 3 range (WhyCombine with the full-size merge; 0 = the shader before)
+#define EDGE_HOLD 0
+// P395 (owner, 2026-10-29: the «Лента» facade orange-ochre beside ArkCam's yellow): 1 = the saturated orange-yellow scene hues
+// turned towards yellow (yellowHueU; 0 = the shader before)
+#define YELLOW_HUE 0
 #import interpolation
 uniform sampler2D InputBuffer;      // full-size white-balanced linear camera RGB (the merge after denoising)
 uniform sampler2D GainMap;          // lens shading gains
@@ -137,7 +143,9 @@ uniform float detailGainU;          // why_detail_gain; 0 (unset) = no detail
 uniform int detailRefU;             // 1: bounded, compression-scaled delta against WhyDetailRef; unset -> unbounded delta
 uniform int sharpU;                 // 1: the delta's luminance is WhyLumaS; unset -> the full-size merge
 uniform int fullInputU;             // P349: 1 = InputBuffer is the full-size image (not given back above 100 MP); 0 / unset: it may not be
+#if EDGE_HOLD == 1
 uniform float edgeHoldU;            // P394: the sharpened luma held within the full-size merge's 3 x 3 range at a strong edge (0 / unset = off)
+#endif
 uniform float sharpToneU;           // sharpU 1: ae / m (WhyLumaS domain -> ae domain); <= 0 -> 1
 uniform float deltaChromaU;         // 0..1: a darkening delta scales a, b with L (hue and relative chroma kept); 0 = kernel
 uniform float filmToeU;             // film toe (0 = off)
@@ -156,6 +164,9 @@ uniform float hrRoomU;              // shoulder headroom x the top; <= 0 -> 0.4 
 uniform float hrDetailU;            // highlight detail: share of the full-size log contrast kept in OKLab L (0 = off)
 #endif
 uniform float hlWhiteU;             // path to white of saturated light entering the shoulder (0 = off)
+#if YELLOW_HUE == 1
+uniform float yellowHueU;           // P395: the orange-yellow scene hues turned towards yellow (0 / unset = off, 1 = up to 8 deg)
+#endif
 #if LIGHT_CHROMA == 1
 uniform float lightChromaU;         // P393: the share of the mid-tone saturation a light tone keeps (0 = off, 1 = all of it)
 const vec2 LC_HUE_IN = vec2(56.0, 64.0);    // P393 review: the scene's OKLab hue (deg) where the term fades in
@@ -427,6 +438,7 @@ float trenchAt(ivec2 xy, ivec2 size) {
     return smoothstep(0.035, 0.06, 1.0 - c / max(max(h, v), 0.000001));
 }
 
+#if EDGE_HOLD == 1
 // P394 (owner, 2026-10-29: «нам нужно сделать грань максимально гладкой без зубчиков» - a lamp's rim, a window frame against a
 // clipped light): at a strong edge the sharpened luma (the domain m: min(m * Y, 1)) stays within the unsharpened merge's 3 x 3 range
 // (+-5 % of it): the sharpening's undershoot drew a dark outline along the edge and deepened the merge's pixel steps into teeth.
@@ -468,6 +480,7 @@ float edgeHold(float yD, ivec2 xy, ivec2 size, float m) {
     float r = 0.05 * (hi - lo);
     return mix(yD, clamp(ys, lo - r, hi + r), w);
 }
+#endif
 
 // Output pixel x on a grid reduced by a box of f: centre (x + 0.5) / f - 0.5 as an integer base and a fraction.
 void gridPos(int x, int f, out int base, out float frac) {
@@ -1021,6 +1034,9 @@ void main() {
     float sharpTone = sharpU == 1 && sharpToneU > 0.0 ? sharpToneU : 1.0;
     if (detailGainU != 0.0) {
         float yS = sharpU == 1 ? max(texelFetch(WhyLumaS, xy, 0).r, 0.0) : 0.0;
+#if EDGE_HOLD == 1
+        if (sharpU == 1 && bounded) yS = edgeHold(yS, xy, size, refDomain);   // P394
+#endif
         float yFull = sharpU == 1 ? yS * sharpTone / ae : dot(sceneLinear(xy, size), LUMA);
         if (f == 1) {
             // kernel full-resolution mode: asymmetric clamp against dark trenches [:1538-1548]
@@ -1030,7 +1046,6 @@ void main() {
             // bounded like the kernel's a3: min(m * Y, 1) (or its sharpened S) against the B-spline of its box mean
             lRef = cbrtp(max(yRef, 0.000001));
             float yD = sharpU == 1 ? yS : min(yFull * ae, 1.0);
-            if (sharpU == 1) yD = edgeHold(yD, xy, size, refDomain);   // P394
             delta = cbrtp(max(yD, 0.000001)) - lRef;
             // P311: beside a clipped light, against the side of the neighbourhood that is not the light
             if (delta < 0.0 && lightW > 0.0) delta = lightRimDelta(delta, yD, yRef, lightW, lbx, lby, lfx, lfy, refDomain);
@@ -1235,6 +1250,23 @@ void main() {
 #if COLOUR_LOOK == 0
     float hlGainK = cPreK > 0.000001 ? length(lab.yz) / cPreK : 1.0;   // P393: the light tones' vibrance
 #endif
+#endif
+    // P395 (owner, 2026-10-29, vivo X200 Ultra: the yellow «Лента» facade and the sunlit birches beside ArkCam's - ours orange-ochre,
+    // OKLab hue 82 against 90): the camera matrix renders a saturated yellow ~6 deg Lab too red (the scene's hue already, the tone
+    // keeps it). The saturated orange-yellows (OKLab 64 .. 100 deg, full 74 .. 88; C / L from 0.10, full 0.14) turn up to 8 deg
+    // towards yellow; skin (~52 deg), oranges, greens, pale walls and greys as before.
+#if YELLOW_HUE == 1
+    if (yellowHueU > 0.0) {
+        float cY = length(lab.yz);
+        if (cY > 0.000001) {
+            float hY = degrees(atan(lab.z, lab.y));
+            float wY = smoothstep(64.0, 74.0, hY) * (1.0 - smoothstep(88.0, 100.0, hY)) * smoothstep(0.10, 0.14, cY / max(lab.x, 0.0001));
+            if (wY > 0.0) {
+                float hN = radians(hY + 8.0 * yellowHueU * wY);
+                lab.yz = cY * vec2(cos(hN), sin(hN));
+            }
+        }
+    }
 #endif
     if (chromaDnU > 0.001) {
         float lift = targetLin / max(origLuma * ae, 0.0001);

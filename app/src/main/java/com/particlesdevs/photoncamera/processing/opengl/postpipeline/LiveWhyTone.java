@@ -225,6 +225,8 @@ public final class LiveWhyTone {
     private float vibHl;
     /** P393: the light tones' share of the mid-tone chroma (LIGHT_CHROMA), as WhyCombine sets it. */
     private float lightChroma;
+    /** P395: the orange-yellows turned towards yellow (yellowHueU), as WhyCombine sets it. */
+    private float yellowHue;
     private float[] vib = new float[3];
     /** P393: the light-tone vibrance's shape for pale colour, as WhyCombine sets it. */
     private float[] vibHlShape = WhyTone.VIBRANCE_HL_SHAPE.clone();
@@ -520,6 +522,7 @@ public final class LiveWhyTone {
         vibHlShape = WhyTone.vibranceHlShape();
         vibHl = WhyTone.vibranceHl();
         lightChroma = WhyTone.lightChroma();
+        yellowHue = WhyTone.yellowHue();
         // P378 review: the lens' f-number (the sky's absolute EV), as Parameters reads it
         float[] apertures = camera != null ? camera.get(android.hardware.camera2.CameraCharacteristics.LENS_INFO_AVAILABLE_APERTURES) : null;
         aperture = apertures != null && apertures.length > 0 && apertures[0] > 0f ? apertures[0] : 1.8f;
@@ -975,6 +978,7 @@ public final class LiveWhyTone {
         set(p, "vibHlU", vibHl);
         // P393: the photo's light-tone chroma (LIGHT_CHROMA, AgX only; no location without the define)
         set(p, "lightChromaU", lightChroma);
+        set(p, "yellowHueU", yellowHue);   // P395, as the photo (no location without the define)
         if (skyOnDraw) {
             // P378 review: the photo's sky term (WhyCombine) on the shown cells - the level share eased (0 backlit), the tops in this
             // frame's log2 Y
@@ -1080,6 +1084,7 @@ public final class LiveWhyTone {
         if (toneOp != ToneCurve.AGX) defs.add(new String[]{"TONE_OP", "1"});
         // P393: the light tones of a saturated colour keep its mid-tone chroma, as the photo (AgX only)
         if (toneOp == ToneCurve.AGX && lightChroma > 0f) defs.add(new String[]{"LIGHT_CHROMA", "1"});
+        if (yellowHue > 0f) defs.add(new String[]{"YELLOW_HUE", "1"});   // P395, as the photo
         // P369: a film's scene table (FILM_SIM) or the chosen LUT (FILM_LUT), never both
         if (lutOn) defs.add(new String[]{scene ? "FILM_SIM" : "FILM_LUT", "1"});
         // P378 review: the sky term (the photo's SKY, its cells from LiveSky)

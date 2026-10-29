@@ -224,6 +224,8 @@ public final class WhyCombine extends Node {
             if (WhyTone.macroToe()) glProg.setDefine("MACRO_TOE", 1);
             // P393: a saturated colour's light tones under the AgX white keep its mid-tone chroma (0: the shader before, token for token)
             if (lightChroma > 0f) glProg.setDefine("LIGHT_CHROMA", 1);
+            if (WhyTone.yellowHue() > 0f) glProg.setDefine("YELLOW_HUE", 1);   // P395
+            if (WhyTone.edgeHold() > 0f && !st.inputReleased) glProg.setDefine("EDGE_HOLD", 1);   // P394 (the full-size merge)
             skyLog = st.sky == null ? "" : " sky=" + Math.round(100f * st.skyMask.coverage) + "%" + (st.skyMask.keep < 1f
                     ? " backlit (level x" + Math.round(100f * st.skyMask.keep) / 100f + ")" : "");
             // P378 review: Ultra HDR keeps the sky term's change - the combine at whyLow with and without it (skyHdrRatio), its
@@ -295,7 +297,7 @@ public final class WhyCombine extends Node {
             }
             glProg.setVar("sharpU", sharp ? 1 : 0);
             glProg.setVar("fullInputU", st.inputReleased ? 0 : 1);   // P349: the bright rim reads the full-size merge
-            glProg.setVar("edgeHoldU", WhyTone.edgeHold());          // P394: smooth edges (the full-size merge's range, photo only)
+            if (WhyTone.edgeHold() > 0f && !st.inputReleased) glProg.setVar("edgeHoldU", WhyTone.edgeHold());   // P394: smooth edges (photo only)
             glProg.setVar("sharpToneU", sharp ? r.ae / Math.max(st.sharpMul, 1e-6f) : 1f);
             glProg.setVar("fU", st.factor);
             glProg.setVar("colourFU", colourFactor);
@@ -324,6 +326,7 @@ public final class WhyCombine extends Node {
             glProg.setVar("vibU", WhyTone.value("vibrance", 0f), WhyTone.value("vibrance_sky", 0.40f), WhyTone.value("vibrance_green", 0.20f));
             glProg.setVar("vibHlU", WhyTone.vibranceHl());
             glProg.setVar("vibHlShapeU", WhyTone.vibranceHlShape());   // P393: no cast doubled on pale mid-light tones
+            if (WhyTone.yellowHue() > 0f) glProg.setVar("yellowHueU", WhyTone.yellowHue());   // P395: the orange-yellows towards yellow
             glProg.setVar("chromaDnU", WhyFusion.whyDenoise(basePipeline.mParameters) ? WhyTone.value("chroma_denoise", 0f) : 0f);
             glProg.setVar("clarityU", WhyTone.value("clarity", 0f));
             glProg.setVar("flatProtectU", WhyTone.value("flat_protect", 0f));
