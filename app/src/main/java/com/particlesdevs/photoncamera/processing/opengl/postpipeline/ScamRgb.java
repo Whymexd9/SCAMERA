@@ -991,6 +991,8 @@ public final class ScamRgb extends Node {
                 glProg.setVar("chromaLimitU",chromaLimit);
                 float defringe=PreferenceKeys.hybridValue("highlight_defringe",0.85f);
                 glProg.setVar("defringeU",defringe>0f?defringe:-1f);
+                // P399: the lens's purple fringe against a bright light goes neutral; scam_dev.txt "hybrid_highlight_purple 0" = as before
+                glProg.setVar("purpleU",Math.max(0f,Math.min(1f,PreferenceKeys.hybridValue("highlight_purple",1f))));
                 glProg.setVar("oppU",opposed?1:0);
                 // P393: a clipped channel of a coloured surface (sunlit leaves) also takes the local light's colour (Chroma8 / 32 / 128);
                 // scam_dev.txt "hybrid_highlight_opposed_local 0" = RawTherapee's reference alone, as before

@@ -9060,3 +9060,21 @@ dump 14:14:07 and the full JPEG pair): DONE (host), not tried on a phone
   colour_look, tone_ops, why_highlights, why_headroom, highlight_landing, shader_fp16, highlight_recovery PASS.
 - Open from the same report: pink / purple fringes on the window edges and the ring antenna; the cranes behind the window
   washed out (0.42 EV under the sky against the reference's 0.95).
+
+### P399 - violet / magenta fringes along the window frames and the ring antenna (owner, 2026-10-29, the ship's bridge: «куча
+артефактов», «на всех фото у нас артефакты на краях окна и на приспособлении посреди окна»; stage dumps 14:14:07, 14:22:07,
+14:24:25 and the full JPEG pairs): DONE (host), not tried on a phone
+- The JPEG: a 4 - 6 px violet .. magenta band on the dark side of the ring and the frames against the sky (hue 253 - 328),
+  the reference has a 1 px trace of it. The stages: already in the merge (03-ScamRgb R / G 1.25 - 1.33, B / G 1.16 - 1.43 on
+  the dark side, whyLow's 4 x 4 means there R / G 1.17, B / G 1.43) - the lens's purple fringe against a sky 58 x brighter
+  (from the ultrashort frames); WhyCombine takes the colour from the B-spline of the colour grid (2x / whyLow) and lifts the
+  ring ~3 EV, so the band widened and showed.
+- DONE: scamhdr/scamrgb purpleU (ScamRgb, scam_dev hybrid_highlight_purple, default 1; the per-channel route): a violet ..
+  pink pixel (HSV hue 245 .. 350, chroma from 0.02 .. 0.06) with a light 2.5 .. 5 x its luminance within 6 px (8 directions at
+  1, 2, 4, 6 px) that reaches 0.6 .. 0.95 of the base frames' white goes neutral at its own luminance; not when that light is
+  violet itself (a violet sign / LED keeps its glow). main() became recoverPixel() + the step; unset = bit for bit (the
+  highlight_* / signed_rgb / scam_hdr_gpu / opposed checks unchanged).
+- tools/check_purple_fringe.py (the fringe chroma 0.066 -> 0.000, luminance 3e-8; a violet flower on grey, a violet LED's
+  glow, a blue sky round a blown sun, red / orange / neutral dark bars against the sky bit for bit; a violet surface against
+  the sky changed within 6 px only), ScamRgbPurpleFringeTest. The 14:22:07 dump (1 / 4 size): 0.15 % of the pixels change,
+  all along the window frames, the ring, the tower behind the glass and the ceiling lamp's edges.

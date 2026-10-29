@@ -39,6 +39,9 @@ uniform int signedU;
 // P368 clip guard (owner, 2026-10-27: «У нас нет блока который предотвращает умножение пересветов на коэффициенты CCM»): the white of
 // the Bento ultrashort frames in base-frame units (k, ScamHybridBurst.lastBentoFactor); <= 1 / unset: no ultrashort data, no guard.
 uniform float usWhiteU;
+// P399 (owner, 2026-10-29, a ship's bridge: «артефакты на краях окна и на приспособлении посреди окна»): the lens's purple fringe on
+// the dark side of an edge against a bright light, 0..1 (0 = unset: off)
+uniform float purpleU;
 out vec3 Output;
 
 // Clip level of every channel at this pixel (raw units); vec3(-1) = no channel can be clipped here.
@@ -163,7 +166,59 @@ float bentoEdge(ivec2 p) {
     return smoothstep(1.3, 2.0, hi / max(lo, 1.0e-6));
 }
 
-void main(){
+// P399: HSV hue of a colour in degrees (0 red, 120 green, 240 blue, 300 magenta)
+float hueOf(vec3 c) {
+    float hi = max(max(c.r, c.g), c.b), lo = min(min(c.r, c.g), c.b), d = hi - lo;
+    if (d <= 0.0) return 0.0;
+    float h = hi == c.r ? (c.g - c.b) / d : (hi == c.g ? 2.0 + (c.b - c.r) / d : 4.0 + (c.r - c.g) / d);
+    return mod(60.0 * h, 360.0);
+}
+
+// share of the violet .. magenta .. pink hues a lens fringe takes (250 .. 335 deg); a blue sky (220 - 240) and reds stay out
+float purpleHue(vec3 c) {
+    float h = hueOf(c);
+    return smoothstep(245.0, 265.0, h) * (1.0 - smoothstep(330.0, 350.0, h));
+}
+
+// P399: the lens's purple fringe (the window of the ship's bridge: 4 - 6 px violet / magenta along the dark ring and frame against
+// the sky, the merge R / G 1.25 - 1.33, B / G 1.16 - 1.43 there; the tone lifts the dark side and the colour grid spreads it). A
+// violet .. pink pixel with a much brighter light within 6 px (8 directions at 1, 2, 4, 6 px: 2.5 .. 5 x its luminance) that is
+// near the base frames' white or above goes neutral at its own luminance. Not when that light is purple itself (a violet sign
+// or LED keeps its glow), nor away from bright lights (a violet flower, a screen in a room: no light there).
+vec3 purpleFringe(vec3 c) {
+    vec3 cp = max(c, vec3(0.0));
+    float hi = max(max(cp.r, cp.g), cp.b);
+    if (hi <= 0.0) return c;
+    float wh = purpleHue(cp) * smoothstep(0.02, 0.06, (hi - min(min(cp.r, cp.g), cp.b)) / hi);
+    if (wh <= 0.0) return c;
+    const vec3 LUMA = vec3(0.2126, 0.7152, 0.0722);
+    float y = max(dot(cp, LUMA), 1.0e-6);
+    ivec2 p = clamp(ivec2(gl_FragCoord.xy) + cropOffset, ivec2(0), textureSize(InputBuffer, 0) - 1);
+    ivec2 last = textureSize(InputBuffer, 0) - ivec2(1);
+    vec3 wp = max(whitePoint, vec3(1.0e-6));
+    float yb = 0.0;
+    vec3 src = vec3(0.0);
+    const ivec2 DIR[8] = ivec2[8](ivec2(1, 0), ivec2(1, 1), ivec2(0, 1), ivec2(-1, 1), ivec2(-1, 0), ivec2(-1, -1), ivec2(0, -1), ivec2(1, -1));
+    const int RAD[4] = int[4](1, 2, 4, 6);
+    for (int r = 0; r < 4; r++)
+        for (int i = 0; i < 8; i++) {
+            vec3 v = texelFetch(InputBuffer, clamp(p + DIR[i] * RAD[r], ivec2(0), last), 0).rgb;
+            v = max(vec3(isnan(v.r) || isinf(v.r) ? 0.0 : v.r, isnan(v.g) || isinf(v.g) ? 0.0 : v.g,
+                         isnan(v.b) || isinf(v.b) ? 0.0 : v.b), vec3(0.0)) / wp;
+            float yv = dot(v, LUMA);
+            if (yv > yb) { yb = yv; src = v; }
+        }
+    // the base frames' white in these units (the first channel to clip); no level known: 1
+    vec3 lw = clipLoU.g > 0.0 ? clipLoU / wp : vec3(1.0);
+    float white = max(min(min(lw.r, lw.g), lw.b), 1.0e-6);
+    float sHi = max(max(src.r, src.g), src.b);
+    float sChroma = sHi > 0.0 ? (sHi - min(min(src.r, src.g), src.b)) / sHi : 0.0;
+    float w = wh * smoothstep(2.5, 5.0, yb / y) * smoothstep(0.6, 0.95, yb / white)
+              * (1.0 - purpleHue(src) * smoothstep(0.15, 0.35, sChroma)) * clamp(purpleU, 0.0, 1.0);
+    return mix(c, vec3(dot(c, LUMA)), w);
+}
+
+vec3 recoverPixel(){
     ivec2 p=clamp(ivec2(gl_FragCoord.xy)+cropOffset,ivec2(0),textureSize(InputBuffer,0)-1);
     vec4 sites=texture(GainMap,vec2(p)*inverseSize);
     vec3 gains=vec3(sites.r,(sites.g+sites.b)*.5,sites.a);
@@ -327,16 +382,14 @@ void main(){
                     float left = tc.r == tLo ? c.r : (tc.g == tLo ? c.g : c.b);
                     float band = smoothstep(0.85, 1.0, tMid) * smoothstep(0.80, 0.95, left / max(max(max(c.r, c.g), c.b), 1.0e-6));
                     r = mix(r, vec3(max(max(r.r, r.g), r.b)), max(full, band));
-                    Output = mix(c, r, clamp(hlStrengthU, 0.0, 1.0));
-                    return;
+                    return mix(c, r, clamp(hlStrengthU, 0.0, 1.0));
                 }
-                Output = c;
-                return;
+                return c;
             }
         }
         // P368: no clip level here (no flag, no ultrashort level) - the clip guard on the camera RGB itself
         float cs = ceilingShare(raw);
-        if (L.g <= 0.0) { Output = cs > 0.0 ? ceilingGuard(c, cs) : c; return; }
+        if (L.g <= 0.0) return cs > 0.0 ? ceilingGuard(c, cs) : c;
         // A clipped-mean channel close to its clip is a lower bound as well: it mixes real values of clipped cells with
         // saturated samples (the first rows inside a lamp: R 5.8, G 7.2, B 8 of k = 8 -> magenta). Its share of the
         // estimate fades in from 0.6 of the clip (a real colour far below, a red LED's G and B, is not touched).
@@ -350,7 +403,7 @@ void main(){
             vec3 below = vec3(lessThan(c, vec3(hiC * 0.98)));
             satR = max(satR, below * smoothstep(vec3(0.80), vec3(0.95), rel));
         }
-        if (max(max(satR.r, satR.g), satR.b) <= 0.0) { Output = cs > 0.0 ? ceilingGuard(c, cs) : c; return; }
+        if (max(max(satR.r, satR.g), satR.b) <= 0.0) return cs > 0.0 ? ceilingGuard(c, cs) : c;
         // A clipped channel is a lower bound. Its estimate scales a prior chromaticity to the unclipped channels (G of a
         // white highlight from R and B), and only ever raises it: a saturated single colour (neon, laser) keeps its
         // clipped channel because the estimate from its dark channels is lower.
@@ -431,13 +484,18 @@ void main(){
         vec3 o = mix(r, vec3(max(max(max(r.r, r.g), r.b), top)), all3);
         // P368: a level that does not reach the pixel's own ceiling (the ultrashort clip moved below clipHiU) - the guard
         if (cs > 0.0) o = mix(o, vec3(max(max(o.r, o.g), o.b)), cs);
-        Output = mix(c, o, clamp(hlStrengthU, 0.0, 1.0));
-        return;
+        return mix(c, o, clamp(hlStrengthU, 0.0, 1.0));
     }
     // Blown highlights: once any channel reaches its clip level the colour is no
     // longer measured; fade it to neutral at its brightest channel (white, not
     // the pink a clipped green leaves after white balance).
     float over=max(max(raw.r/clipLevel.r,raw.g/clipLevel.g),raw.b/clipLevel.b);
     float t=smoothstep(0.85,0.98,over);
-    Output=mix(c,vec3(max(c.r,max(c.g,c.b))),t);
+    return mix(c,vec3(max(c.r,max(c.g,c.b))),t);
+}
+
+void main(){
+    vec3 o = recoverPixel();
+    if (purpleU > 0.0 && hlModeU == 1) o = purpleFringe(o);
+    Output = o;
 }

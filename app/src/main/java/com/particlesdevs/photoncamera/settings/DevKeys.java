@@ -289,6 +289,9 @@ public final class DevKeys {
         // P393: a clipped channel of a coloured surface also takes the local light's colour (scamhdr/scamrgb oppLocalU)
         k.add(s(post, "hybrid_highlight_opposed_local", true, Lang.t("Пересветы без коротких кадров: клипнутый канал цветной поверхности (листва на солнце) по цвету соседних неклипнутых пикселей, а не только по общей поправке кадра (выкл — как раньше: жёлтые листья уходили в оранжевый и розовый)",
                 "Highlights without ultrashort frames: a clipped channel of a coloured surface (sunlit leaves) from the colour of the unclipped pixels around, not the frame's one correction alone (off: as before - yellow leaves went orange and pink)")));
+        // P399: the lens's purple fringe on the dark side of an edge against a bright light
+        k.add(n(post, "hybrid_highlight_purple", "1.0", Lang.t("Пересветы: фиолетовая и пурпурная кайма объектива на тёмной стороне края у яркого света (рамы окон, предметы на фоне неба) становится нейтральной; цветные источники (фиолетовые вывески, LED) и всё дальше 6 px от края как раньше; 0 — выкл.",
+                "Highlights: the lens's violet and magenta fringe on the dark side of an edge against a bright light (window frames, objects against the sky) goes neutral; coloured lights (violet signs, LEDs) and everything beyond 6 px of the edge as before; 0: off")));
         k.add(n(post, "post_priority", null, Lang.t("Приоритет потока обработки (nice; пусто — не менять)", "Priority of the processing thread (nice; empty: unchanged)")));
         k.add(n(post, "gpu_low_priority", "2", Lang.t("Приоритет GPU-контекста обработки: 2 — средний, 1 — низкий, 0 — обычный", "Priority of the processing GPU context: 2 medium, 1 low, 0 normal")));
         k.add(s(post, "post_shared_context", true, Lang.t("Один GPU-контекст обработки на всё время работы: программы шейдеров не загружаются заново на каждый снимок (выкл — новый контекст на каждый снимок)",
