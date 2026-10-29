@@ -396,8 +396,6 @@ public final class DevKeys {
         // P393: the light tones of a saturated colour keep its mid-tone chroma (why/combine.glsl LIGHT_CHROMA, AgX only)
         k.add(n(post, "hybrid_why_light_chroma", "1.0", Lang.t("Тон: насыщенные оранжево-жёлтые цвета в светах (листва на солнце) держат насыщенность полутонов, оттенок сдвигается к AgX только там, где sRGB его не удержит; кожа, зелень, синие, лампы, небо и бледные цвета как раньше; 0 — выкл., как раньше",
                 "Tone: saturated orange-yellow colours in the light tones (sunlit leaves) keep their mid-tone saturation, the hue moves towards AgX's only where sRGB cannot hold it; skin, greens, blues, lamps, the sky and pale colours as before; 0 = off, as before")));
-        k.add(n(post, "hybrid_why_hr_knee", "0.5", Lang.t("Тон, света Bento выше 4x: колено плеча (x верх)", "Tone, Bento highlights above 4x: shoulder knee (x top)")));
-        k.add(n(post, "hybrid_why_hr_room", "0.4", Lang.t("Тон, света Bento выше 4x: запас плеча (x верх)", "Tone, Bento highlights above 4x: shoulder room (x top)")));
         k.add(n(post, "hybrid_why_hr_detail", "0.35", Lang.t("Тон, света Bento выше 4x: деталь светов", "Tone, Bento highlights above 4x: highlight detail")));
         k.add(n(post, "hybrid_grain_level", "0.0002", Lang.t("Шумодав: уровень оставляемого зерна", "Denoise: level of the grain left")));
         k.add(n(post, "hybrid_grain_min", "0.12", Lang.t("Шумодав: наименьшая доля возвращаемого зерна", "Denoise: least share of the grain put back")));

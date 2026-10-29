@@ -62,7 +62,7 @@ final class LiveRawRenderer {
         try{
             ColourLook c=WhyTone.colourLook();
             // P370 (B4): the scene light of the frame's matrix (PhotoMatrix: keep warm / cool as in the photo), 0 = unknown
-            lookWhite=c.whiteMatrix(com.particlesdevs.photoncamera.processing.color.PhotoMatrix.viewfinderSceneCct);
+            lookWhite=WhyTone.withCctSat(c.whiteMatrix(com.particlesdevs.photoncamera.processing.color.PhotoMatrix.viewfinderSceneCct));   // P402: cct_sat as the photo
             lookOn=!c.shaderNeutral();
             lookSkin=c.skinUniform();lookVib=c.vibUniform();lookMix=c.mixUniform();lookMixOn=c.mixerOn();lookMono=c.monoUniform();
             float[][] grade=c.gradeUniforms();lookGradeA=grade[0];lookGradeB=grade[1];

@@ -153,7 +153,8 @@ public final class WhyFusion extends Node {
             glProg.setVar("strengthU", strength);
             glProg.drawBlocks(st.lowDn);
         }
-        float[] em = WhyAe.exposures(r, headroomExposure(WhyAe.darkestExposure(r), r.ae, r.clip, r.hr));
+        final boolean ark = WhyTone.arkLayout();
+        float[] em = ark ? exposures207(r) : WhyAe.exposures(r, headroomExposure(WhyAe.darkestExposure(r), r.ae, r.clip, r.hr));
         float[] lw = WhyTone.layerWeights();
         // P391: the noise model of the fusion's guide (the noise-bound deep floor, the bands' noise cap); the old run of post_ab
         // keeps the fusion before P391
@@ -169,9 +170,9 @@ public final class WhyFusion extends Node {
         // the kernel's weights put lit paper on 150 - 190 grey where WhyCam has 245. There the well-exposed centre moves up and
         // the highlight layer weighs less (host replay of the owner's desk-lamp shots: the sheet 255 .. 205 against WhyCam's
         // 249 .. 199); without headroom the kernel's weights as before.
-        float center = WhyTone.value("weight_center", 0.6f);
+        float center = WhyTone.fusionCenter();
         float[] satLight = new float[6];
-        if (r.hr > 0f) {
+        if (r.hr > 0f && !ark) {
             // P310: only neutral light (a white sheet under a lamp) takes the headroom weights; a coloured light and what it lights
             // keep the kernel's centre and highlight weight (and no monotonic lift), ramped over the light's saturation
             final float[] ramp = WhyTone.saturatedLightRamp();
@@ -193,7 +194,7 @@ public final class WhyFusion extends Node {
             }
             // P401: a room with daylit windows takes build 31091's fusion inside them (why/lpyr WINDOW; null: off)
             final com.particlesdevs.photoncamera.processing.render.Parameters prm = basePipeline.mParameters;
-            final float[] win = WhyTone.bands() != null ? windowParams(WhyTone.windowShare(), r, prm != null
+            final float[] win = WhyTone.bands() != null && !ark ? windowParams(WhyTone.windowShare(), r, prm != null
                     ? WhySkyMask.evOffset(prm.iso, prm.exposureTime, prm.aperture, st.inScale) : Float.NaN) : null;
             GLTexture fused31 = null;
             try {
@@ -551,6 +552,20 @@ public final class WhyFusion extends Node {
     static final float[] LAYERS_31091 = {0.8f, 1f, 0.7f, 0.5f};
 
     /** P401: build 31091's synthetic exposures: 2^(-1.5 effH) (no P340 cap by the headroom), 1, 2^effS (<= 8), 2^(2 effS) (<= 16). */
+    /**
+     * P402: the reference app v2.07's synthetic exposures (ef_pyr_prep's em) in our layer order - darkest 2^(-2.5 effH), base 1,
+     * second dark 2^(-1.2 effH), bright min(2^(1.8 effS), 16).
+     */
+    static float[] exposures207(WhyAe.Result r) {
+        return new float[]{(float) Math.pow(2.0, -2.5 * r.effH), 1f, (float) Math.pow(2.0, -1.2 * r.effH),
+                (float) Math.min(Math.pow(2.0, 1.8 * r.effS), 16.0)};
+    }
+
+    /** The fusion's exposures of the viewfinder and the curve (no headroom cap): the layout's. */
+    static float[] liveExposures(WhyAe.Result r) {
+        return WhyTone.arkLayout() ? exposures207(r) : WhyAe.exposures(r);
+    }
+
     static float[] exposures31(WhyAe.Result r) {
         return new float[]{(float) Math.pow(2.0, -1.5 * r.effH), 1f, (float) Math.min(Math.pow(2.0, r.effS), 8.0),
                 (float) Math.min(Math.pow(2.0, 2.0 * r.effS), 16.0)};

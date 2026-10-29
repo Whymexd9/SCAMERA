@@ -226,6 +226,8 @@ public final class WhyCombine extends Node {
             if (lightChroma > 0f) glProg.setDefine("LIGHT_CHROMA", 1);
             if (WhyTone.yellowHue() > 0f) glProg.setDefine("YELLOW_HUE", 1);   // P395
             if (WhyTone.hlNeutral() > 0f) glProg.setDefine("HL_NEUTRAL", 1);   // P398
+            if (WhyTone.arkLayout()) glProg.setDefine("ARK_BASE", 1);   // P402: the v2.07 fusion's base of the tone
+            if (WhyTone.insetStrength() < 0.999f) glProg.setDefine("AGX_INSET", 1);   // P402: the inset's strength
             if (WhyTone.edgeHold() > 0f && !st.inputReleased) glProg.setDefine("EDGE_HOLD", 1);   // P394 (the full-size merge)
             skyLog = st.sky == null ? "" : " sky=" + Math.round(100f * st.skyMask.coverage) + "%" + (st.skyMask.keep < 1f
                     ? " backlit (level x" + Math.round(100f * st.skyMask.keep) / 100f + ")" : "");
@@ -306,6 +308,7 @@ public final class WhyCombine extends Node {
             glProg.setVar("signedHueU", WhyTone.signedHue() ? 1 : 0);   // P370 (B2): a colour outside sRGB keeps its hue
             glProg.setVar("aeU", r.ae);
             glProg.setVar("clipU", r.clip);
+            if (WhyTone.insetStrength() < 0.999f) glProg.setVar("insetU", WhyTone.insetStrength());   // P402
             // P216: real Bento headroom above the capped clip - WhyCam 1.58's shoulder, the landing on the real ceiling and the
             // highlight detail (not when the full-size image is gone: InputBuffer is then the sharpened luma)
             if (r.hr > 0f) {
@@ -313,6 +316,7 @@ public final class WhyCombine extends Node {
                 glProg.setVar("hrU", r.hr);
                 glProg.setVar("hrKneeU", hrTone[0]);
                 glProg.setVar("hrRoomU", hrTone[1]);
+                glProg.setVar("hrEaseU", 1f - WhyTone.shoulderStrength());   // P402
                 glProg.setVar("hrDetailU", st.inputReleased ? 0f : hrTone[2]);
             }
             // P11: the Bento ceiling / roll-off only with real headroom; saturated light fades towards white in the shoulder.

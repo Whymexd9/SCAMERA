@@ -115,6 +115,15 @@ precision highp int;
 // P398 (owner, 2026-10-29, the ship's bridge: «света почему-то получаются кремовые»): 1 = a pale colour lands on white at the top of
 // the tone (hlNeutralU; 0 = the shader before)
 #define HL_NEUTRAL 0
+// P402 ARK_BASE 1 (WhyCombine sets it with the reference app v2.07's fusion layout, WhyTone.arkLayout): its base of the tone -
+// with headroom (clip > 1.05) the fused target_lin goes softly into the tonemapper's top above 0.7 of it (AgX 0.18 x 2^(max EV +
+// EV), ACES 3, the others 4) instead of up the ACES inverse's asymptote, and the gain is held in 0.05 .. 12 against an auto
+// exposure above 1 that fades to 1 over the lights (Y 0.70 .. 1.20). 0: the shader before P402, token for token.
+#define ARK_BASE 0
+// P402 AGX_INSET 1 (WhyCombine sets it for «Плёночное выгорание светов» below 100 %): the reference app v2.07's inset strength - the
+// inset matrix of the tone goes towards the identity (insetU 1: the matrix, 0: per channel) and the outset is its inverse, as there.
+// 0: the shader before P402, token for token.
+#define AGX_INSET 0
 #import interpolation
 uniform sampler2D InputBuffer;      // full-size white-balanced linear camera RGB (the merge after denoising)
 uniform sampler2D GainMap;          // lens shading gains
@@ -164,6 +173,7 @@ uniform int headroomU;              // 1: real headroom above 1 (clipped RAW rec
 uniform float hrU;
 uniform float hrKneeU;              // shoulder knee x the tonemapper top; <= 0 -> 0.5 (WhyCam 1.58 hdr_shoulder_knee: 0.6)
 uniform float hrRoomU;              // shoulder headroom x the top; <= 0 -> 0.4 (hdr_shoulder_headroom: 0.35)
+uniform float hrEaseU;              // P402: 1 - the shoulder's strength (hdr_shoulder_strength; 0 / unset = full, as before)
 uniform float hrDetailU;            // highlight detail: share of the full-size log contrast kept in OKLab L (0 = off)
 #endif
 uniform float hlWhiteU;             // path to white of saturated light entering the shoulder (0 = off)
@@ -707,6 +717,14 @@ float agxTonescale(float x, float slope, float sp, float tp, float px) {
     return py - ts * ft;
 }
 
+#if AGX_INSET == 1
+uniform float insetU;               // P402: the inset strength 0..1
+const mat3 AGX_INSET_M = mat3(0.842479062253094, 0.0423282422610123, 0.0423756549057051, 0.0784335999999992, 0.8784686364697720,
+                              0.0784336000000000, 0.0792237451477643, 0.0791661274605434, 0.8791429737931040);
+mat3 insetA() { return mat3(1.0 - clamp(insetU, 0.0, 1.0)) + clamp(insetU, 0.0, 1.0) * AGX_INSET_M; }
+// the shader's fixed outset is the inverse of AGX_INSET_M: this turns its result into the inverse of insetA's
+vec3 insetFix(vec3 g) { return inverse(insetA()) * (AGX_INSET_M * g); }
+#endif
 #if LIGHT_CHROMA == 1
 // P393: the AgX rendition (display-linear, before the gamut cut) of a scene colour, as main() renders a pixel: inset, the tone scale per
 // channel, the look, pow 2.4, outset and the AgX saturation sat
@@ -714,6 +732,9 @@ vec3 agxGraded(vec3 scene, vec4 agxA, vec4 agxB, int look, float sat) {
     vec3 ins = max(vec3(0.842479062253094 * scene.r + 0.0784335999999992 * scene.g + 0.0792237451477643 * scene.b,
                         0.0423282422610123 * scene.r + 0.8784686364697720 * scene.g + 0.0791661274605434 * scene.b,
                         0.0423756549057051 * scene.r + 0.0784336000000000 * scene.g + 0.8791429737931040 * scene.b), vec3(0.0));
+#if AGX_INSET == 1
+    ins = max(insetA() * scene, vec3(0.0));
+#endif
     float range = max(agxB.y + max(agxB.z, 0.0) - agxB.x, 1.0);
     float px = clamp(-agxB.x / range, 0.05, 0.95);
     vec3 lg = clamp((log2(max(ins, vec3(0.0000001)) / 0.18) + agxB.z - agxB.x) / range, 0.0, 1.0);
@@ -727,6 +748,9 @@ vec3 agxGraded(vec3 scene, vec4 agxA, vec4 agxB, int look, float sat) {
     vec3 g = vec3(1.19687902425835 * d.r - 0.09802088114013 * d.g - 0.09902975707567 * d.b,
                   -0.05289685400450 * d.r + 1.15190312998791 * d.g - 0.09896117934484 * d.b,
                   -0.05297163539640 * d.r - 0.09804337634422 * d.g + 1.15107253721836 * d.b);
+#if AGX_INSET == 1
+    g = insetFix(g);
+#endif
     if (abs(sat - 1.0) > 0.001) {
         float ol = dot(g, LUMA);
         g = vec3(ol) + (g - vec3(ol)) * sat;
@@ -982,7 +1006,24 @@ void main() {
     // === 2. ACES inversion and base gain [:1500-1509] ===
     float targetLin = inverseAcescg(pow(max(fused, 0.0), 2.2), toe);
     float origLuma = max(max(dot(orig, LUMA), max3(orig) * 0.5), 0.0001);
+#if ARK_BASE == 1
+    if (clipCeiling > 1.05) {
+#if TONE_OP == 1
+        float topT = toneOpU == 1 ? 3.0 : 4.0;
+#else
+        float topT = max(0.18 * exp2(agxB.y + max(agxB.z, 0.0)), 1.0);
+#endif
+        float kneeT = 0.7 * topT;
+        if (targetLin > kneeT) {
+            float exT = targetLin - kneeT, roomT = topT - kneeT;
+            targetLin = kneeT + exT * roomT / (exT + roomT);
+        }
+    }
+    float aeEff = clipCeiling > 1.05 && ae > 1.0 ? mix(ae, 1.0, smoothstep(0.70, 1.20, origLuma)) : ae;
+    float gain = clamp(targetLin / max(origLuma * aeEff, 0.0001), 0.05, 12.0) * (aeEff / ae);
+#else
     float gain = targetLin / max(origLuma * ae, 0.0001);
+#endif
     vec3 lin = orig * ae * gain;
     float linScale = ae * gain;  // P370: every scale lin takes before OKLab, for the signed colour
 #if SKY == 1
@@ -1320,7 +1361,9 @@ void main() {
         float mw = mix(max3(scene), dot(scene, LUMA), satW);
         if (mw > knee) {
             float ex = mw - knee;
-            scene *= (knee + ex * room / (ex + room)) / mw;
+            float kw = (knee + ex * room / (ex + room)) / mw;
+            if (hrEaseU > 0.0) kw = mix(kw, 1.0, min(hrEaseU, 1.0));   // P402: the shoulder's strength below 1
+            scene *= kw;
         }
     }
 #endif
@@ -1380,6 +1423,9 @@ void main() {
     vec3 ins = max(vec3(0.842479062253094 * scene.r + 0.0784335999999992 * scene.g + 0.0792237451477643 * scene.b,
                         0.0423282422610123 * scene.r + 0.8784686364697720 * scene.g + 0.0791661274605434 * scene.b,
                         0.0423756549057051 * scene.r + 0.0784336000000000 * scene.g + 0.8791429737931040 * scene.b), vec3(0.0));
+#if AGX_INSET == 1
+    ins = max(insetA() * scene, vec3(0.0));
+#endif
 #if TONE_OP == 1
     vec3 graded;
     if (toneOpU == 3) {
@@ -1399,6 +1445,9 @@ void main() {
                       -0.05289685400450 * curOp.r + 1.15190312998791 * curOp.g - 0.09896117934484 * curOp.b,
                       -0.05297163539640 * curOp.r - 0.09804337634422 * curOp.g + 1.15107253721836 * curOp.b);
     }
+#if AGX_INSET == 1
+    graded = insetFix(graded);
+#endif
 #else
     float minEv = agxB.x, maxEv = agxB.y, ev = agxB.z;
     float range = max(maxEv + max(ev, 0.0) - minEv, 1.0);
@@ -1414,6 +1463,9 @@ void main() {
     vec3 graded = vec3(1.19687902425835 * dispLin.r - 0.09802088114013 * dispLin.g - 0.09902975707567 * dispLin.b,
                        -0.05289685400450 * dispLin.r + 1.15190312998791 * dispLin.g - 0.09896117934484 * dispLin.b,
                        -0.05297163539640 * dispLin.r - 0.09804337634422 * dispLin.g + 1.15107253721836 * dispLin.b);
+#if AGX_INSET == 1
+    graded = insetFix(graded);
+#endif
     if (abs(agxA.w - 1.0) > 0.001) {
         float ol = dot(graded, LUMA);
 #if COLOUR_LOOK == 1

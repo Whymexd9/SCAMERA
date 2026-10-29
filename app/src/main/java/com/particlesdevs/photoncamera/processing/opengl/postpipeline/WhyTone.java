@@ -91,8 +91,26 @@ public final class WhyTone {
      * the one bright layer 1.0 (the closest to the old set's shadows and mid-tones of the curves on a grid of strengths).
      */
     static float[] layerWeights() {
+        if (arkLayout()) return new float[]{value("classic_weight_ext_hl", 0.7f), value("classic_weight_mid", 1f), value("classic_weight_hl", 0.8f),
+                value("classic_weight_shadow", 0.5f)};
         return new float[]{value("weight_hl", LAYER_WEIGHTS[0]), value("weight_mid", LAYER_WEIGHTS[1]),
                 value("weight_dark2", LAYER_WEIGHTS[2]), value("weight_bright", LAYER_WEIGHTS[3])};
+    }
+
+    /**
+     * P402 (owner, 2026-10-29: «Перенеси то чего нам не хватает для того чтобы применить конфиг который я кинул»): «Раскладка слоёв» 1
+     * = the reference app's v2.07 fusion (WhyFusion.exposures207) with its own rows - the weights of the deepest highlights, the
+     * moderate highlights, the base and the shadows (classic_weight_ext_hl / _hl / _mid / _shadow, 0.7 / 0.8 / 1.0 / 0.5) and its centre
+     * (classic_weight_center 0.5) -, no headroom weights (P291 / P310), no darkest-exposure cap (P340), no window term (P401). 0 (the
+     * default): ours.
+     */
+    static boolean arkLayout() {
+        return value("fusion_layout", 0f) >= 0.5f;
+    }
+
+    /** The fusion's well-exposed centre without headroom: weight_center (0.6), the v2.07 layout's classic_weight_center (0.5). */
+    static float fusionCenter() {
+        return arkLayout() ? value("classic_weight_center", 0.5f) : value("weight_center", 0.6f);
     }
 
     /** AE / Smart-HDR / AgX settings (defaults: WhyCam 2.85 X8U effective values, tone_port.md section 3). */
@@ -102,6 +120,8 @@ public final class WhyTone {
         s.maxBoost = value("ae_max_boost", 5.0f);
         s.minLimit = Math.min(value("ae_min_limit", 0.5f), s.maxBoost);
         s.hlOverflow = value("hl_overflow", 2.0f);
+        // P402: the share of the frame's exposure kept above the highlight overflow's limit (the reference app's ae_hl_blend)
+        s.hlBlend = Math.max(0f, Math.min(1f, value("hl_blend", 0.33f)));
         float nightVal = value("night_thresh", 0.05f);
         if (nightVal >= 1.0f) nightVal = 0.05f; // migration of legacy ISO values (e.g. 100)
         // The row is the noise-based gain clamp only. Since P63 the ISO night threshold took the same value, always below ISO 1,
@@ -131,6 +151,7 @@ public final class WhyTone {
         // P216: the Bento ultrashort frames merged - data above the native ceiling of 4 is the shot's real highlight range
         s.bentoHeadroom = ScamHybridBurst.lastBentoApplied;
         s.hrMix = Math.max(0f, Math.min(1f, value("hr_mix", 0.5f)));
+        s.v207 = arkLayout();   // P402: the classic layout's Smart-HDR strengths
         return s;
     }
 
@@ -465,6 +486,19 @@ public final class WhyTone {
         return Math.max(0f, Math.min(1f, value("light_chroma", 1f)));
     }
 
+    /**
+     * P402: «Плёночное выгорание светов» - the AgX inset's strength 0..1 (the reference app's agx_inset_strength / 100: the inset matrix
+     * towards the identity, the outset its inverse; 1 = the full matrix, as before).
+     */
+    static float insetStrength() {
+        return Math.max(0f, Math.min(1f, value("agx_inset", 100f) / 100f));
+    }
+
+    /** P402: the headroom shoulder's strength 0..1 (hdr_shoulder_strength; 1 = the full shoulder, as before). */
+    static float shoulderStrength() {
+        return Math.max(0f, Math.min(1f, value("hr_strength", 1f)));
+    }
+
     static float[] headroomTone() {
         return new float[]{value("hr_knee", 0.5f), value("hr_room", 0.4f), Math.max(0f, value("hr_detail", 0.35f))};
     }
@@ -630,7 +664,25 @@ public final class WhyTone {
      */
     static float[] colourMatrixOf(Parameters p, float[] white) {
         float[] m = intermediateToSRGB(p);
+        white = withCctSat(white);
         return white != null ? ColourLook.mul(white, m) : m;
+    }
+
+    /**
+     * P402: the reference app's cct_sat - the saturation of the colour matrix about the Rec.709 luminance (Y kept; 1 = none), on top
+     * of the «Цвет» white matrix {@code white} (null: none) of linear sRGB; null when both are neutral.
+     */
+    public static float[] withCctSat(float[] white) {
+        return cctSat(Math.max(0f, Math.min(2f, value("cct_sat", 1f))), white);
+    }
+
+    /** {@link #withCctSat} of the saturation {@code k}. */
+    static float[] cctSat(float k, float[] white) {
+        if (Math.abs(k - 1f) < 1e-4f) return white;
+        final float[] luma = {0.2126f, 0.7152f, 0.0722f}, sat = new float[9];
+        for (int i = 0; i < 3; i++)
+            for (int j = 0; j < 3; j++) sat[i * 3 + j] = (i == j ? k : 0f) + (1f - k) * luma[j];
+        return white != null ? ColourLook.mul(sat, white) : sat;
     }
 
     /** P370 (B1): {@link #colourMatrixOf} with the «Цвет» rows of now (the diagnostic README before the pipeline runs). */

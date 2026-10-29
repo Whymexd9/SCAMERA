@@ -123,6 +123,22 @@ public final class SettingsNumericRules {
             case "pref_scam_hybrid_why_gamma": return new double[]{1.6,2.8,0};
             case "pref_scam_hybrid_why_film_toe": return new double[]{0,0.5,0};
             case "pref_scam_hybrid_why_macro_contrast": return new double[]{0.8,1.5,0};
+            // P402: the reference app's settings ported (HDR shoulder, highlight protection, inset, matrix saturation, the v2.07 layout's
+            // weights, the pyramid denoise, the dezipper)
+            case "pref_scam_hybrid_why_hl_blend": case "pref_scam_hybrid_why_hr_strength": case "pref_scam_hybrid_why_classic_weight_center":
+                return new double[]{0,1,0};
+            case "pref_scam_hybrid_why_agx_inset": return new double[]{0,100,1};
+            case "pref_scam_hybrid_why_hr_knee": return new double[]{0.3,0.95,0};
+            case "pref_scam_hybrid_why_hr_room": return new double[]{0.05,0.6,0};
+            case "pref_scam_hybrid_why_cct_sat": return new double[]{0.5,2,0};
+            case "pref_scam_hybrid_why_classic_weight_ext_hl": case "pref_scam_hybrid_why_classic_weight_hl": case "pref_scam_hybrid_why_classic_weight_mid":
+            case "pref_scam_hybrid_why_classic_weight_shadow": return new double[]{0,2,0};
+            case "pref_scam_hybrid_why_ms_model_scale": return new double[]{0,1.5,0};
+            case "pref_scam_hybrid_why_ms_shadow": return new double[]{0,4,0};
+            case "pref_scam_hybrid_why_ms_luma": case "pref_scam_hybrid_why_ms_luma_l0": case "pref_scam_hybrid_why_ms_luma_l1":
+            case "pref_scam_hybrid_why_ms_luma_l2": case "pref_scam_hybrid_why_ms_chroma": case "pref_scam_hybrid_why_ms_chroma_l0":
+            case "pref_scam_hybrid_why_ms_chroma_l1": case "pref_scam_hybrid_why_ms_chroma_l2": return new double[]{0,3,0};
+            case "pref_scam_hybrid_dezipper": return new double[]{0,15,0};
             case "pref_scam_hybrid_why_vibrance": case "pref_scam_hybrid_why_vibrance_sky":
             case "pref_scam_hybrid_why_vibrance_green": return new double[]{-1,1,0};
             case "pref_scam_hybrid_why_chroma_denoise": return new double[]{0,1,0};

@@ -47,6 +47,12 @@ public final class WhyAe {
         /** P216: where the highlight peak of a shot with real headroom lies between P159's (0) and the p99.9 level (1), in log. */
         public float hrMix = 0.5f;
         /**
+         * P402: the reference app v2.07's Smart-HDR strengths (with its classic fusion layout, WhyTone.arkLayout): effS without the
+         * night factor, effH from the peak's excess over 0.85 x bright_thresh with a soft start, x0.833 per EV, a bright-area gate
+         * 0.2 .. 1 and x(1 + 0.35 ..) for a large bright area; false: ours (WhyCam 1.58's).
+         */
+        public boolean v207;
+        /**
          * P320: a DCG frame (one exposure read at high and low conversion gain, fused; Parameters.dcgShot): its highlights are its
          * own data, as Bento headroom's are, so a bright scene keeps its captured exposure ({@link #keepsCapturedExposure}).
          */
@@ -466,7 +472,7 @@ public final class WhyAe {
             double rr = spread / Math.max(s.darkThresh * 0.15, 0.001);                          // 0x72f04-0x72f2c
             double m = Math.min(Math.max((sp50 - 0.2) / 0.22, 0), 1);                          // 0x72f3c-0x72f6c
             double shadowF = (1 - 0.35 * m * m) * (rr + 0.5 * rr * rr) / (1 + 1.5 * rr);        // 0x72f50-0x72f78
-            double effS = Math.max(nf * (s.shadowStr * shadowF + 0.5 * log2(Math.max(deficit, 1))), 0);   // 0x72f7c-0x72fd4
+            double effS = Math.max((s.v207 ? 1.0 : nf) * (s.shadowStr * shadowF + 0.5 * log2(Math.max(deficit, 1))), 0);   // 0x72f7c-0x72fd4
             double e = Math.min(Math.max(p995x * a - bt, 0) / Math.max(bt, 0.5), 0.5);          // 0x72f98-0x72fb8
             double realPeak = a * (p98x * (1 - e) + p995x * e);                                 // 0x72fc0-0x72fd8 (P159: x)
             double hlCap = s.highlightStr;
@@ -488,6 +494,15 @@ public final class WhyAe {
             }
             double need = realPeak > bt ? log2(realPeak / bt) / 1.5 : 0.0;                      // 0x72fdc-0x72ffc
             double effH = Math.min(need * Math.max(s.hlBoost, 0), hlCap);                       // 0x73038-0x7305c
+            if (s.v207) {
+                // P402: v2.07 (libopenhdr_engine 0x137000-0x137860): f = the share above bright_thresh after the exposure
+                final double f = r.ovArea, area = smooth(0.0, 1.0, Math.min(Math.max(20.0 * f, 0.0), 1.0));
+                realPeak = a * p98x + 0.25 * area * Math.min(a * Math.max(p995x - p98x, 0.0), 1.5 * Math.max(bt, 0.5));
+                final double ex = log2(Math.max(realPeak, 1e-9) / (0.85 * Math.max(bt, 1e-3))), knee = log2(1.0 / 0.85);
+                final double soft = ex <= 0.0 ? 0.0 : ex < knee ? ex * ex / (2.0 * knee) : ex - knee / 2.0;
+                effH = Math.min(s.highlightStr, 0.8333 * soft * Math.max(s.hlBoost, 0) * (1.0 + 0.35 * Math.min(Math.max(5.0 * f - 0.25, 0.0), 1.0))
+                        * (0.2 + 0.8 * area));
+            }
             double q = Math.max(1 - spread / Math.max(s.darkPixelThresh * 0.05, 0.001), 0);      // 0x73000-0x73058
             double flat = q * q * (3 - 2 * q);                                                  // 0x73060-0x73068
             if (s.look >= 0 && s.look <= 3) {                                                  // 0x7306c-0x730e0

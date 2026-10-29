@@ -53,7 +53,7 @@ public class WhySkyTest {
         assertEquals("one SKY define in WhyCombine", 1, count(combine, "setDefine(\"SKY\""));
         assertTrue("its uniforms with the mask only", combine.contains("if (st.sky != null) {\n                // P378: L2 / L3 keep the backlit sky's level"));
         final String fusion = read(SRC + "WhyFusion.java");
-        assertTrue("the fusion's SKY with the guided share and the mask", fusion.contains("final boolean sky = guidedF != null && st.sky != null;")
+        assertTrue("the fusion's SKY with the guided share and the mask", fusion.contains("final boolean sky = !aux && guidedF != null && st.sky != null;")
                 && fusion.contains("if (sky) glProg.setDefine(\"SKY\", 1);"));
         assertEquals(1, count(fusion, "setDefine(\"SKY\""));
         final String live = read(SRC + "LiveWhyTone.java");
