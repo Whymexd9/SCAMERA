@@ -435,6 +435,7 @@ final class VivoSdkFullResCapture {
             builder.addTarget(rawSurface);
             if (jpegSurface != null) builder.addTarget(jpegSurface);
             builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON);
+            Antibanding.apply(builder, null); // P411
             builder.set(CaptureRequest.JPEG_ORIENTATION, rotation);
             builder.set(CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE, CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE_ON);
             if (profile.nativeRoute()) VivoPd2454NativeRaw.applyFullRes(builder, profile);

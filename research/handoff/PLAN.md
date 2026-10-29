@@ -9242,3 +9242,19 @@ wallpaper, speakers, board): DONE
 - zslClipFraction counts the ring frame's samples within 1/16 of the RAW range above black too (setShadow; NaN for a packed
   stream). HybridPlan.bracketCountFor: 1 under 10 %, 2 from 10 %, 3 from 30 % or with P409's deep shadows; at most 2 while the
   HAL reports motion; «Кадры теней: число» is the maximum; unknown share or «Число длинных кадров по сцене» off: the set count.
+
+### P411 - «Мерцание ламп» as in the reference app (owner, 2026-10-30, screenshot of the sheet: «возьми его работу из Арк камеры, у
+нас он работает неверно»): DONE in code (host), not tried on a phone
+- The reference (CameraManager.applyAntibandingToBuilder / updateAntibanding): pref_antibanding_mode -> CONTROL_AE_ANTIBANDING_MODE
+  on the preview and every capture request, the repeating request rebuilt on a change; no flicker detection of its own.
+- Ours sent nothing (the HAL default) or AUTO (ScamPreview) whatever was chosen; the setting moved only our long shutters.
+  capture/Antibanding: -1 AUTO, 100 50HZ, 120 60HZ, 0 OFF (an unlisted mode -> AUTO) on the preview builder, the still builder,
+  the SDK FULLRES capture and the vivo stock preview; the shade's change rebuilds the repeating request
+  (CaptureController.applyAntibanding). Our shutter snapping (MainsFlicker) unchanged.
+
+### P412 - the list pickers scroll both ways (owner, 2026-10-30, video of «Режим сенсора»: «могу почему-то прокручивать только
+вниз, а при прокрутке вверх оно закрывается полностью»): DONE in code (host), not tried on a phone
+- The option list (a NestedScrollView) sat in the sheet's wrapping NestedScrollView: BottomSheetBehavior tracks the first nested
+  scroller it finds - the wrapper, which never scrolls (the list is capped by listCap) - and took every downward drag. The list
+  sheets now have the body as content (SettingsStyle.sheet(c, body, false)): the list is the sheet's scroller, a drag down at
+  its top closes the sheet; the chosen option opens in view.

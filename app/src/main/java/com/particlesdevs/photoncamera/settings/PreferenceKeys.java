@@ -51,6 +51,15 @@ public class PreferenceKeys {
         return hz < 0 ? com.particlesdevs.photoncamera.capture.MainsFlicker.hz() : hz;
     }
 
+    /** P411: «Мерцание ламп» as set (-1 «Авто», 100 = 50 Hz, 120 = 60 Hz, 0 «Выкл.»): the camera's AE antibanding mode (Antibanding). */
+    public static int antibandingSetting() {
+        try {
+            return Integer.parseInt(getAcesString("pref_antibanding_hz_key", "-1"));
+        } catch (RuntimeException e) {
+            return -1;
+        }
+    }
+
     /**
      * P212d: true when {@link #getAntibandingHz()} is known - set by hand (the override: 100, 120 or 0), or «Авто» latched from
      * evidence (MainsFlicker.known: agreeing reports, AE shutters, the merge's row profile); false while «Авто» guesses the region.

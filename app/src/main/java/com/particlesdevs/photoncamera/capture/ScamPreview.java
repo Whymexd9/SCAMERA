@@ -187,8 +187,8 @@ public final class ScamPreview {
         } catch (RuntimeException unsupported) {
             android.util.Log.w("SCAM_CAPTURE", "stock preview tag unavailable: ScamRawHdrMotionMetering");
         }
-        // Stock: AE antibanding AUTO, scene-mode control with FACE_PRIORITY.
-        builder.set(CaptureRequest.CONTROL_AE_ANTIBANDING_MODE, CaptureRequest.CONTROL_AE_ANTIBANDING_MODE_AUTO);
+        // Stock: AE antibanding AUTO (P411: «Мерцание ламп» as set), scene-mode control with FACE_PRIORITY.
+        builder.set(CaptureRequest.CONTROL_AE_ANTIBANDING_MODE, Antibanding.mode(com.particlesdevs.photoncamera.settings.PreferenceKeys.antibandingSetting()));
         builder.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_USE_SCENE_MODE);
         builder.set(CaptureRequest.CONTROL_SCENE_MODE, CaptureRequest.CONTROL_SCENE_MODE_FACE_PRIORITY);
         return applied;

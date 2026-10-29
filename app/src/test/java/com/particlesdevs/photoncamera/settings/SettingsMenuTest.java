@@ -1814,10 +1814,11 @@ public class SettingsMenuTest {
             org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
             var sheet=(com.google.android.material.bottomsheet.BottomSheetDialog)org.robolectric.shadows.ShadowDialog.getLatestDialog();
             assertNotNull(sheet);
-            // the list and the whole sheet scroll by nested scrolling: a plain ScrollView let the sheet take the drag, and in
-            // landscape the fifth option of «Разрешение» could not be reached (X200 Ultra, 2026-10-15)
+            // the list scrolls by nested scrolling: a plain ScrollView let the sheet take the drag; landscape fits by listCap.
+            // P412: the list is the sheet's only nested scroller - inside a second one the sheet took every downward drag of
+            // the list (it scrolled only down, a drag up closed the sheet: owner's «Режим сенсора» video, 2026-10-30)
             assertTrue(sheet.findViewById(android.R.id.content).findViewWithTag("option_list") instanceof androidx.core.widget.NestedScrollView);
-            assertTrue(sheet.findViewById(android.R.id.content).findViewWithTag("sheet_scroll") instanceof androidx.core.widget.NestedScrollView);
+            assertNull(sheet.findViewById(android.R.id.content).findViewWithTag("sheet_scroll"));
             assertEquals("portrait: 60 % of the screen",1900,com.particlesdevs.photoncamera.ui.settings.SettingsStyle.listCap(3168,380,1900,3.5f));
             assertEquals("landscape: what the window leaves under the title",1440-380-252,com.particlesdevs.photoncamera.ui.settings.SettingsStyle.listCap(1440,380,1300,3.5f));
             assertEquals("never under two rows",364,com.particlesdevs.photoncamera.ui.settings.SettingsStyle.listCap(600,380,864,3.5f));

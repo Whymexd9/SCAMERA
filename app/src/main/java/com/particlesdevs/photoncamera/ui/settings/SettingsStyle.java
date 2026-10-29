@@ -667,11 +667,24 @@ public final class SettingsStyle {
      * sits in a nested-scrolling view: a sheet taller than the window (landscape) scrolls instead of being cut at the edge.
      */
     public static BottomSheetDialog sheet(Context c, View body) {
+        return sheet(c, body, true);
+    }
+
+    /**
+     * {@code wrap} false (P412, the list pickers): the body itself is the sheet's content, its own list the one nested scroller
+     * the sheet sees. Wrapped in a second scroller the sheet watched that one (it never scrolls: the list is capped) and took
+     * every downward drag of the list - the list scrolled only down, a drag up closed the sheet (owner, «Режим сенсора» video).
+     */
+    static BottomSheetDialog sheet(Context c, View body, boolean wrap) {
         BottomSheetDialog d = new BottomSheetDialog(c);
-        NestedScrollView scroll = new NestedScrollView(c);
-        scroll.setTag("sheet_scroll");
-        scroll.addView(body, new ViewGroup.LayoutParams(-1, -2));
-        d.setContentView(scroll);
+        if (wrap) {
+            NestedScrollView scroll = new NestedScrollView(c);
+            scroll.setTag("sheet_scroll");
+            scroll.addView(body, new ViewGroup.LayoutParams(-1, -2));
+            d.setContentView(scroll);
+        } else {
+            d.setContentView(body, new ViewGroup.LayoutParams(-1, -2));
+        }
         d.setOnShowListener(x -> {
             View host = d.findViewById(com.google.android.material.R.id.design_bottom_sheet);
             if (host != null) host.setBackgroundColor(0);
@@ -738,7 +751,7 @@ public final class SettingsStyle {
         scroll.addView(options);
         int max = (int) (c.getResources().getDisplayMetrics().heightPixels * .6f);
         body.addView(scroll, new LinearLayout.LayoutParams(-1, -2));
-        BottomSheetDialog d = sheet(c, body);
+        BottomSheetDialog d = sheet(c, body, false);   // P412: the list is the sheet's scroller (a drag down at its top closes it)
         for (int i = 0; labels != null && i < labels.length; i++) {
             final int index = i;
             LinearLayout row = new LinearLayout(c);
@@ -771,6 +784,11 @@ public final class SettingsStyle {
             int cap = listCap(window != null ? window.getHeight() : 0, body.getHeight() - scroll.getHeight(), max,
                     c.getResources().getDisplayMetrics().density);
             if (scroll.getHeight() > cap) { scroll.getLayoutParams().height = cap; scroll.requestLayout(); }
+            // P412: the chosen option in view (a third down the list), not the list's top
+            if (selected > 0 && selected < options.getChildCount()) scroll.post(() -> {
+                View row = options.getChildAt(selected);
+                scroll.scrollTo(0, Math.max(0, row.getTop() - scroll.getHeight() / 3));
+            });
         });
         d.show();
         return d;
