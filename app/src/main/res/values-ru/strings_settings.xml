@@ -1077,4 +1077,15 @@
     <!-- P410: the number of bracketed frames by the scene -->
     <string name="prefs_scam_hybrid_shasta_auto_count_title">Число длинных кадров по сцене</string>
     <string name="prefs_scam_hybrid_shasta_auto_count_summary">От 1 до 3 по доле теней в кадре; «Кадры теней: число» — максимум.</string>
+    <!-- P413: the lens page as in the reference app -->
+    <string name="prefs_lens_screen_title">Настройки линзы</string>
+    <string name="prefs_lens_screen_summary">Сенсор, RAW, уровни, матрица цвета и шум этого модуля.</string>
+    <string name="prefs_lens_sensor_category_title">Сенсор</string>
+    <string name="prefs_lens_raw_category_title">Формат RAW</string>
+    <string name="prefs_lens_levels_category_title">Уровни чёрного и белого</string>
+    <string name="prefs_lens_colour_category_title">Матрица цвета (CCM) и Dynamic CCT</string>
+    <string name="prefs_lens_noise_category_title">Модель шума</string>
+    <string name="module_row_lens">Настройки линзы</string>
+    <string name="module_row_lens_summary">Сенсор, RAW, уровни, матрица цвета и шум</string>
+    <string name="module_row_id">Camera ID</string>
 </resources>

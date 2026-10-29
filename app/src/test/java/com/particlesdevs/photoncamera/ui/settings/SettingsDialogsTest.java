@@ -350,8 +350,8 @@ public class SettingsDialogsTest {
             assertFalse(prefs.contains("module_zoom_back0"));
             assertFalse(prefs.contains("module_sensorcrop_back0"));
 
-            // Camera ID: the sheet of «Camera ID модулей» - Auto, the cameras, a typed one checked as it is typed
-            tap(root.findPreference("module_row_id_back0"));
+            // Camera ID: the sheet of the card's «Camera ID» (P413; was «Camera ID модулей») - Auto, the cameras, a typed one checked
+            tap(root.findPreference("module_row_card_id_back0"));
             BottomSheetDialog sheet = (BottomSheetDialog) ShadowDialog.getLatestDialog();
             View body = sheet.findViewById(android.R.id.content);
             assertNotNull(body.findViewWithTag("camera_id_sheet"));
@@ -380,7 +380,7 @@ public class SettingsDialogsTest {
             assertFalse(sheet.isShowing());
             assertEquals("7", prefs.getString("module_id_back0", ""));
             assertTrue(prefs.getStringSet("user_camera_ids", null).contains("7"));
-            tap(root.findPreference("module_row_id_back0"));
+            tap(root.findPreference("module_row_card_id_back0"));
             sheet = (BottomSheetDialog) ShadowDialog.getLatestDialog();
             sheet.findViewById(android.R.id.content).findViewWithTag("camera_id_auto").performClick();
             idle();
@@ -429,7 +429,7 @@ public class SettingsDialogsTest {
             click(latest(), DialogInterface.BUTTON_POSITIVE);
             assertNull("the copy is gone", ModuleRegistry.duplicateOf(copy));
             assertNull("its card is gone", root.findPreference("module_card_" + copy));
-            assertNull("its Camera ID row too", root.findPreference("module_row_id_" + copy));
+            assertNull("its Camera ID row too", root.findPreference("module_row_card_id_" + copy));
             assertTrue("its slot is free again", ModuleRegistry.freeSlot(copy));
         }
     }

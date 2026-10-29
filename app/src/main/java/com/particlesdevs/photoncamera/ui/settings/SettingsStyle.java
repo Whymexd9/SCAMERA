@@ -70,7 +70,7 @@ public final class SettingsStyle {
     /** P384: the rows of an open module card, a step lighter than the card (res: settings_card_nested). */
     public static final int CARD_NESTED = 0xFF1F2528;
     /** P384: the expert groups of the main page (their title carries the «для опытных» pill). */
-    static final Set<String> EXPERT_GROUPS = new HashSet<>(Arrays.asList("expert_module_ids", "expert_module_sensor"));
+    static final Set<String> EXPERT_GROUPS = new HashSet<>(Arrays.asList("expert_module_sensor"));
     public static final float DIMMED = UiTokens.DIMMED;
     /** P139: a row's description (dimmer than MUTED); titles take UiTokens.title (medium weight). */
     public static final int SUMMARY = UiTokens.SUMMARY;

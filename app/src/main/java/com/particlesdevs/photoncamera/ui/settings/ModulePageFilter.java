@@ -29,11 +29,11 @@ final class ModulePageFilter {
     static final String SENSOR_GROUP = SensorConfigPreferenceGenerator.GROUP_KEY;
     /**
      * SIMPLE_UI §4: the groups a module page never shows (the root is now groups of rows): «Система» has per-module rows by
-     * name only; the app's and the about rows are shared. P384: the module cards and the Camera ID rows are every module's, not one
-     * profile's.
+     * name only; the app's and the about rows are shared. P384: the module cards are every module's, not one profile's. P413: the
+     * lens settings are the module's lens page (ModuleRows.LENS), not its photo page.
      */
     static final List<String> NOT_MODULE = Collections.unmodifiableList(Arrays.asList("root_logs", "root_lab", "root_about",
-            ModuleRows.GROUP, ModuleRows.IDS));
+            ModuleRows.GROUP, "root_lenses"));   // P413: the lens settings are the module's lens page, not its photo page
 
     private ModulePageFilter() { }
 

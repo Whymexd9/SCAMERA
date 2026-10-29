@@ -80,11 +80,16 @@ public final class ModuleRows {
     static final String GROUP = "root_modules", IDS = "expert_module_ids", SENSOR = SensorConfigPreferenceGenerator.GROUP_KEY;
     /** P390 (owner, 2026-10-28: «Положи эти настройки в одну группу»): the page of the three groups, one row on the main page. */
     static final String PAGE = "modules_screen";
+    /**
+     * P413 (owner, 2026-10-30: «Сделай настройки линз аналогично Арк, убедись что настройки нигде не дублируются»): one module's
+     * lens page (sensor, RAW format, levels, colour matrix, noise model), opened from its card as the reference app's lens button.
+     */
+    static final String LENS = "lens_screen";
     /** The open card's slot ("" for none), in the page's arguments. */
     static final String ARG_OPEN_MODULE = "modules_open";
     static final String CARD = "module_card_", NAME = "module_row_name_", ZOOM = "module_row_zoom_", BUTTON = "module_row_button_",
             CROP = "module_row_crop_", COPY = "module_row_copy_", DELETE = "module_row_delete_", PROFILE = "module_row_profile_",
-            TRIALS = "module_row_trials_", ID = "module_row_id_";
+            TRIALS = "module_row_trials_", ID = "module_row_id_", LENS_ROW = "module_row_lens_", CARD_ID = "module_row_card_id_";
     static final String ACTIONS = "module_actions", ADD = "module_row_add_copy", PER_LENS = "module_row_per_lens",
             COPY_SETTINGS = "module_copy_settings", NONE = "module_row_none", PICKER = "module_sensor_picker";
 
@@ -367,6 +372,10 @@ public final class ModuleRows {
         ModuleRowPreference zoom = row(c, ZOOM + slot, R.drawable.settings_ic_zoom, c.getString(R.string.module_row_zoom), null);
         zoom.setOnPreferenceClickListener(p -> { ModuleActions.zoomDialog(host.context(), slot, this::sync); return true; });
         add(card, zoom);
+        // P413: the module's Camera ID in its card (was the separate «Camera ID модулей» list)
+        ModuleRowPreference idRow = row(c, CARD_ID + slot, R.drawable.settings_ic_id, c.getString(R.string.module_row_id), null);
+        idRow.setOnPreferenceClickListener(p -> { CameraIdSheet.show(host.context(), slot, this::sync); return true; });
+        add(card, idRow);
         SwitchPreferenceCompat button = new SwitchPreferenceCompat(c);
         button.setKey(BUTTON + slot);
         button.setPersistent(false);
@@ -408,6 +417,15 @@ public final class ModuleRows {
         List<String> profiles = new ArrayList<>();
         profiles.add(slot);
         profiles.addAll(FullResProfiles.variants(slot));
+        // P413: the lens page of the module and of each of its FULLRES shots (the reference's Binning / Full-Res of a lens)
+        for (String id : profiles) {
+            boolean variant = FullResProfiles.isVariant(id);
+            ModuleRowPreference lens = row(c, LENS_ROW + id, variant ? R.drawable.settings_ic_mosaic : R.drawable.settings_ic_sensor,
+                    variant ? c.getString(R.string.module_row_lens) + " · " + FullResProfiles.label(id) : c.getString(R.string.module_row_lens),
+                    c.getString(R.string.module_row_lens_summary));
+            lens.setOnPreferenceClickListener(x -> { ModuleActions.openLens(host, id); return true; });
+            add(card, lens);
+        }
         for (String id : profiles) {
             boolean variant = FullResProfiles.isVariant(id);
             ModuleRowPreference p = row(c, PROFILE + id, variant ? R.drawable.settings_ic_mosaic : R.drawable.settings_ic_sliders,
@@ -427,6 +445,11 @@ public final class ModuleRows {
     private void updateCard(Context c, ModuleSection card, String slot) {
         ModuleRowPreference name = card.findPreference(NAME + slot);
         if (name != null) name.setValue(ModuleRegistry.label(slot));
+        ModuleRowPreference cardId = card.findPreference(CARD_ID + slot);
+        if (cardId != null) {
+            cardId.setValue(c.getString(R.string.module_id_value, ModuleRegistry.camera(slot)));
+            cardId.setSummary(idState(c, slot));
+        }
         ModuleRowPreference zoom = card.findPreference(ZOOM + slot);
         if (zoom != null) zoom.setValue(ModuleRegistry.sensorCrop(slot) ? c.getString(R.string.module_row_zoom_sensor, badge(slot)) : badge(slot));
         SwitchPreferenceCompat button = card.findPreference(BUTTON + slot);
@@ -604,6 +627,6 @@ public final class ModuleRows {
 
     /** Every key a card row may hold, for the tests. */
     static List<String> rowPrefixes() {
-        return Arrays.asList(NAME, ZOOM, BUTTON, CROP, COPY, DELETE, PROFILE, TRIALS);
+        return Arrays.asList(NAME, ZOOM, CARD_ID, BUTTON, CROP, COPY, DELETE, LENS_ROW, PROFILE, TRIALS);
     }
 }

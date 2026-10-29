@@ -265,19 +265,20 @@ public class SettingsLayoutPageTest {
         try (ActivityController<SettingsActivity> controller = Robolectric.buildActivity(SettingsActivity.class)) {
             controller.setup();
             SettingsActivity.SettingsFragment root = page(controller.get());
-            PreferenceGroup v = root.findPreference("root_photo"), s = root.findPreference("root_lenses");
+            // P413: «Камеры и линзы» holds the module pages only, its rows do not move (ModulePageFilter.NOT_MODULE)
+            PreferenceGroup v = root.findPreference("root_photo"), s = root.findPreference("root_shoot");
             for (int i = 0; i < v.getPreferenceCount(); i++) view.add(v.getPreference(i).getKey());
             for (int i = 0; i < s.getPreferenceCount(); i++) shoot.add(s.getPreference(i).getKey());
         }
         List<String> all = new ArrayList<>(shoot);
         all.addAll(view);
-        prefs.edit().putString(SettingsLayout.KEY, "root_lenses=" + String.join(",", all) + ";root_photo=").commit();
+        prefs.edit().putString(SettingsLayout.KEY, "root_shoot=" + String.join(",", all) + ";root_photo=").commit();
         try (ActivityController<SettingsActivity> controller = Robolectric.buildActivity(SettingsActivity.class)) {
             controller.setup();
             SettingsActivity activity = controller.get();
             List<String> keys = listed(page(activity));
             assertFalse(keys.toString(), keys.contains("root_photo"));
-            for (String k : view) if (keys.contains(k)) assertTrue(k, section(keys, "root_lenses").contains(k));
+            for (String k : view) if (keys.contains(k)) assertTrue(k, section(keys, "root_shoot").contains(k));
             SettingsLayoutFragment f = openEditor(activity);
             text(f.requireView(), "Rows").performClick();
             idle();

@@ -233,6 +233,20 @@ public final class ModuleActions {
                 }).show();
     }
 
+    /** P413: the lens page of profile {@code id} (a module or one of its FULLRES shots): its sensor, RAW, levels, colour and noise. */
+    static void openLens(ModuleRows.Host host, String id) {
+        if (!PreferenceKeys.isPerLensSettingsOn()) {
+            askPerLens(host.context(), () -> openLens(host, id));
+            return;
+        }
+        SettingsActivity.SettingsFragment page = SettingsActivity.SettingsFragment.modulePage(id, ModuleRows.LENS);
+        Bundle args = page.getArguments();
+        String editing = null;
+        try { editing = PreferenceKeys.profiles().editing(); } catch (RuntimeException ignored) { }
+        if (args != null && editing != null) args.putString(SettingsActivity.SettingsFragment.ARG_RETURN_PROFILE, editing);
+        host.open(page, "module_lens");
+    }
+
     /**
      * A profile's pages (a module, or its FULLRES 50 / 200 MP shots): the settings root with only its values; with the modules'
      * own settings off, they are turned on first. The page gives the main settings back to the profile edited before it (the root

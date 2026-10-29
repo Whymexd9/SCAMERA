@@ -9258,3 +9258,13 @@ wallpaper, speakers, board): DONE
   scroller it finds - the wrapper, which never scrolls (the list is capped by listCap) - and took every downward drag. The list
   sheets now have the body as content (SettingsStyle.sheet(c, body, false)): the list is the sheet's scroller, a drag down at
   its top closes the sheet; the chosen option opens in view.
+
+### P413 - lens settings as in the reference app (owner, 2026-10-30, two videos of its «Настройка линз и зума»: «Сделай настройки
+линз аналогично Арк, убедись что настройки нигде не дублируются в других местах»): DONE in code (host), not tried on a phone
+- The reference: one page per lens (sensor, RAW format, black/white levels, colour matrix and dynamic CCT, noise model, ...).
+- Ours: «Настройки линзы» on each module card (and per FULLRES variant) opens modulePage(profile, ModuleRows.LENS): lens_screen
+  (hidden elsewhere) with the module's sensor, RAW, levels, colour (method, DCP, matrix profile/override, dynamic CCT, Quad/Tetra
+  WB) and noise model groups. Camera ID is a row of the card. The old places of these rows (capture_settings_screen,
+  colour_expert_category, expert_module_ids, noise_model_screen) are removed: each row exists once. «Камеры и линзы» holds the
+  module pages only (ModulePageFilter.NOT_MODULE: a module's photo page hides it, the settings order does not move rows into it).
+  Search opens the lens page of the row's slot (or the active module).

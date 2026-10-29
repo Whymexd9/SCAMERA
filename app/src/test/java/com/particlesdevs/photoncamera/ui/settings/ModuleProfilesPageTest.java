@@ -330,6 +330,15 @@ public class ModuleProfilesPageTest {
     }
 
     /** Visible with every parent group. */
+    /** P413: the lens page of {@code profile} as its fragment filters it (the page itself is hidden in the settings tree). */
+    private PreferenceGroup lensPage(String profile) {
+        PreferenceGroup lens = inflate().findPreference(ModuleRows.LENS);
+        assertNotNull(lens);
+        lens.setVisible(true);
+        ModulePageFilter.apply(lens, profile, false);
+        return lens;
+    }
+
     private static boolean shown(Preference p) {
         for (Preference q = p; q != null; q = q.getParent()) if (!q.isVisible()) return false;
         return true;
@@ -376,20 +385,24 @@ public class ModuleProfilesPageTest {
         // P190: the FULLRES frame counts are rows of the FULLRES profiles only
         assertFalse(shown(root.findPreference(com.particlesdevs.photoncamera.settings.FullResProfiles.FRAMES_50)));
         assertFalse(shown(root.findPreference(com.particlesdevs.photoncamera.settings.FullResProfiles.FRAMES_200)));
-        // P384: the module cards and the Camera ID rows are every module's; the module's sensor is its group of «Для опытных»
+        // P384: the module cards are every module's. P413: the module's lens settings (its sensor, RAW, colour, noise) are its lens
+        // page, not its photo page
         assertFalse(shown(root.findPreference(ModuleRows.GROUP)));
-        assertFalse(shown(root.findPreference(ModuleRows.IDS)));
-        assertNotNull(root.findPreference(ModulePageFilter.SENSOR_GROUP));
-        assertTrue(shown(root.findPreference(ModulePageFilter.SENSOR_GROUP)));
-        assertEquals("This module's sensor", String.valueOf(root.findPreference(ModulePageFilter.SENSOR_GROUP).getTitle()));
-        assertTrue("the module's RAW page", shown(root.findPreference("capture_settings_screen")));
+        assertFalse(shown(root.findPreference("root_lenses")));
+        PreferenceGroup lens = lensPage("back0");
+        assertTrue(shown(lens.findPreference(ModulePageFilter.SENSOR_GROUP)));
+        assertEquals("This module's sensor", String.valueOf(lens.findPreference(ModulePageFilter.SENSOR_GROUP).getTitle()));
+        for (String key : new String[]{"pref_raw_stream_format", "pref_cfa_key", "pref_raw_black_from_data", "pref_dcp_profile_key",
+                "pref_color_method_key", "pref_scam_hybrid_why_ccm_profile", "pref_noise_model_profile_key"})
+            assertTrue("the lens page's " + key, shown(lens.findPreference(key)));
+        assertFalse(shown(lens.findPreference(VivoSdkFullRes.PREF_HW_REMOSAIC)));
 
         PreferenceScreen fifty = inflate();
         ModulePageFilter.apply(fifty, "back0@full50", true);
-        assertTrue("hardware remosaic acts at 50 MP", shown(fifty.findPreference(VivoSdkFullRes.PREF_HW_REMOSAIC)));
+        assertTrue("hardware remosaic acts at 50 MP", shown(lensPage("back0@full50").findPreference(VivoSdkFullRes.PREF_HW_REMOSAIC)));
         PreferenceScreen twoHundred = inflate();
         ModulePageFilter.apply(twoHundred, "back0@full200", true);
-        assertFalse("no hardware 200 MP mode", shown(twoHundred.findPreference(VivoSdkFullRes.PREF_HW_REMOSAIC)));
+        assertFalse("no hardware 200 MP mode", shown(lensPage("back0@full200").findPreference(VivoSdkFullRes.PREF_HW_REMOSAIC)));
         // P190: each FULLRES profile shows its own frame count only
         assertTrue(shown(fifty.findPreference(com.particlesdevs.photoncamera.settings.FullResProfiles.FRAMES_50)));
         assertFalse(shown(fifty.findPreference(com.particlesdevs.photoncamera.settings.FullResProfiles.FRAMES_200)));
@@ -427,9 +440,15 @@ public class ModuleProfilesPageTest {
                     .addToBackStack("module").commit();
             SettingsActivity.SettingsFragment root = (SettingsActivity.SettingsFragment) top(activity);
             assertEquals("back1@full200", root.moduleProfile());
-            assertFalse(root.findPreference(ModuleRows.GROUP).isVisible());
-            assertFalse(root.findPreference(ModuleRows.IDS).isVisible());
-            PreferenceGroup sensor = root.findPreference(ModulePageFilter.SENSOR_GROUP);
+            // P413: the module cards and the lens settings (their group) are the lens page's, not the profile's photo page
+            assertFalse("P413: the lens settings are the lens page's", root.findPreference("root_lenses").isVisible());
+            // P413: the profile's lens page (a card's «Настройки линзы»)
+            activity.getSupportFragmentManager().beginTransaction()
+                    .replace(R.id.settings_container, SettingsActivity.SettingsFragment.modulePage("back1@full200", ModuleRows.LENS))
+                    .addToBackStack("lens").commit();
+            SettingsActivity.SettingsFragment lens = (SettingsActivity.SettingsFragment) top(activity);
+            assertEquals("back1@full200", lens.moduleProfile());
+            PreferenceGroup sensor = lens.findPreference(ModulePageFilter.SENSOR_GROUP);
             assertTrue(shown(sensor));
             assertEquals("This module's sensor", String.valueOf(sensor.getTitle()));
             assertTrue(String.valueOf(sensor.getSummary()), String.valueOf(sensor.getSummary()).contains("Shared by “3×” and its FULLRES shots"));
@@ -438,18 +457,25 @@ public class ModuleProfilesPageTest {
                 if (sensor.getPreference(i) instanceof androidx.preference.PreferenceCategory && sensor.getPreference(i).isVisible())
                     shownCategories.add(sensor.getPreference(i).getKey());
             assertEquals(Arrays.asList("pref_category_sensor_back1"), shownCategories);
-            assertFalse("no module chips on a module's page", root.findPreference(ModuleRows.PICKER).isVisible());
-            // P406: a processing page of «Настройки изображения» and «RAW и сенсор» of «Модули камеры и линзы»
-            for (String key : new String[]{"scam_hybrid_merge_screen", "capture_settings_screen"}) {
-                activity.onPreferenceStartScreen(root, root.findPreference(key));
-                Fragment next = top(activity);
-                assertTrue(key + ": " + next, next instanceof SettingsActivity.SettingsFragment);
-                assertEquals(key, "back1@full200", ((SettingsActivity.SettingsFragment) next).moduleProfile());
-                if (key.equals("capture_settings_screen"))
-                    assertEquals("the module's RAW page", "capture_settings_screen", ((SettingsActivity.SettingsFragment) next).getPreferenceScreen().getKey());
-                back(activity);
-                assertEquals("back1@full200", PreferenceKeys.profiles().editing());
-            }
+            Preference picker = lens.findPreference(ModuleRows.PICKER);
+            assertTrue("no module chips on a module's page", picker == null || !picker.isVisible());
+            // the lens page's own page (its RAW crop) stays the module's
+            activity.onPreferenceStartScreen(lens, lens.findPreference("raw_crop_screen"));
+            Fragment crop = top(activity);
+            assertTrue(String.valueOf(crop), crop instanceof SettingsActivity.SettingsFragment);
+            assertEquals("back1@full200", ((SettingsActivity.SettingsFragment) crop).moduleProfile());
+            assertEquals("raw_crop_screen", ((SettingsActivity.SettingsFragment) crop).getPreferenceScreen().getKey());
+            back(activity);
+            back(activity);
+            assertEquals("back1@full200", PreferenceKeys.profiles().editing());
+            root = (SettingsActivity.SettingsFragment) top(activity);
+            // P406: a processing page of «Настройки изображения»
+            activity.onPreferenceStartScreen(root, root.findPreference("scam_hybrid_merge_screen"));
+            Fragment next = top(activity);
+            assertTrue(String.valueOf(next), next instanceof SettingsActivity.SettingsFragment);
+            assertEquals("back1@full200", ((SettingsActivity.SettingsFragment) next).moduleProfile());
+            back(activity);
+            assertEquals("back1@full200", PreferenceKeys.profiles().editing());
         }
     }
 
@@ -533,10 +559,10 @@ public class ModuleProfilesPageTest {
             // P384: the module cards hold nothing to copy; the module's sensor settings under «Сенсор по модулям» (P390: on «Съёмка ›
             // Камеры и модули»)
             assertNull(copy.requireView().findViewWithTag("group_root_modules"));
-            // P406: on «Модули камеры и линзы › Камеры и модули»
+            // P406 / P413: on «Модули камеры и линзы › Камеры и модули › Настройки линзы»
             copy.requireView().findViewWithTag("group_root_lenses").performClick();
             assertNull(copy.requireView().findViewWithTag("group_root_modules"));
-            assertTrue(text(copy.requireView()), text(copy.requireView()).contains("Sensor per module"));
+            assertTrue(text(copy.requireView()), text(copy.requireView()).contains("Module sensor settings"));
             assertNotNull(copy.requireView().findViewWithTag("parameter_sensor_copy_blackleveloverride"));
             assertNotNull(copy.requireView().findViewWithTag("parameter_sensor_copy_tunablekeys"));
         }

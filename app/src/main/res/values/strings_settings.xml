@@ -1078,4 +1078,15 @@
     <!-- P410: the number of bracketed frames by the scene -->
     <string name="prefs_scam_hybrid_shasta_auto_count_title">Long frames by the scene</string>
     <string name="prefs_scam_hybrid_shasta_auto_count_summary">1 to 3 by the share of shadows in the frame; «Shadow frames: count» is the maximum.</string>
+    <!-- P413: the lens page as in the reference app -->
+    <string name="prefs_lens_screen_title">Lens settings</string>
+    <string name="prefs_lens_screen_summary">This module\'s sensor, RAW, levels, colour matrix and noise.</string>
+    <string name="prefs_lens_sensor_category_title">Sensor</string>
+    <string name="prefs_lens_raw_category_title">RAW format</string>
+    <string name="prefs_lens_levels_category_title">Black and white levels</string>
+    <string name="prefs_lens_colour_category_title">Colour matrix (CCM) and Dynamic CCT</string>
+    <string name="prefs_lens_noise_category_title">Noise model</string>
+    <string name="module_row_lens">Lens settings</string>
+    <string name="module_row_lens_summary">Sensor, RAW, levels, colour matrix and noise</string>
+    <string name="module_row_id">Camera ID</string>
 </resources>

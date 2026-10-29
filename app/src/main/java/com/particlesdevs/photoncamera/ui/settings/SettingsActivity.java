@@ -188,6 +188,17 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
 
     void openSearchResult(SettingsSearchFragment.Entry entry) {
         if (ScamLabFragment.SCREEN.equals(entry.page) || ScamLabFragment.SCREEN.equals(entry.key)) { openLab(); return; }
+        if (ModuleRows.LENS.equals(entry.page)) {
+            // P413: a row of the lens page opens a module's lens page - the module of a sensor row, else the camera's module now
+            String slot = lensSlot(entry.key);
+            SettingsFragment lens = SettingsFragment.modulePage(slot != null ? slot
+                    : com.particlesdevs.photoncamera.settings.ModuleRegistry.active(), ModuleRows.LENS);
+            lens.getArguments().putString("search_target", entry.key);
+            if (slot != null) lens.getArguments().putString(SettingsFragment.ARG_SENSOR_SLOT, slot);
+            getSupportFragmentManager().beginTransaction().replace(R.id.settings_container, lens)
+                    .addToBackStack("search_result").commit();
+            return;
+        }
         SettingsFragment page = new SettingsFragment();
         Bundle args = new Bundle();
         if (!"prefscreen".equals(entry.page)) args.putString(PreferenceFragmentCompat.ARG_PREFERENCE_ROOT, entry.page);
@@ -195,6 +206,21 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
         page.setArguments(args);
         getSupportFragmentManager().beginTransaction().replace(R.id.settings_container, page)
                 .addToBackStack("search_result").commit();
+    }
+
+    /** P413: the module of a sensor row's key (pref_sensorconfig_<slot>_…, pref_category_sensor_<slot>), null for another row. */
+    @Nullable
+    static String lensSlot(@Nullable String key) {
+        if (key == null) return null;
+        for (String prefix : new String[]{"pref_sensorconfig_",
+                com.particlesdevs.photoncamera.settings.SensorConfigPreferenceGenerator.CATEGORY_PREFIX}) {
+            if (!key.startsWith(prefix)) continue;
+            String rest = key.substring(prefix.length());
+            int end = rest.indexOf('_');
+            String slot = end < 0 ? rest : rest.substring(0, end);
+            return slot.isEmpty() ? null : slot;
+        }
+        return null;
     }
 
     @Override
@@ -243,9 +269,9 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
          * P390: on «Камеры и модули»).
          */
         public static SettingsFragment sensorPage(String slot) {
-            SettingsFragment page = new SettingsFragment();
-            Bundle args = new Bundle();
-            args.putString(PreferenceFragmentCompat.ARG_PREFERENCE_ROOT, ModuleRows.PAGE);
+            // P413: the module's lens page (its sensor rows head it)
+            SettingsFragment page = modulePage(slot, ModuleRows.LENS);
+            Bundle args = page.getArguments();
             args.putString(ARG_SENSOR_SLOT, slot);
             args.putString("search_target", com.particlesdevs.photoncamera.settings.SensorConfigPreferenceGenerator.CATEGORY_PREFIX + slot);
             page.setArguments(args);
@@ -306,7 +332,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             com.particlesdevs.photoncamera.settings.SettingsMigration.prepare(requireContext(), mSettingsManager.getDefaultPreferences());
             setPreferencesFromResource(R.xml.preferences, null);
             generateTunablePreferences();
-            if (rootKey == null || ModuleRows.PAGE.equals(rootKey)) {
+            if (rootKey == null || ModuleRows.PAGE.equals(rootKey) || ModuleRows.LENS.equals(rootKey)) {
                 // P384: the camera groups, built from ModuleRegistry (P390: on their own page «Камеры и модули»; the root builds them
                 // too, for the search); their rows open and close in place, so the list animates the difference (the other pages
                 // keep their full rebind)
@@ -320,6 +346,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             if (rootKey != null) {
                 PreferenceScreen selected = findPreference(rootKey);
                 if (selected == null) throw new IllegalArgumentException("Unknown settings page: " + rootKey);
+                selected.setVisible(true);   // P413: the lens page is hidden as a row of its parent, shown as a page
                 setPreferenceScreen(selected);
             }
             // P385: the user's order of this page (before the module page's filter, which judges the groups as they end up)
@@ -340,6 +367,11 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                         com.particlesdevs.photoncamera.settings.FullResProfiles.framesTag(key))) frames.setVisible(false);
             }
             if (module != null) moduleHidden = ModulePageFilter.apply(getPreferenceScreen(), module, rootKey == null);
+            // P413: the lens page is a module card's, never a row of «Камеры и модули» (the availability pass keeps it hidden)
+            if (!ModuleRows.LENS.equals(rootKey)) {
+                Preference lensPage = findPreference(ModuleRows.LENS);
+                if (lensPage != null) { lensPage.setVisible(false); codeHidden.add(ModuleRows.LENS); }
+            }
             setupPhotoFormat();
             setupSounds();
             setupCaptureReport();

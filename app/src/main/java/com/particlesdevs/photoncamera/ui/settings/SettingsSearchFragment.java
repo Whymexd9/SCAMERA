@@ -119,8 +119,10 @@ public class SettingsSearchFragment extends Fragment {
     private static void collect(PreferenceGroup group, String page, String path, ArrayList<Entry> entries) {
         for(int i=0;i<group.getPreferenceCount();i++) {
             Preference p=group.getPreference(i);
-            // P384: every module's sensor rows stay findable (only the chosen module's category is shown; a hit chooses its module)
-            if(!p.isVisible() && !com.particlesdevs.photoncamera.settings.SensorConfigPreferenceGenerator.isModuleCategory(p)) continue;
+            // P384: every module's sensor rows stay findable (only the chosen module's category is shown; a hit chooses its module);
+            // P413: the lens page too (a module card's page, hidden as a row; a hit opens a module's lens page)
+            if(!p.isVisible() && !com.particlesdevs.photoncamera.settings.SensorConfigPreferenceGenerator.isModuleCategory(p)
+                    && !ModuleRows.LENS.equals(p.getKey())) continue;
             String title=p.getTitle()==null ? "" : p.getTitle().toString();
             String key=p.getKey();
             if(key!=null && !title.isEmpty()) {
