@@ -15,7 +15,7 @@ import static android.opengl.GLES20.GL_CLAMP_TO_EDGE;
 import static android.opengl.GLES20.GL_LINEAR;
 
 /**
- * P402 (owner, 2026-10-29: «Перенеси то чего нам не хватает», the reference app v2.07's settings): «Пирамидальный шумодав» - its ms
+ * P402 (owner, 2026-10-29: «Перенеси то чего нам не хватает», the reference app's settings): «Пирамидальный шумодав» - its ms
  * denoise (why/msdn.glsl) on the merge, after the merge's own denoise and before the tone: OKLab of the render's linear sRGB, three
  * Laplacian levels and a base, luminance detail soft-thresholded and colour detail pulled towards a luminance-guided mean. Its
  * thresholds as the reference app's driver sets them: 0.012 x «Яркостный шумодав» and 0.02 x «Цветовой шумодав», x a level's own

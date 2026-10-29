@@ -924,8 +924,8 @@
     <string name="prefs_scam_hybrid_why_agx_inset_summary">Насколько цвет сжимается в охват дисплея перед кривой. 100 % — полностью (яркие цвета мягко уходят в белый), 0 % — каждый канал отдельно (насыщеннее, но неон может выгорать).</string>
     <string name="prefs_scam_hybrid_why_dr_category_title">Компрессия ДД (света и тени)</string>
     <string name="prefs_scam_hybrid_why_fusion_layout_title">Раскладка слоёв экспозиции</string>
-    <string name="prefs_scam_hybrid_why_fusion_layout_summary">%s. Как строятся синтетические экспозиции слияния: «Наша» — как сейчас; «Классическая (v2.07)» — четыре слоя −2,5 / −1,2 / 0 / +1,8 со своими весами ниже, без особых весов для светов выше белого.</string>
-    <string name="prefs_scam_hybrid_why_classic_weights_category_title">Веса классической раскладки (v2.07)</string>
+    <string name="prefs_scam_hybrid_why_fusion_layout_summary">%s. Как строятся синтетические экспозиции слияния: «Наша» — как сейчас; «Классическая» — четыре слоя −2,5 / −1,2 / 0 / +1,8 со своими весами ниже, без особых весов для светов выше белого.</string>
+    <string name="prefs_scam_hybrid_why_classic_weights_category_title">Веса классической раскладки</string>
     <string name="prefs_scam_hybrid_why_classic_weight_ext_hl_title">Приоритет глубоких пересветов</string>
     <string name="prefs_scam_hybrid_why_classic_weight_ext_hl_summary">Вес самого тёмного слоя (окна, солнце, лампы). Действует при классической раскладке.</string>
     <string name="prefs_scam_hybrid_why_classic_weight_hl_title">Приоритет умеренных светов</string>
@@ -978,7 +978,7 @@
     <string name="prefs_scam_hybrid_why_ms_chroma_l2_title">Крупные цветные разводы</string>
     <string name="prefs_scam_hybrid_why_ms_chroma_l2_summary">Крупный масштаб цветного шума и основа пирамиды.</string>
     <string name="prefs_scam_hybrid_dezipper_title">Подавление зубчатого муара (dezipper)</string>
-    <string name="prefs_scam_hybrid_dezipper_summary">Где кадры отброшены из-за движения, основной кадр получает вес до этого числа кадров, чтобы края движущихся объектов не становились зубчатыми. 0 — выкл., как раньше; 4,5 — как в v2.07.</string>
+    <string name="prefs_scam_hybrid_dezipper_summary">Где кадры отброшены из-за движения, основной кадр получает вес до этого числа кадров, чтобы края движущихся объектов не становились зубчатыми. 0 — выкл., как раньше; 4,5 — сильно.</string>
     <!-- P404: tone, colour, sharpness and denoise rows -->
     <string name="prefs_scam_hybrid_why_sharp_sobel_amount_title">Усиление контуров (Собель)</string>
     <string name="prefs_scam_hybrid_why_sharp_sobel_amount_summary">Дополнительная резкость только на краях, где градиент Собеля выше порога. 0 — выкл.</string>
@@ -1077,4 +1077,17 @@
     <!-- P410: the number of bracketed frames by the scene -->
     <string name="prefs_scam_hybrid_shasta_auto_count_title">Число длинных кадров по сцене</string>
     <string name="prefs_scam_hybrid_shasta_auto_count_summary">От 1 до 3 по доле теней в кадре; «Кадры теней: число» — максимум.</string>
+    <!-- P413: the lens page as in the reference app -->
+    <string name="prefs_lens_screen_title">Настройки линзы</string>
+    <string name="prefs_lens_screen_summary">Сенсор, RAW, уровни, матрица цвета и шум этого модуля.</string>
+    <string name="prefs_lens_raw_category_title">Формат RAW</string>
+    <string name="prefs_lens_levels_category_title">Уровни чёрного и белого</string>
+    <string name="prefs_lens_colour_category_title">Матрица цвета (CCM) и Dynamic CCT</string>
+    <string name="prefs_lens_noise_category_title">Модель шума</string>
+    <string name="prefs_lens_isp_category_title">Управление ISP и оптикой</string>
+    <string name="prefs_lens_keys_category_title">Ключи камеры (вендор-теги)</string>
+    <string name="prefs_lens_keys_category_summary">Ключи Camera2 для сессии и запросов, режим сенсора</string>
+    <string name="module_row_lens">Настройки линзы</string>
+    <string name="module_row_lens_summary">Сенсор, RAW, уровни, матрица цвета и шум</string>
+    <string name="module_row_id">Camera ID</string>
 </resources>

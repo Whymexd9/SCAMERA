@@ -223,7 +223,7 @@ public class ModuleRowsTest {
             // back by zoom (the hidden module at its place, dimmed), then the front; the untouched fillers are no card
             assertEquals(Arrays.asList("module_card_back2", "module_card_back0", "module_card_back4", "module_card_back3",
                     "module_card_back1", "module_card_front0", "module_actions", "module_row_add_copy", "module_row_per_lens",
-                    "module_copy_settings"), between(keys, "root_modules", "expert_module_ids"));
+                    "module_copy_settings"), between(keys, "root_modules", null));
             for (String filler : new String[]{"back5", "back6", "back7"}) assertNull(filler, root.findPreference(ModuleRows.CARD + filler));
             assertTrue(String.valueOf(root.findPreference(ModuleRows.ADD).getSummary()),
                     String.valueOf(root.findPreference(ModuleRows.ADD).getSummary()).endsWith(" · free places: 3"));
@@ -236,9 +236,13 @@ public class ModuleRowsTest {
             assertEquals("a hidden module's badge is dimmed", .45f, row.findViewById(R.id.settings_module_badge).getAlpha(), 1e-3);
             View shown = list.findViewHolderForAdapterPosition(adapter(root).getPreferenceAdapterPosition(card(root, "back1"))).itemView;
             assertEquals(1f, shown.findViewById(R.id.settings_module_badge).getAlpha(), 1e-3);
-            // the Camera ID rows in the same order
-            assertEquals(Arrays.asList("module_row_id_back2", "module_row_id_back0", "module_row_id_back4", "module_row_id_back3",
-                    "module_row_id_back1", "module_row_id_front0"), between(keys, "expert_module_ids", "expert_module_sensor"));
+            // P413: each card holds its module's Camera ID (no list of their own) and its lens page; the page shows no more groups
+            for (String slot : new String[]{"back2", "back0", "back4", "back3", "back1", "front0"}) {
+                assertNotNull(slot, card(root, slot).findPreference(ModuleRows.CARD_ID + slot));
+                assertNotNull(slot, card(root, slot).findPreference(ModuleRows.LENS_ROW + slot));
+            }
+            assertNull(root.findPreference("expert_module_ids"));
+            assertFalse("the lens page is no row of the page", keys.contains(ModuleRows.LENS));
         }
     }
 
@@ -278,8 +282,8 @@ public class ModuleRowsTest {
             assertFalse(listed(root).contains("module_row_name_back0"));
             tap(card(root, "back0"));
             List<String> keys = listed(root);
-            assertEquals(Arrays.asList("module_row_name_back0", "module_row_zoom_back0", "module_row_button_back0", "module_row_copy_back0",
-                    "module_row_profile_back0"), between(keys, "module_card_back0", "module_card_back4"));
+            assertEquals(Arrays.asList("module_row_name_back0", "module_row_zoom_back0", "module_row_card_id_back0", "module_row_button_back0",
+                    "module_row_copy_back0", "module_row_lens_back0", "module_row_profile_back0"), between(keys, "module_card_back0", "module_card_back4"));
             tap(card(root, "back1"));
             keys = listed(root);
             assertFalse("one card open at a time", keys.contains("module_row_name_back0"));
@@ -303,7 +307,7 @@ public class ModuleRowsTest {
             controller.setup();
             SettingsActivity.SettingsFragment root = root(controller.get());
             tap(card(root, "back0"));
-            List<String> before = between(listed(root), "root_modules", "expert_module_ids");
+            List<String> before = between(listed(root), "root_modules", null);
             // the viewfinder button: module_visible_
             SwitchPreferenceCompat button = root.findPreference("module_row_button_back0");
             assertTrue("starts from the module's state, not off", button.isChecked());
@@ -311,7 +315,7 @@ public class ModuleRowsTest {
             tap(button);
             assertFalse(prefs.getBoolean("module_visible_back0", true));
             assertTrue(ModuleRows.cardSummary(context, "back0"), String.valueOf(card(root, "back0").getSummary()).contains("hidden in the viewfinder"));
-            assertEquals("the card stays where it was", before, between(listed(root), "root_modules", "expert_module_ids"));
+            assertEquals("the card stays where it was", before, between(listed(root), "root_modules", null));
             tap(button);
             assertTrue(prefs.getBoolean("module_visible_back0", false));
             // the name: module_name_
@@ -359,11 +363,12 @@ public class ModuleRowsTest {
         try (ActivityController<SettingsActivity> controller = Robolectric.buildActivity(SettingsActivity.class)) {
             controller.setup();
             SettingsActivity.SettingsFragment root = root(controller.get());
-            ModuleRowPreference row = root.findPreference("module_row_id_back1");
+            // P413: the Camera ID row of the module's card
+            ModuleRowPreference row = root.findPreference("module_row_card_id_back1");
             assertEquals("ID 7", String.valueOf(row.value()));
-            assertEquals("3× · Telephoto", String.valueOf(row.getTitle()));
+            assertEquals("Camera ID", String.valueOf(row.getTitle()));
             assertEquals("Chosen by you", String.valueOf(row.getSummary()));
-            assertEquals("ID 2", String.valueOf(((ModuleRowPreference) root.findPreference("module_row_id_back2")).value()));
+            assertEquals("ID 2", String.valueOf(((ModuleRowPreference) root.findPreference("module_row_card_id_back2")).value()));
         }
     }
 
@@ -377,7 +382,7 @@ public class ModuleRowsTest {
             Map<String, SettingsSearchFragment.Entry> byKey = new HashMap<>();
             for (SettingsSearchFragment.Entry e : index) byKey.put(e.key, e);
             for (String key : new String[]{"module_card_back1", "module_row_name_back1", "module_row_zoom_back4", "module_row_crop_back4",
-                    "module_row_profile_back1@full200", "module_row_id_back3", "pref_sensorconfig_back2_blackleveloverride",
+                    "module_row_profile_back1@full200", "module_row_card_id_back3", "pref_sensorconfig_back2_blackleveloverride",
                     "pref_sensorconfig_back1_add_tunablekey"})
                 assertTrue("indexed: " + key, byKey.containsKey(key));
             assertTrue(byKey.get("module_row_name_back1").path, byKey.get("module_row_name_back1").path.contains("Telephoto"));
@@ -387,11 +392,14 @@ public class ModuleRowsTest {
             assertTrue(card(page, "back1").isExpanded());
             assertTrue(listed(page).contains("module_row_profile_back1@full200"));
             activity.getOnBackPressedDispatcher().onBackPressed();
+            // P413: a module's sensor row opens that module's lens page
             activity.openSearchResult(byKey.get("pref_sensorconfig_back2_blackleveloverride"));
-            page = root(activity);
+            page = shown(activity);
+            assertEquals(ModuleRows.LENS, page.requireArguments().getString(androidx.preference.PreferenceFragmentCompat.ARG_PREFERENCE_ROOT));
+            assertEquals("back2", page.moduleProfile());
             assertEquals("back2", page.requireArguments().getString(SettingsActivity.SettingsFragment.ARG_SENSOR_SLOT));
             assertTrue(listed(page).contains("pref_sensorconfig_back2_blackleveloverride"));
-            assertEquals("back2", ((ModuleChipsPreference) page.findPreference(ModuleRows.PICKER)).selected());
+            assertFalse(listed(page).contains(ModuleRows.PICKER));
         }
     }
 
@@ -413,11 +421,11 @@ public class ModuleRowsTest {
             });
             int header = adapter(root).getPreferenceAdapterPosition(card(root, "back0"));
             tap(card(root, "back0"));
-            assertTrue(events.toString(), events.contains("inserted " + (header + 1) + " 5"));
+            assertTrue(events.toString(), events.contains("inserted " + (header + 1) + " 7"));
             assertFalse(events.toString(), events.contains("changed"));
             events.clear();
             tap(card(root, "back0"));
-            assertTrue(events.toString(), events.contains("removed " + (header + 1) + " 5"));
+            assertTrue(events.toString(), events.contains("removed " + (header + 1) + " 7"));
             assertFalse(events.toString(), events.contains("changed"));
             // an inner page keeps the plain rebind
             activity.getOnBackPressedDispatcher().onBackPressed();
@@ -444,14 +452,17 @@ public class ModuleRowsTest {
                 tap(c);
                 tap(c);
             }
-            ModuleChipsPreference chips = root.findPreference(ModuleRows.PICKER);
-            for (String slot : chips.modules()) {
-                chips.setSelected(slot);
+            // P413: each module's lens page opened and closed
+            for (String slot : new String[]{"back2", "back0", "back4", "back3", "back1", "front0"}) {
+                controller.get().getSupportFragmentManager().beginTransaction()
+                        .replace(R.id.settings_container, SettingsActivity.SettingsFragment.sensorPage(slot)).addToBackStack("lens").commit();
+                shown(controller.get());
+                controller.get().getOnBackPressedDispatcher().onBackPressed();
                 idle();
             }
             controller.recreate();
             root = root(controller.get());
-            tap(root.findPreference("module_row_id_back1"));
+            tap(root.findPreference("module_row_card_id_back1"));
             android.app.Dialog sheet = ShadowDialog.getLatestDialog();
             assertNotNull(sheet.findViewById(android.R.id.content).findViewWithTag("camera_id_sheet"));
             sheet.cancel();
@@ -481,26 +492,12 @@ public class ModuleRowsTest {
         all.put("pref_sensorconfig_back1_blackleveloverride", "64");
         assertTrue(ModuleSensorSettings.customised(all, "back1"));
         assertFalse("another module's values", ModuleSensorSettings.customised(all, "back0"));
-        // the chips: a dot on the module with a camera key, the content description says so
+        // P413: no module chips on «Камеры и модули» - each module's sensor rows head its own lens page
         seed(false);
         try (ActivityController<SettingsActivity> controller = Robolectric.buildActivity(SettingsActivity.class)) {
             controller.setup();
             SettingsActivity.SettingsFragment root = root(controller.get());
-            RecyclerView list = root.getListView();
-            ModuleChipsPreference chips = root.findPreference(ModuleRows.PICKER);
-            ((LinearLayoutManager) list.getLayoutManager()).scrollToPositionWithOffset(adapter(root).getPreferenceAdapterPosition(chips), 0);
-            idle();
-            View row = list.findViewHolderForAdapterPosition(adapter(root).getPreferenceAdapterPosition(chips)).itemView;
-            TextView tele = row.findViewWithTag("module_chip_back1"), wide = row.findViewWithTag("module_chip_back2");
-            assertTrue(tele.getText().toString(), tele.getText().toString().endsWith("•"));
-            assertFalse(wide.getText().toString(), wide.getText().toString().contains("•"));
-            assertEquals("Module 3×, own values", tele.getContentDescription().toString());
-            assertEquals(View.VISIBLE, row.findViewById(R.id.settings_chips_hint).getVisibility());
-            tele.performClick();
-            idle();
-            row = list.findViewHolderForAdapterPosition(adapter(root).getPreferenceAdapterPosition(chips)).itemView;
-            assertEquals("Module 3×, selected, own values", row.findViewWithTag("module_chip_back1").getContentDescription().toString());
-            assertEquals(View.GONE, row.findViewById(R.id.settings_chips_hint).getVisibility());
+            assertFalse(listed(root).contains(ModuleRows.PICKER));
         }
     }
 
@@ -529,12 +526,12 @@ public class ModuleRowsTest {
         String copy = seed(true);
         try (ActivityController<SettingsActivity> controller = Robolectric.buildActivity(SettingsActivity.class)) {
             controller.setup();
-            SettingsActivity.SettingsFragment root = root(controller.get());
-            ModuleChipsPreference chips = root.findPreference(ModuleRows.PICKER);
-            bound(root, chips).findViewWithTag("module_chip_back1").performClick();
-            idle();
+            // P413: the module's sensor rows on its lens page
+            controller.get().getSupportFragmentManager().beginTransaction()
+                    .replace(R.id.settings_container, SettingsActivity.SettingsFragment.sensorPage("back1")).addToBackStack("lens").commit();
+            SettingsActivity.SettingsFragment lens = shown(controller.get());
             // Robolectric has no sensor mode table: the generator's row, with two rows of a table, in the module's category
-            androidx.preference.PreferenceCategory category = root.findPreference(SensorConfigPreferenceGenerator.CATEGORY_PREFIX + "back1");
+            androidx.preference.PreferenceCategory category = lens.findPreference(SensorConfigPreferenceGenerator.CATEGORY_PREFIX + "back1");
             assertNotNull(category);
             androidx.preference.ListPreference mode = SensorConfigPreferenceGenerator.sensorModeRow(context, "back1",
                     Arrays.asList(new int[]{3, 4096, 3072, 30}, new int[]{4, 8192, 6144, 15}));
@@ -542,7 +539,7 @@ public class ModuleRowsTest {
             category.addPreference(mode);
             mode.setValue("4");
             idle();
-            View row = bound(root, mode);
+            View row = bound(lens, mode);
             String value = text(row, R.id.settings_value) + text(row, R.id.settings_value_below);
             assertEquals("Mode #4: 8192x6144 @ 15fps", value);
             String summary = text(row, android.R.id.summary);
@@ -552,12 +549,14 @@ public class ModuleRowsTest {
             assertEquals("restarts the camera", View.VISIBLE, row.findViewById(R.id.settings_restart).getVisibility());
             // the camera key of 3×
             com.particlesdevs.photoncamera.ui.settings.custompreferences.TunableKeyPreference key = null;
-            for (int i = 0; i < adapter(root).getItemCount(); i++)
-                if (adapter(root).getItem(i) instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.TunableKeyPreference)
-                    key = (com.particlesdevs.photoncamera.ui.settings.custompreferences.TunableKeyPreference) adapter(root).getItem(i);
+            for (int i = 0; i < adapter(lens).getItemCount(); i++)
+                if (adapter(lens).getItem(i) instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.TunableKeyPreference)
+                    key = (com.particlesdevs.photoncamera.ui.settings.custompreferences.TunableKeyPreference) adapter(lens).getItem(i);
             assertNotNull(key);
             assertEquals("vivo.control.forceSensorMode", key.getTitle().toString());
-            assertEquals("vivo.​control.​forceSensorMode", text(bound(root, key), android.R.id.title));
+            assertEquals("vivo.​control.​forceSensorMode", text(bound(lens, key), android.R.id.title));
+            controller.get().getOnBackPressedDispatcher().onBackPressed();
+            SettingsActivity.SettingsFragment root = root(controller.get());
             // deleting the copy
             tap(card(root, copy));
             Preference delete = root.findPreference(ModuleRows.DELETE + copy);
@@ -653,21 +652,21 @@ public class ModuleRowsTest {
             tap(card(root, "back4"));
             shotAt(root, "module_card_back4", "p384-copy-card-ru");
             tap(card(root, "back4"));
-            shotAt(root, "expert_module_ids", "p384-ids-ru");
-            shotAt(root, "expert_module_sensor", "p384-sensor-none-ru");
-            ModuleChipsPreference chips = root.findPreference(ModuleRows.PICKER);
-            RecyclerView list = root.getListView();
-            ((LinearLayoutManager) list.getLayoutManager()).scrollToPositionWithOffset(adapter(root).getPreferenceAdapterPosition(chips), 0);
+            // P413: a module's lens page (the reference app's sections)
+            activity.getSupportFragmentManager().beginTransaction()
+                    .replace(R.id.settings_container, SettingsActivity.SettingsFragment.sensorPage("back1")).addToBackStack("lens").commit();
+            SettingsActivity.SettingsFragment lens = shown(activity);
             idleFor(1000);
-            list.findViewHolderForAdapterPosition(adapter(root).getPreferenceAdapterPosition(chips)).itemView.findViewWithTag("module_chip_back1").performClick();
-            idleFor(1000);
-            shotAt(root, "expert_module_sensor", "p384-sensor-back1-ru");
-            shotAt(root, "pref_sensorconfig_back1_ispsurface", "p384-sensor-back1-keys-ru");
+            shotWhole(lens, "p413-lens-back1-ru");
+            shotAt(lens, "pref_sensorconfig_back1_ispsurface", "p413-lens-back1-keys-ru");
+            shotAt(lens, "lens_colour_category", "p413-lens-back1-colour-ru");
+            shotAt(lens, "lens_isp_category", "p413-lens-back1-isp-ru");
+            activity.getOnBackPressedDispatcher().onBackPressed();
+            root = root(activity);
             prefs.edit().putString("module_id_back1", "7").commit();
             controller.pause().resume();
             idle();
-            shotAt(root, "expert_module_ids", "p384-ids-chosen-ru");
-            tap(root.findPreference("module_row_id_back0"));
+            tap(root.findPreference("module_row_card_id_back0"));
             android.app.Dialog sheet = ShadowDialog.getLatestDialog();
             shotSheet(sheet, "p384-id-sheet-ru");
             View body = sheet.findViewById(android.R.id.content);
@@ -678,7 +677,7 @@ public class ModuleRowsTest {
             shotSheet(sheet, "p384-id-sheet-manual-invalid-ru");
             sheet.cancel();
             idle();
-            tap(root.findPreference("module_row_id_back4"));
+            tap(root.findPreference("module_row_card_id_back4"));
             shotSheet(ShadowDialog.getLatestDialog(), "p384-id-sheet-copy-ru");
             ShadowDialog.getLatestDialog().cancel();
             idle();
@@ -699,8 +698,8 @@ public class ModuleRowsTest {
     }
 
     /**
-     * The motion as frames (a card opening; a chip chosen after another): the rows below glide, the new rows rise in, the chevron
-     * turns, the chips' pill glides.
+     * The motion as frames (a card opening): the rows below glide, the new rows rise in, the chevron turns (P413: no module chips
+     * on the page any more).
      */
     @Test @Config(qualifiers = "ru-w400dp-h880dp-xhdpi") public void renderMotionFrames() throws Exception {
         seed(true);
@@ -735,20 +734,6 @@ public class ModuleRowsTest {
                 View row = list.getChildAt(i);
                 assertEquals(0f, row.getTranslationY(), 0f);
                 assertEquals(SettingsStyle.restingAlpha((Preference) row.getTag(R.id.settings_bound_preference)), row.getAlpha(), 1e-3f);
-            }
-            ModuleChipsPreference chips = root.findPreference(ModuleRows.PICKER);
-            ((LinearLayoutManager) list.getLayoutManager()).scrollToPositionWithOffset(adapter(root).getPreferenceAdapterPosition(chips), 96);
-            frames(1000);
-            list.findViewHolderForAdapterPosition(adapter(root).getPreferenceAdapterPosition(chips)).itemView.findViewWithTag("module_chip_back2").performClick();
-            frames(1000);
-            ((LinearLayoutManager) list.getLayoutManager()).scrollToPositionWithOffset(adapter(root).getPreferenceAdapterPosition(chips), 96);
-            frames(1000);
-            list.findViewHolderForAdapterPosition(adapter(root).getPreferenceAdapterPosition(chips)).itemView.findViewWithTag("module_chip_back1").performClick();
-            at = 0;
-            for (long frame : new long[]{40, 160, 300, 640}) {
-                frames(frame - at);
-                at = frame;
-                write(view, view.getWidth(), view.getHeight(), "p384-chip-glide-" + frame + "ms");
             }
         }
     }

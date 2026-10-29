@@ -25,7 +25,7 @@ public class ModuleCopyFragment extends ModuleConceptFragment {
         for(Class<?> cls:TunableRegistry.TUNABLE_CLASSES)TunablePreferenceGenerator.registerTunableClass(cls);
         TunablePreferenceGenerator.generatePreferences(requireContext(),tree);
         PreferenceScreen manual=pm.createPreferenceScreen(requireContext());manual.setTitle(Lang.t(getContext(),"Ручные настройки","Manual settings"));manual.setKey("manual_copy_group");
-        PreferenceGroup capture=tree.findPreference("capture_settings_screen");capture.addPreference(manual);
+        PreferenceGroup capture=tree.findPreference(ModuleRows.LENS);capture.addPreference(manual);   // P413: the lens page
         String[] keys={"evmodel","shuttermodel","isomodel","whitebalancemodel","focusmodel"};
         String[] titles={Lang.t(getContext(),"Экспокоррекция","Exposure compensation"),Lang.t(getContext(),"Выдержка","Shutter"),"ISO",Lang.t(getContext(),"Баланс белого","White balance"),Lang.t(getContext(),"Фокус","Focus")};
         for(int i=0;i<keys.length;i++){CheckBoxPreference p=new CheckBoxPreference(requireContext());p.setKey("pref_manual_"+keys[i]);p.setTitle(titles[i]);p.setPersistent(false);manual.addPreference(p);}

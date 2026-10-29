@@ -606,6 +606,9 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
                 mHorizonIndicatorView.setVisible(PreferenceKeys.isHorizonOn());
             // Read when the session is built (live RAW, 16:9, ... P214g: settings/SessionKeys): restart now (owner's answer 7).
             if (entry.sessionTime && captureController != null) captureController.restartCamera();
+            // P411: «Мерцание ламп» to the camera's AE at once
+            else if (com.particlesdevs.photoncamera.settings.ShadeCatalog.FLICKER.equals(entry.key) && captureController != null)
+                captureController.applyAntibanding();
         }
 
         @Override

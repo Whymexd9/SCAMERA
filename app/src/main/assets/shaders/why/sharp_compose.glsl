@@ -4,7 +4,7 @@ precision highp sampler2D;
 // reference research/hybrid5/ref/sharpen/ark_sharpen_ref.py luma_compose]: USM (with noise threshold), bilateral
 // high-boost and guided-filter local contrast summed, damped on strong 3x3 contrast, clamped to the local min/max
 // (halo control), faded towards white (protect highlights) and black (protect shadows), optional luma grain.
-// P404: the reference app's Sobel edge boost and edge thinning (shock filter) from v2.07's luma_compose_usm (sobelU / thinU,
+// P404: the reference app's Sobel edge boost and edge thinning (shock filter) from the reference's luma_compose_usm (sobelU / thinU,
 // 0 = off as before). On the Sabre 2x grid the spatial constants come
 // scaled by WhyLumaSharpen (radii x scale, neighbourhood radius nbU), so the response matches WhyCam's on the 1x grid.
 // P364: GATHER 1 - with the 1x grid's window sizes (min / max 3 x 3, USM radius 2, bilateral radius 1) the pixel's 6 x 6
@@ -157,7 +157,7 @@ void main() {
     }
     float lc = lmax - lmin;
     if ((abs(sobelU.x) > 0.001 || abs(thinU) > 0.001) && all(greaterThan(xy, ivec2(0))) && all(lessThan(xy, last))) {
-        // P404: v2.07 luma_compose_usm on the 3 x 3 neighbourhood (inner pixels, as there)
+        // P404: the reference's luma_compose_usm on the 3 x 3 neighbourhood (inner pixels, as there)
         float tl = texelFetch(InputBuffer, xy + ivec2(-1, -1), 0).r, tc = texelFetch(InputBuffer, xy + ivec2(0, -1), 0).r;
         float tr = texelFetch(InputBuffer, xy + ivec2(1, -1), 0).r, ml = texelFetch(InputBuffer, xy + ivec2(-1, 0), 0).r;
         float mr = texelFetch(InputBuffer, xy + ivec2(1, 0), 0).r, bl = texelFetch(InputBuffer, xy + ivec2(-1, 1), 0).r;

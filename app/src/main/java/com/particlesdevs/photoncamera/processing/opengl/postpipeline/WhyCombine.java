@@ -226,7 +226,7 @@ public final class WhyCombine extends Node {
             if (lightChroma > 0f) glProg.setDefine("LIGHT_CHROMA", 1);
             if (WhyTone.yellowHue() > 0f) glProg.setDefine("YELLOW_HUE", 1);   // P395
             if (WhyTone.hlNeutral() > 0f) glProg.setDefine("HL_NEUTRAL", 1);   // P398
-            if (WhyTone.arkLayout()) glProg.setDefine("ARK_BASE", 1);   // P402: the v2.07 fusion's base of the tone
+            if (WhyTone.arkLayout()) glProg.setDefine("ARK_BASE", 1);   // P402: the reference fusion's base of the tone
             if (WhyTone.insetStrength() < 0.999f) glProg.setDefine("AGX_INSET", 1);   // P402: the inset's strength
             if (WhyTone.gammaType() != 0) glProg.setDefine("GAMMA_TYPE", WhyTone.gammaType());   // P404: the display standard
             final float[][] arkVib = WhyTone.arkVibrance();

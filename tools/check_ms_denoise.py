@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""P402 «Пирамидальный шумодав» (WhyMsDenoise, why/msdn.glsl; the reference app v2.07's ms denoise): the five passes on the host GPU
+"""P402 «Пирамидальный шумодав» (WhyMsDenoise, why/msdn.glsl; the reference app's ms denoise): the five passes on the host GPU
 (moderngl) as WhyMsDenoise wires them (level 1 from the camera RGB, levels 2 and 3, the base, levels 2 and 1 rebuilt, the
 full-size result), RGBA16F levels, the thresholds of WhyMsDenoise.thresholds (the reference app's driver: 0.012 x luma strength,
 0.02 x chroma strength, the level shares; the base the coarsest colour share). A synthetic merge in camera RGB (white point 0.45 /

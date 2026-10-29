@@ -9242,3 +9242,51 @@ wallpaper, speakers, board): DONE
 - zslClipFraction counts the ring frame's samples within 1/16 of the RAW range above black too (setShadow; NaN for a packed
   stream). HybridPlan.bracketCountFor: 1 under 10 %, 2 from 10 %, 3 from 30 % or with P409's deep shadows; at most 2 while the
   HAL reports motion; «Кадры теней: число» is the maximum; unknown share or «Число длинных кадров по сцене» off: the set count.
+
+### P411 - «Мерцание ламп» as in the reference app (owner, 2026-10-30, screenshot of the sheet: «возьми его работу из Арк камеры, у
+нас он работает неверно»): DONE in code (host), not tried on a phone
+- The reference (CameraManager.applyAntibandingToBuilder / updateAntibanding): pref_antibanding_mode -> CONTROL_AE_ANTIBANDING_MODE
+  on the preview and every capture request, the repeating request rebuilt on a change; no flicker detection of its own.
+- Ours sent nothing (the HAL default) or AUTO (ScamPreview) whatever was chosen; the setting moved only our long shutters.
+  capture/Antibanding: -1 AUTO, 100 50HZ, 120 60HZ, 0 OFF (an unlisted mode -> AUTO) on the preview builder, the still builder,
+  the SDK FULLRES capture and the vivo stock preview; the shade's change rebuilds the repeating request
+  (CaptureController.applyAntibanding). Our shutter snapping (MainsFlicker) unchanged.
+
+### P412 - the list pickers scroll both ways (owner, 2026-10-30, video of «Режим сенсора»: «могу почему-то прокручивать только
+вниз, а при прокрутке вверх оно закрывается полностью»): DONE in code (host), not tried on a phone
+- The option list (a NestedScrollView) sat in the sheet's wrapping NestedScrollView: BottomSheetBehavior tracks the first nested
+  scroller it finds - the wrapper, which never scrolls (the list is capped by listCap) - and took every downward drag. The list
+  sheets now have the body as content (SettingsStyle.sheet(c, body, false)): the list is the sheet's scroller, a drag down at
+  its top closes the sheet; the chosen option opens in view.
+
+### P413 - lens settings as in the reference app (owner, 2026-10-30, two videos of its «Настройка линз и зума»: «Сделай настройки
+линз аналогично Арк, убедись что настройки нигде не дублируются в других местах»): DONE in code (host), not tried on a phone
+- The reference: one page per lens (sensor, RAW format, black/white levels, colour matrix and dynamic CCT, noise model, ...).
+- Ours: «Настройки линзы» on each module card (and per FULLRES variant) opens modulePage(profile, ModuleRows.LENS): lens_screen
+  (hidden elsewhere) with the module's sensor, RAW, levels, colour (method, DCP, matrix profile/override, dynamic CCT, Quad/Tetra
+  WB) and noise model groups. Camera ID is a row of the card. The old places of these rows (capture_settings_screen,
+  colour_expert_category, expert_module_ids, noise_model_screen) are removed: each row exists once. «Камеры и линзы» holds the
+  module pages only (ModulePageFilter.NOT_MODULE: a module's photo page hides it, the settings order does not move rows into it).
+  Search opens the lens page of the row's slot (or the active module).
+- (owner, 2026-10-30: «учитывай что у нас могут быть настройки которых в Арк нет, если они подходят по смыслу, то мы их тоже
+  переносим») LensPage puts the module's generated sensor rows in the reference app's sections: the ISP stream, the RAW frame rate,
+  its check and the RAW viewfinder size under «Формат RAW»; the manual black / white levels under «Уровни»; OIS and the session
+  type under «Управление ISP и оптикой»; the camera keys, the sensor mode and the reset stay in «Ключи камеры (вендор-теги)». The
+  page's header names the module (label · ID, shared with its FULLRES shots). The face detection, metering and tap AE of the
+  reference's page are shared settings here (global), so they stay where they are.
+
+### P414 - the long (Shasta) frames' reject map after P409 / P410 (owner, 2026-10-30: «Мне кажется стоит обновить карту реджекта для
+шаста кадров»): DONE in code (host replays), not tried on a phone
+- Replays (window burst: OPPO, 3 L static; m014303: vivo room, moving hand, 3 L; m234300: PC LEDs, hand, 2 L): the P392 map
+  (shastaMotion's 15 % + 4 sigma block test) took the hands whole, no fringe against the merges without L.
+- Gap 1: a kept long frame at or below shastaMotionMax (4 %) merged whole, its moved blocks too (window burst 2.8 %: branches
+  behind the glass). The app now sends shastaScopeAll 1.
+- Gap 2: lone moved blocks only the noise decided (4 sigma above 15 % of the level in every colour, no moved neighbour) cut the
+  long frame out in spots on static dark surfaces (window burst: 137 of the 150 moved blocks below 2^-8; m234300: 37 % of the dark
+  ones, a wall) - where the deep-shadow long frames matter most. Worker shastaScopeLone 1 (sent by the app) leaves them in the
+  merge and out of the moved share. Flat shadow noise -1 .. -4 % on the hand bursts, the hand crops unchanged (no ghost).
+- Measured and not taken: a per-block detail test against motion blur (empirical noise floors, relative to the frame's median
+  detail): 0.2 - 0.3 % more blocks on the replays, nearly nothing beyond the mean test on a synthetic smear; the noise / offset
+  from the burst instead of the models (the median offset hid the LED burst's real colour change, the MAD of a level band full
+  of hand lost 50 - 80 % of its blocks); 2 x 2 pooled blocks in deep shadows (read black-level offsets of a static wall as motion).
+- scam_dev "hybrid_long_scope 0" takes all three lines out (as before P392).

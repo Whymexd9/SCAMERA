@@ -51,6 +51,15 @@ public class PreferenceKeys {
         return hz < 0 ? com.particlesdevs.photoncamera.capture.MainsFlicker.hz() : hz;
     }
 
+    /** P411: «Мерцание ламп» as set (-1 «Авто», 100 = 50 Hz, 120 = 60 Hz, 0 «Выкл.»): the camera's AE antibanding mode (Antibanding). */
+    public static int antibandingSetting() {
+        try {
+            return Integer.parseInt(getAcesString("pref_antibanding_hz_key", "-1"));
+        } catch (RuntimeException e) {
+            return -1;
+        }
+    }
+
     /**
      * P212d: true when {@link #getAntibandingHz()} is known - set by hand (the override: 100, 120 or 0), or «Авто» latched from
      * evidence (MainsFlicker.known: agreeing reports, AE shutters, the merge's row profile); false while «Авто» guesses the region.
@@ -1043,7 +1052,14 @@ public class PreferenceKeys {
         // P392: a long frame whose moved share is above «Длинные кадры: отказ при движении» (up to 60 %) is kept and only its moved
         // blocks are left out (dilated, feathered) instead of the whole frame (the owner's burst: all three long frames dropped for a
         // moving hand, 20 % of the blocks). scam_dev.txt "hybrid_long_scope 0" = the whole frame dropped, as before.
-        if (hybridValue("long_scope", 1f) > 0f) out.append("shastaMotionScope 1\n");
+        // P414 (owner, 2026-10-30: «обновить карту реджекта для шаста кадров», the long frames now up to 1/60 s and +2 EV for deep
+        // shadows, P409): the moved blocks leave every kept long frame, also one at or below «отказ при движении» (it merged whole,
+        // its moved blocks too: the window burst's long frames, 2.8 % moved - branches behind the glass); a lone moved block that
+        // only the noise decided stays in (a static dark ceiling / wall was cut out in spots: 137 of the window burst's 150 dark
+        // moved blocks). Replays: flat noise in the shadows -1 .. -4 % on the hand bursts, the hands as before (no ghost), the
+        // window burst's noise unchanged. Not taken (measured): a detail test against motion blur (0.2 - 0.3 % more blocks) and the
+        // noise / level from the burst instead of the models (it lost 50 - 80 % of a moving hand's blocks).
+        if (hybridValue("long_scope", 1f) > 0f) out.append("shastaMotionScope 1\nshastaScopeAll 1\nshastaScopeLone 1\n");
         // P313 (owner, vivo X200 Ultra 2x ISZ in daylight: «все фото в области светов очень мыльное и с кучей артефактов»): the
         // native mosaic merge (Quad / Tetra) leaves Bento's cells to the N frames and fills only what they clipped from the
         // ultrashort frames, in a pass after it (worker HybridTuning::mosaicUsFill; default 0 = replays unchanged). scam_dev.txt

@@ -925,8 +925,8 @@
     <string name="prefs_scam_hybrid_why_agx_inset_summary">How strongly the colour is compressed into the display gamut before the curve. 100 %: fully (bright colours fade softly to white); 0 %: per channel (more saturated, but neon may burn out).</string>
     <string name="prefs_scam_hybrid_why_dr_category_title">Dynamic range compression (highlights and shadows)</string>
     <string name="prefs_scam_hybrid_why_fusion_layout_title">Exposure layer layout</string>
-    <string name="prefs_scam_hybrid_why_fusion_layout_summary">%s. How the synthetic exposures of the fusion are built: “Ours” as now; “Classic (v2.07)” four layers −2.5 / −1.2 / 0 / +1.8 with their own weights below, without the special weights for the highlights above white.</string>
-    <string name="prefs_scam_hybrid_why_classic_weights_category_title">Classic layout weights (v2.07)</string>
+    <string name="prefs_scam_hybrid_why_fusion_layout_summary">%s. How the synthetic exposures of the fusion are built: “Ours” as now; “Classic” four layers −2.5 / −1.2 / 0 / +1.8 with their own weights below, without the special weights for the highlights above white.</string>
+    <string name="prefs_scam_hybrid_why_classic_weights_category_title">Classic layout weights</string>
     <string name="prefs_scam_hybrid_why_classic_weight_ext_hl_title">Deep highlight priority</string>
     <string name="prefs_scam_hybrid_why_classic_weight_ext_hl_summary">Weight of the darkest layer (windows, the sun, lamps). Used with the classic layout.</string>
     <string name="prefs_scam_hybrid_why_classic_weight_hl_title">Moderate highlight priority</string>
@@ -979,7 +979,7 @@
     <string name="prefs_scam_hybrid_why_ms_chroma_l2_title">Large colour stains</string>
     <string name="prefs_scam_hybrid_why_ms_chroma_l2_summary">The coarse scale of the colour noise and the pyramid base.</string>
     <string name="prefs_scam_hybrid_dezipper_title">Zipper suppression (dezipper)</string>
-    <string name="prefs_scam_hybrid_dezipper_summary">Where frames were rejected for motion, the base frame weighs up to this many frames, so moving edges do not turn jagged. 0: off, as before; 4.5: as v2.07.</string>
+    <string name="prefs_scam_hybrid_dezipper_summary">Where frames were rejected for motion, the base frame weighs up to this many frames, so moving edges do not turn jagged. 0: off, as before; 4.5: strong.</string>
     <!-- P404: tone, colour, sharpness and denoise rows -->
     <string name="prefs_scam_hybrid_why_sharp_sobel_amount_title">Edge boost (Sobel)</string>
     <string name="prefs_scam_hybrid_why_sharp_sobel_amount_summary">Extra sharpening only on edges whose Sobel gradient is above the threshold. 0: off.</string>
@@ -1078,4 +1078,17 @@
     <!-- P410: the number of bracketed frames by the scene -->
     <string name="prefs_scam_hybrid_shasta_auto_count_title">Long frames by the scene</string>
     <string name="prefs_scam_hybrid_shasta_auto_count_summary">1 to 3 by the share of shadows in the frame; «Shadow frames: count» is the maximum.</string>
+    <!-- P413: the lens page as in the reference app -->
+    <string name="prefs_lens_screen_title">Lens settings</string>
+    <string name="prefs_lens_screen_summary">This module\'s sensor, RAW, levels, colour matrix and noise.</string>
+    <string name="prefs_lens_raw_category_title">RAW format</string>
+    <string name="prefs_lens_levels_category_title">Black and white levels</string>
+    <string name="prefs_lens_colour_category_title">Colour matrix (CCM) and Dynamic CCT</string>
+    <string name="prefs_lens_noise_category_title">Noise model</string>
+    <string name="prefs_lens_isp_category_title">ISP and optics control</string>
+    <string name="prefs_lens_keys_category_title">Camera keys (vendor tags)</string>
+    <string name="prefs_lens_keys_category_summary">Camera2 keys of the session and of the requests, the sensor mode</string>
+    <string name="module_row_lens">Lens settings</string>
+    <string name="module_row_lens_summary">Sensor, RAW, levels, colour matrix and noise</string>
+    <string name="module_row_id">Camera ID</string>
 </resources>

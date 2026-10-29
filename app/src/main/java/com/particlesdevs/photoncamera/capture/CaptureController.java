@@ -2399,6 +2399,13 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         if (mZoomPending.compareAndSet(false, true)) handler.post(update); // the pending one reads the newest zoom
     }
 
+    /** P411: «Мерцание ламп» changed (the shade): the repeating request takes it at once, as the reference's updateAntibanding. */
+    public void applyAntibanding() {
+        if (mPreviewRequestBuilder == null) return;
+        Antibanding.apply(mPreviewRequestBuilder, mCameraCharacteristics);
+        rebuildPreviewBuilder();
+    }
+
     public void rebuildPreviewBuilder() {
         if(burst) return;
         if (mPreviewRequestBuilder == null || mCaptureSession == null) {
@@ -4137,6 +4144,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         } else {
             mPreviewRequestBuilder = mCameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
         }
+        Antibanding.apply(mPreviewRequestBuilder, mCameraCharacteristics); // P411
 
         // P223: without the ISP preview (FULLRES / ISZ, the RAW viewfinder on) the repeating request carries the RAW stream only
         final boolean ispOff = mIspPreviewOff && mLiveRawSession && mVivoSdkRawSession == null && !mIsRecordingVideo;
@@ -8083,6 +8091,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             } else {
                 captureBuilder = mCameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
             }
+            Antibanding.apply(captureBuilder, mCameraCharacteristics); // P411
             float focus = mFocus;
             double frametime = stockPlan != null ? ExposureIndex.time2sec(stockPlan.shutter(0)) : 1 / 30.0;
             //this.mCaptureSession.stopRepeating();

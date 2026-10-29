@@ -455,9 +455,12 @@ public class SettingsMenuTest {
             // copied from «Сенсор по модулям» (the module cards hold no value), as the reference app's lens settings
             android.view.View lenses=copy.requireView().findViewWithTag("group_root_lenses");
             assertNotNull(tags(copy.requireView()),lenses);assertTrue(lenses.performClick());
+            // P413: the lens page's rows (the reference app's lens settings): its RAW, colour matrix and the sensor
+            assertNotNull(tags(copy.requireView()),copy.requireView().findViewWithTag("parameter_pref_raw_stream_format"));
+            assertNotNull(tags(copy.requireView()),copy.requireView().findViewWithTag("parameter_pref_scam_hybrid_why_ccm_profile"));
             assertNotNull(tags(copy.requireView()),copy.requireView().findViewWithTag("parameter_pref_dcp_profile_key"));
             assertNotNull(tags(copy.requireView()),copy.requireView().findViewWithTag("parameter_sensor_copy_blackleveloverride"));
-            assertTrue(shownText(copy.requireView(),context.getString(R.string.prefs_expert_module_sensor_title)));
+            assertTrue(shownText(copy.requireView(),context.getString(R.string.module_sensor_copy_title)));
         }
     }
 
@@ -1480,15 +1483,30 @@ public class SettingsMenuTest {
         String[] order={"root_lenses","root_photo","root_shoot","root_colour","root_lab","root_logs","root_about"};
         assertEquals(order.length,screen.getPreferenceCount());
         for(int i=0;i<order.length;i++)assertEquals(order[i],screen.getPreference(i).getKey());
-        // «Модули камеры и линзы»: the modules (P384: built in code, empty in the XML; P390: one page), RAW and sensor, the camera's colour
-        assertEquals(Arrays.asList("modules_screen","capture_settings_screen","colour_expert_category","pref_xiaomi_smooth_zoom",
-                "pref_fullres_hw_remosaic"),keys(screen.findPreference("root_lenses")));
-        assertEquals(Arrays.asList("root_modules","expert_module_ids","expert_module_sensor"),keys(screen.findPreference("modules_screen")));
-        for(String group:new String[]{"root_modules","expert_module_ids","expert_module_sensor"})
+        // «Модули камеры и линзы»: the modules (P384: built in code, empty in the XML; P390: one page). P413 (owner, 2026-10-30:
+        // «Сделай настройки линз аналогично Арк, убедись что настройки нигде не дублируются»): each module's lens page (the reference
+        // app's sections) holds its sensor, RAW, levels, colour matrix and noise model - the former «RAW и сенсор», «Цвет камеры»,
+        // «Camera ID модулей» and «Сенсор по модулям» are gone (their rows live there or in the module's card)
+        assertEquals(Arrays.asList("modules_screen","pref_xiaomi_smooth_zoom"),keys(screen.findPreference("root_lenses")));
+        assertEquals(Arrays.asList("root_modules","lens_screen"),keys(screen.findPreference("modules_screen")));
+        // the module's generated sensor rows go to RAW / levels / «Управление ISP и оптикой» on the page (LensPage); its camera keys last
+        assertEquals(Arrays.asList("lens_raw_category","lens_levels_category","lens_colour_category","lens_noise_category","lens_isp_category",
+                "expert_module_sensor"),keys(screen.findPreference("lens_screen")));
+        for(String group:new String[]{"root_modules","expert_module_sensor","lens_isp_category"})
             assertEquals(group,0,((androidx.preference.PreferenceGroup)screen.findPreference(group)).getPreferenceCount());
-        for(String key:new String[]{"pref_dcp_profile_key","pref_color_method_key","pref_mosaic_wb_corrections","pref_scam_hybrid_colour_gamut",
-                "pref_scam_hybrid_why_hl_white"})
-            assertNotNull(key,((androidx.preference.PreferenceGroup)screen.findPreference("colour_expert_category")).findPreference(key));
+        assertEquals(Arrays.asList("pref_fullres_hw_remosaic","pref_raw_stream_format","pref_cfa_key","raw_crop_screen"),keys(screen.findPreference("lens_raw_category")));
+        assertEquals(Arrays.asList("pref_raw_black_from_data","pref_raw_lsc_mode","expert_sensor_screen"),keys(screen.findPreference("lens_levels_category")));
+        assertEquals(Arrays.asList("pref_color_method_key","pref_dcp_profile_key","pref_scam_hybrid_why_ccm_profile","pref_scam_hybrid_why_ccm_override",
+                "pref_scam_hybrid_why_ccm_matrix","pref_scam_hybrid_why_dynamic_cct","pref_scam_hybrid_why_dynamic_cct_strength",
+                "pref_mosaic_wb_corrections","pref_scam_hybrid_mosaic_wb_mode"),keys(screen.findPreference("lens_colour_category")));
+        assertEquals(Arrays.asList("pref_scam_hybrid_noise_photon","pref_scam_hybrid_noise_readout","pref_noise_model_profile_key",
+                "pref_noise_model_import_key","pref_noise_model_export_key","noise_model_note"),keys(screen.findPreference("lens_noise_category")));
+        for(String gone:new String[]{"capture_settings_screen","colour_expert_category","expert_module_ids","noise_model_screen","capture_raw_levels_category"})
+            assertNull(gone,screen.findPreference(gone));
+        // the image tone rows of the former «Цвет камеры» with the image settings
+        assertNotNull(((androidx.preference.PreferenceGroup)screen.findPreference("colour_ccm_category")).findPreference("pref_scam_hybrid_colour_gamut"));
+        for(String key:new String[]{"pref_scam_hybrid_why_hl_soft","pref_scam_hybrid_why_hl_white"})
+            assertNotNull(key,((androidx.preference.PreferenceGroup)screen.findPreference("scam_hybrid_recovery_category")).findPreference(key));
         // «Сохранение и форматы фото»; the 2× grid and downscaling with the size after the merge
         assertEquals(Arrays.asList("output_settings_screen","photo_size_screen","pref_wide169_key","watermark_screen","pref_file_name_pattern"),
                 keys(screen.findPreference("root_photo")));
@@ -1523,13 +1541,12 @@ public class SettingsMenuTest {
         PreferenceScreen fine=screen.findPreference("photo_processing_screen");
         assertEquals(Arrays.asList("colour_sat_category","colour_skin_category","colour_ccm_category","colour_wb_category","colour_mixer_screen",
                 "colour_grading_screen"),keys(fine));
-        // P408: the reference app's matrix profile, own 3x3 matrix and Dynamic CCT with the matrix rows; its Quad / Tetra white balance
-        // first in colour adaptation
+        // P408 / P413: the reference app's matrix saturation and gains here, its matrix profile, own 3x3 matrix, Dynamic CCT and the
+        // Quad / Tetra white balance on each lens's page; the colour gamut of the former «Цвет камеры» at the end
         assertEquals(Arrays.asList("pref_scam_hybrid_why_cct_sat","pref_scam_hybrid_why_cct_gain_r","pref_scam_hybrid_why_cct_gain_g",
-                "pref_scam_hybrid_why_cct_gain_b","pref_scam_hybrid_why_ccm_profile","pref_scam_hybrid_why_ccm_override",
-                "pref_scam_hybrid_why_ccm_matrix","pref_scam_hybrid_why_dynamic_cct","pref_scam_hybrid_why_dynamic_cct_strength",
-                "pref_scam_hybrid_why_ccm_sat","colour_calibration_screen"),keys(screen.findPreference("colour_ccm_category")));
-        assertEquals("pref_scam_hybrid_mosaic_wb_mode",keys(screen.findPreference("colour_wb_category")).get(0));
+                "pref_scam_hybrid_why_cct_gain_b","pref_scam_hybrid_why_ccm_sat","colour_calibration_screen","pref_scam_hybrid_colour_gamut"),
+                keys(screen.findPreference("colour_ccm_category")));
+        assertNull(((androidx.preference.PreferenceGroup)screen.findPreference("colour_wb_category")).findPreference("pref_scam_hybrid_mosaic_wb_mode"));
         for(String key:new String[]{"pref_scam_hybrid_colour_tint","pref_scam_hybrid_colour_keep_warm","pref_scam_hybrid_colour_keep_cool",
                 "pref_scam_hybrid_why_vibrance","pref_scam_hybrid_why_vibrance_sky","pref_scam_hybrid_colour_vib_highlights","colour_mixer_screen",
                 "pref_scam_hybrid_colour_mix_blue_sat","colour_grading_screen","pref_scam_hybrid_colour_grade_highlights_hue"})
@@ -1567,7 +1584,7 @@ public class SettingsMenuTest {
         androidx.preference.PreferenceGroup ui=screen.findPreference("root_shoot");
         for(String key:new String[]{"pref_theme_key","pref_theme_accent_key","pref_hide_gallery_icon_key","pref_shade_transparency"})
             assertNotNull(key,ui.findPreference(key));
-        PreferenceScreen noise=screen.findPreference("noise_model_screen");
+        androidx.preference.PreferenceGroup noise=screen.findPreference("lens_noise_category");   // P413: the lens page's noise model
         // P310 settings cleanup: the merge follows the profile itself, no separate source switch next to it
         assertNotNull(noise.findPreference("pref_noise_model_profile_key"));
         org.junit.Assert.assertNull("the SHDR noise source duplicated the profile",noise.findPreference("pref_scam_hybrid_noise_source"));
@@ -1814,10 +1831,11 @@ public class SettingsMenuTest {
             org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
             var sheet=(com.google.android.material.bottomsheet.BottomSheetDialog)org.robolectric.shadows.ShadowDialog.getLatestDialog();
             assertNotNull(sheet);
-            // the list and the whole sheet scroll by nested scrolling: a plain ScrollView let the sheet take the drag, and in
-            // landscape the fifth option of «Разрешение» could not be reached (X200 Ultra, 2026-10-15)
+            // the list scrolls by nested scrolling: a plain ScrollView let the sheet take the drag; landscape fits by listCap.
+            // P412: the list is the sheet's only nested scroller - inside a second one the sheet took every downward drag of
+            // the list (it scrolled only down, a drag up closed the sheet: owner's «Режим сенсора» video, 2026-10-30)
             assertTrue(sheet.findViewById(android.R.id.content).findViewWithTag("option_list") instanceof androidx.core.widget.NestedScrollView);
-            assertTrue(sheet.findViewById(android.R.id.content).findViewWithTag("sheet_scroll") instanceof androidx.core.widget.NestedScrollView);
+            assertNull(sheet.findViewById(android.R.id.content).findViewWithTag("sheet_scroll"));
             assertEquals("portrait: 60 % of the screen",1900,com.particlesdevs.photoncamera.ui.settings.SettingsStyle.listCap(3168,380,1900,3.5f));
             assertEquals("landscape: what the window leaves under the title",1440-380-252,com.particlesdevs.photoncamera.ui.settings.SettingsStyle.listCap(1440,380,1300,3.5f));
             assertEquals("never under two rows",364,com.particlesdevs.photoncamera.ui.settings.SettingsStyle.listCap(600,380,864,3.5f));
@@ -1898,36 +1916,25 @@ public class SettingsMenuTest {
             .putString("module_active","back2").commit();
         try(var controller=org.robolectric.Robolectric.buildActivity(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.class)){
             controller.setup();var fm=controller.get().getSupportFragmentManager();
+            // P413: a module's sensor rows head its lens page (sensorPage: that module's lens page; no module chips there)
             var page=com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment.sensorPage("back1");
             fm.beginTransaction().replace(R.id.settings_container,page).commitNow();
             org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+            assertEquals("lens_screen",page.requireArguments().getString(androidx.preference.PreferenceFragmentCompat.ARG_PREFERENCE_ROOT));
             assertNull(page.findPreference("pref_sensor_config_selector"));
-            assertNull("the main page: no header chip for the sensor",page.requireView().findViewWithTag("settings_chip"));
             assertTrue(page.findPreference("pref_category_sensor_back1").isVisible());
             assertFalse(page.findPreference("pref_category_sensor_back0").isVisible());
+            assertFalse(page.findPreference("pref_category_sensor_back2").isVisible());
             assertEquals("3× · ID 5",String.valueOf(((Preference)page.findPreference("pref_category_sensor_back1")).getTitle()).replace("\u200B",""));
-            var chips=(com.particlesdevs.photoncamera.ui.settings.custompreferences.ModuleChipsPreference)page.findPreference("module_sensor_picker");
-            assertEquals("back1",chips.selected());
-            android.view.View row=chipsRow(page,chips);
-            assertNotNull(row.findViewWithTag("module_chip_back0"));
-            row.findViewWithTag("module_chip_back0").performClick();org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
-            assertTrue(page.findPreference("pref_category_sensor_back0").isVisible());
-            assertFalse(page.findPreference("pref_category_sensor_back1").isVisible());
+            Preference chips=page.findPreference("module_sensor_picker");
+            assertTrue("no module chips on a lens page",chips==null||!chips.isVisible());
+            assertNotNull("the lens page's sections",page.findPreference("lens_raw_category"));
             assertEquals("the camera keeps its module","back2",ModuleRegistry.active());
-            assertEquals("back0",page.requireArguments().getString(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment.ARG_SENSOR_SLOT));
-            row=chipsRow(page,chips);
-            row.findViewWithTag("module_chip_back0").performClick();org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
-            assertFalse("the chosen chip again: none",page.findPreference("pref_category_sensor_back0").isVisible());
-            assertNull(chips.selected());
-            assertEquals("",page.requireArguments().getString(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment.ARG_SENSOR_SLOT));
-            assertEquals(android.view.View.VISIBLE,chipsRow(page,chips).findViewById(R.id.settings_chips_hint).getVisibility());
-            chipsRow(page,chips).findViewWithTag("module_chip_back2").performClick();org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
             controller.recreate();
             var again=(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment)controller.get().getSupportFragmentManager().findFragmentById(R.id.settings_container);
             org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
-            assertTrue("kept over a recreate",again.findPreference("pref_category_sensor_back2").isVisible());
-            assertFalse(again.findPreference("pref_category_sensor_back1").isVisible());
-            assertEquals("back2",((com.particlesdevs.photoncamera.ui.settings.custompreferences.ModuleChipsPreference)again.findPreference("module_sensor_picker")).selected());
+            assertTrue("kept over a recreate",again.findPreference("pref_category_sensor_back1").isVisible());
+            assertFalse(again.findPreference("pref_category_sensor_back2").isVisible());
             assertEquals("back2",ModuleRegistry.active());
         }
     }
@@ -2041,9 +2048,10 @@ public class SettingsMenuTest {
             var card=(com.particlesdevs.photoncamera.ui.settings.custompreferences.ModuleSection)root.findPreference("module_card_back0");
             card.performClick();org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
             List<String> open=listed(root,"module_card_back0","module_card_back2");
-            assertEquals(Arrays.asList("module_row_name_back0","module_row_zoom_back0","module_row_button_back0","module_row_copy_back0",
-                    "module_row_profile_back0"),open);
-            for(String key:open)assertFalse("Camera ID and the sensor are not in the card: "+key,key.startsWith("module_row_id_")||key.startsWith("pref_"));
+            // P413: the card is the reference app's lens button: its Camera ID and its lens page (the sensor, RAW, colour, noise)
+            assertEquals(Arrays.asList("module_row_name_back0","module_row_zoom_back0","module_row_card_id_back0","module_row_button_back0",
+                    "module_row_copy_back0","module_row_lens_back0","module_row_profile_back0"),open);
+            for(String key:open)assertFalse("no setting of the lens page in the card: "+key,key.startsWith("pref_"));
             renderPage(root.requireView(),"module-page-p148");
             ((Preference)root.findPreference("module_row_copy_back0")).performClick();
             org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
@@ -2335,7 +2343,7 @@ public class SettingsMenuTest {
      */
     @Test public void mosaicPreviewAndWhiteBalanceSwitchesSitOnTheCameraScreenGroup(){
         PreferenceScreen screen=inflate();
-        androidx.preference.PreferenceGroup colour=screen.findPreference("colour_expert_category");
+        androidx.preference.PreferenceGroup colour=screen.findPreference("lens_colour_category");   // P413: the lens page
         androidx.preference.TwoStatePreference wb=colour.findPreference(PreferenceKeys.MOSAIC_WB_KEY);
         assertNull(((androidx.preference.PreferenceGroup)screen.findPreference("viewfinder_screen")).findPreference(PreferenceKeys.MOSAIC_WB_KEY));
         assertNotNull(wb);assertTrue(wb.isChecked());

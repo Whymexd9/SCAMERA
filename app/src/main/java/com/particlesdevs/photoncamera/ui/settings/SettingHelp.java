@@ -91,8 +91,10 @@ public final class SettingHelp {
         // text names the old place, so the search still finds the old words
         EXACT.put("root_modules", R.string.help_modules_group);
         EXACT.put("modules_screen", R.string.help_modules_group);
-        EXACT.put("expert_module_ids", R.string.help_module_ids);
         EXACT.put("expert_module_sensor", R.string.help_module_sensor);
+        EXACT.put("lens_screen", R.string.help_module_sensor);   // P413
+        FAMILIES.put(Pattern.compile("module_row_card_id_\\w+"), R.string.help_module_ids);   // P413: the Camera ID in the card
+        FAMILIES.put(Pattern.compile("module_row_lens_\\w+"), R.string.help_module_sensor);
         EXACT.put("module_sensor_picker", R.string.help_module_sensor);
         EXACT.put("module_row_per_lens", R.string.help_module_profile);
         FAMILIES.put(Pattern.compile("module_card_\\w+"), R.string.help_module_card);

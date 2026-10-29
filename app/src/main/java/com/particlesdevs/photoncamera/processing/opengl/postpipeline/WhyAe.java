@@ -47,7 +47,7 @@ public final class WhyAe {
         /** P216: where the highlight peak of a shot with real headroom lies between P159's (0) and the p99.9 level (1), in log. */
         public float hrMix = 0.5f;
         /**
-         * P402: the reference app v2.07's Smart-HDR strengths (with its classic fusion layout, WhyTone.arkLayout): effS without the
+         * P402: the reference app's Smart-HDR strengths (with its classic fusion layout, WhyTone.arkLayout): effS without the
          * night factor, effH from the peak's excess over 0.85 x bright_thresh with a soft start, x0.833 per EV, a bright-area gate
          * 0.2 .. 1 and x(1 + 0.35 ..) for a large bright area; false: ours (WhyCam 1.58's).
          */
@@ -497,7 +497,7 @@ public final class WhyAe {
             double need = realPeak > bt ? log2(realPeak / bt) / 1.5 : 0.0;                      // 0x72fdc-0x72ffc
             double effH = Math.min(need * Math.max(s.hlBoost, 0), hlCap);                       // 0x73038-0x7305c
             if (s.v207) {
-                // P402: v2.07 (libopenhdr_engine 0x137000-0x137860): f = the share above bright_thresh after the exposure
+                // P402: the reference (libopenhdr_engine 0x137000-0x137860): f = the share above bright_thresh after the exposure
                 final double f = r.ovArea, area = smooth(0.0, 1.0, Math.min(Math.max(20.0 * f, 0.0), 1.0));
                 realPeak = a * p98x + 0.25 * area * Math.min(a * Math.max(p995x - p98x, 0.0), 1.5 * Math.max(bt, 0.5));
                 final double ex = log2(Math.max(realPeak, 1e-9) / (0.85 * Math.max(bt, 1e-3))), knee = log2(1.0 / 0.85);

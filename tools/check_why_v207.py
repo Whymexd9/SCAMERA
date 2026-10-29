@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""P402 (owner, 2026-10-29: «Перенеси то чего нам не хватает», the reference app v2.07's settings): why/combine.glsl's AGX_INSET
-(«Плёночное выгорание светов»), hrEaseU («Сила удержания цвета в светах») and ARK_BASE (the v2.07 fusion layout's base of the
+"""P402 (owner, 2026-10-29: «Перенеси то чего нам не хватает», the reference app's settings): why/combine.glsl's AGX_INSET
+(«Плёночное выгорание светов»), hrEaseU («Сила удержания цвета в светах») and ARK_BASE (the reference fusion layout's base of the
 tone) on the GPU (moderngl), the shipped shader as check_light_chroma's Renderer draws it. Checks:
 - AGX_INSET with the full strength (insetU 1) is the shader without it (within 2e-6: the inverse is computed); at 0.5 a neutral
   grey keeps its colour (the inset's rows sum to 1, within 1e-3) and a saturated light keeps more chroma than at full strength;
@@ -91,7 +91,7 @@ def main():
         check(np.all(d >= -2e-4), '%s: ARK_BASE exposure sweep monotonic (min step %.1e)' % (k, d.min()))
         sb = y(r.render([rows[i]], fine, wide, hr)[0])
         check(np.abs(d).max() <= np.abs(np.diff(sb)).max() + 0.01, '%s: no step (%.3f against %.3f)' % (k, np.abs(d).max(), np.abs(np.diff(sb)).max()))
-    print('why v2.07 tone check %s' % ('FAIL' if FAIL else 'PASS'))
+    print('why reference tone check %s' % ('FAIL' if FAIL else 'PASS'))
     return 1 if FAIL else 0
 
 

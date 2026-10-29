@@ -123,7 +123,7 @@ public final class SettingsNumericRules {
             case "pref_scam_hybrid_why_gamma": return new double[]{1.6,2.8,0};
             case "pref_scam_hybrid_why_film_toe": return new double[]{0,0.5,0};
             case "pref_scam_hybrid_why_macro_contrast": return new double[]{0.8,1.5,0};
-            // P402: the reference app's settings ported (HDR shoulder, highlight protection, inset, matrix saturation, the v2.07 layout's
+            // P402: the reference app's settings ported (HDR shoulder, highlight protection, inset, matrix saturation, the reference layout's
             // weights, the pyramid denoise, the dezipper)
             case "pref_scam_hybrid_why_hl_blend": case "pref_scam_hybrid_why_hr_strength": case "pref_scam_hybrid_why_classic_weight_center":
                 return new double[]{0,1,0};

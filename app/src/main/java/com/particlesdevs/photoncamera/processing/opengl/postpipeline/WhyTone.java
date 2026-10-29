@@ -99,7 +99,7 @@ public final class WhyTone {
 
     /**
      * P402 (owner, 2026-10-29: «Перенеси то чего нам не хватает для того чтобы применить конфиг который я кинул»): «Раскладка слоёв» 1
-     * = the reference app's v2.07 fusion (WhyFusion.exposures207) with its own rows - the weights of the deepest highlights, the
+     * = the reference app's fusion (WhyFusion.exposures207) with its own rows - the weights of the deepest highlights, the
      * moderate highlights, the base and the shadows (classic_weight_ext_hl / _hl / _mid / _shadow, 0.7 / 0.8 / 1.0 / 0.5) and its centre
      * (classic_weight_center 0.5) -, no headroom weights (P291 / P310), no darkest-exposure cap (P340), no window term (P401). 0 (the
      * default): ours.
@@ -108,7 +108,7 @@ public final class WhyTone {
         return value("fusion_layout", 1f) >= 0.5f;
     }
 
-    /** The fusion's well-exposed centre without headroom: weight_center (0.6), the v2.07 layout's classic_weight_center (0.5). */
+    /** The fusion's well-exposed centre without headroom: weight_center (0.6), the reference layout's classic_weight_center (0.5). */
     static float fusionCenter() {
         return arkLayout() ? value("classic_weight_center", 1f) : value("weight_center", 0.6f);
     }

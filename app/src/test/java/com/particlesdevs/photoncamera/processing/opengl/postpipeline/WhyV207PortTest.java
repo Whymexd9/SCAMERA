@@ -15,7 +15,7 @@ import java.nio.file.Files;
 
 /**
  * P402 (owner, 2026-10-29: «Перенеси то чего нам не хватает», «dezipper нам также перенеси», the ported rows «не в дев настройках»):
- * the reference app v2.07's settings in ours - the classic fusion layout's exposures, the matrix saturation, the pyramid denoise's
+ * the reference app's settings in ours - the classic fusion layout's exposures, the matrix saturation, the pyramid denoise's
  * noise factor and its matrix inverse, the wiring of the tone's AGX_INSET / ARK_BASE / hrEaseU and of the dezipper, and none of
  * them in the developer page. The pixels: tools/check_why_v207.py, check_ms_denoise.py, check_hybrid_dezipper.py.
  */

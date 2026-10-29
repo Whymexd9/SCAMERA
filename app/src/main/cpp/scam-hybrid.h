@@ -482,7 +482,8 @@ struct HybridTuning {
     int shastaMotionScope=0,shastaScopeDilate=1;
     float shastaScopeMax=60.f,shastaScopeFeather=0.75f;
     float shastaScopeWeak=0.05f;  // P392 review: the scope's map also takes the blocks beside a moved one over 4 sigma + this x the level (0 = off)
-    int shastaScopeAll=0;         // P392 review: 1 = the scope also on a forced long frame at or below shastaMotionMax (0: kept whole as before)
+    int shastaScopeAll=0;         // P392 review: 1 = the scope also on a forced long frame at or below shastaMotionMax (0: kept whole as before; P414: the app sends 1)
+    int shastaScopeLone=0;        // P414: 1 = with the scope, a moved block only the noise decided and without a moved neighbour stays (shastaMotion lone; the app sends 1)
     // misc
     int snrFixed=0;
     float snrScale=0.25f;
@@ -548,7 +549,7 @@ struct HybridTuning {
     // detail +12..24 %, noise +19 %); the structure threshold (f2 / f3 x0.1..0.5) and the rejection changed nothing. 1 = off (replays
     // unchanged); the app sends 0.8.
     float s61NightScale=1.f,s61NightKeyLo=8.f,s61NightKeyHi=16.f;
-    // P402 (owner, 2026-10-29: «dezipper нам также перенеси»): the reference app v2.07's dezipper (sabre_dezipper_thresh, its merge's
+    // P402 (owner, 2026-10-29: «dezipper нам также перенеси»): the reference app's dezipper (sabre_dezipper_thresh, its merge's
     // kernel_blurring_params.x): where the donors were rejected (their accepted weight below 98 % of the donor frames, fully under 70 %)
     // the base frame weighs up to max(1, dezipper - accepted donors) instead of 1, so a moving edge is the base's own sample and not a
     // few partly accepted donors' interleaved with it (the zipper / staircase of a moving edge). 0 = off: the merge program as before
@@ -1044,7 +1045,7 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             ||set("bentoPartial",nullptr,&t.bentoPartial)||set("bentoPartialZLo",&t.bentoPartialZLo)||set("bentoPartialZHi",&t.bentoPartialZHi) // P392
             ||set("bentoPartialClose",nullptr,&t.bentoPartialClose)||set("bentoPartialGrow",nullptr,&t.bentoPartialGrow)||set("bentoPartialGuide",nullptr,&t.bentoPartialGuide)
             ||set("bentoPartialPlaus",&t.bentoPartialPlaus)||set("bentoFillReach",&t.bentoFillReach)||set("bentoRefuseShare",&t.bentoRefuseShare)||set("bentoAliasDamp",&t.bentoAliasDamp)||set("bentoPartialEdge",&t.bentoPartialEdge)||set("bentoFillRelax",nullptr,&t.bentoFillRelax)||set("bentoPartialInner",&t.bentoPartialInner)||set("bentoPartialLift",nullptr,&t.bentoPartialLift)||set("bentoPartialOpen",nullptr,&t.bentoPartialOpen)
-            ||set("shastaMotionScope",nullptr,&t.shastaMotionScope)||set("shastaScopeDilate",nullptr,&t.shastaScopeDilate)||set("shastaScopeMax",&t.shastaScopeMax)||set("shastaScopeFeather",&t.shastaScopeFeather)||set("shastaScopeWeak",&t.shastaScopeWeak)||set("shastaScopeAll",nullptr,&t.shastaScopeAll)
+            ||set("shastaMotionScope",nullptr,&t.shastaMotionScope)||set("shastaScopeDilate",nullptr,&t.shastaScopeDilate)||set("shastaScopeMax",&t.shastaScopeMax)||set("shastaScopeFeather",&t.shastaScopeFeather)||set("shastaScopeWeak",&t.shastaScopeWeak)||set("shastaScopeAll",nullptr,&t.shastaScopeAll)||set("shastaScopeLone",nullptr,&t.shastaScopeLone)
             ||set("bentoUsWeight",&t.bentoUsWeight)||set("bentoUsSigma",&t.bentoUsSigma)||set("bentoFrames",nullptr,&t.bentoFrames)||set("bentoValidate",nullptr,&t.bentoValidate)||set("bentoMotionMax",&t.bentoMotionMax)
             ||set("bentoChromaSigma",&t.bentoChromaSigma)||set("bentoChroma",&t.bentoChroma)||set("dayKernelScale",&t.dayKernelScale)||set("shastaSharpness",&t.shastaSharpness)||set("shastaSharpLo",&t.shastaSharpLo)||set("shastaSharpHi",&t.shastaSharpHi)||set("shastaSat",&t.shastaSat)||set("shastaMaxRatio",&t.shastaMaxRatio)
             ||set("shastaEnable",nullptr,&t.shastaEnable)||set("shastaForce",nullptr,&t.shastaForce)||set("shastaMotionMax",&t.shastaMotionMax)||set("snr",nullptr,&t.snrFixed)||set("snrScale",&t.snrScale)||set("debugFrame",nullptr,&t.debugFrame)
@@ -7293,17 +7294,24 @@ inline SharpnessPair hybridSharpnessPair(const Guide& qb,const Guide& qf,float e
 // 4 sigma of the two means (noise model of both frames) plus 15 % of the base level (gain mismatch, sub-pixel edges of the block
 // mean). Blocks with a site at or above clip in either frame (the brighter frame clips first) are not counted.
 struct ShastaMotion { long blocks=0,moved=0; double share() const {return blocks>0?100.0*double(moved)/double(blocks):0.0;}
-    std::vector<uint8_t> map;int bw=0,bh=0; /* P392 shastaMotionScope (withMap): 1 per moved block, bw x bh */ };
+    std::vector<uint8_t> map;int bw=0,bh=0; /* P392 shastaMotionScope (withMap): 1 per moved block, bw x bh */
+    long lone=0; /* P414: lone blocks only the noise decided, left out of the map and the count */ };
 // P392 review (withMap, weak > 0): the map also takes the blocks within 2 blocks of a moved one (8-connected) that differ by more than
 // 4 sigma + weak x the base level (an arm over a wall of about its level passed the 15 % test and left +4 % bands beside it); the
 // moved share (the frame's decision) stays the 15 % test's.
+// P414 (withMap, lone; owner, 2026-10-30: «обновить карту реджекта для шаста кадров», the long frames up to 1/60 s and +2 EV for
+// deep shadows since P409): a moved block that only the noise decided (4 sigma above 15 % of the level in every colour) with no
+// moved block around it is noise, not motion - it leaves the map and the count. On the window burst 137 of the 150 moved blocks
+// below 2^-8 of white were such (a static ceiling: the long frame cut out in spots where it matters most); on the hand bursts 4 %
+// and 37 % of the dark ones (a static wall), the hand's blocks all kept.
 inline ShastaMotion shastaMotion(const Burst& b,int slot,const BackwardHomography& h,float exposure,float baseSlope,float baseOffset,
-                                 float slope,float offset,float clip,bool withMap=false,float weak=0.f){
+                                 float slope,float offset,float clip,bool withMap=false,float weak=0.f,bool lone=false){
     ShastaMotion res;
     const int w2=b.w/2,h2=b.h/2,bw=w2/4,bh=h2/4;
     const float e=std::max(exposure,1e-6f);
     std::atomic<long> blocks{0},moved{0};
     if(withMap){res.map.assign(size_t(std::max(bw,0))*std::max(bh,0),0);res.bw=bw;res.bh=bh;}
+    std::vector<uint8_t> noiseOnly(withMap&&lone?res.map.size():0,0); // lone: 1 = a moved block only the noise decided
     mergeRowBands(bh,[&](int y0,int y1){
         long lb=0,lm=0;
         for(int by=y0;by<y1;++by)for(int bx=0;bx<bw;++bx){
@@ -7322,12 +7330,23 @@ inline ShastaMotion shastaMotion(const Burst& b,int slot,const BackwardHomograph
             if(clipped)continue;
             ++lb;
             static const float count[3]={16.f,32.f,16.f};
-            bool weakHit=false;
+            bool weakHit=false,noiseBound=true;
             for(int k=0;k<3;++k){
                 const float mb=sb[k]/count[k],mf=sf[k]/count[k];
                 const float var=(baseSlope*mb+baseOffset+(slope*mf+offset)/(e*e))/count[k];
                 const float d=std::abs(mf/e-mb),s4=4.f*std::sqrt(std::max(var,0.f));
-                if(d>s4+0.15f*mb){++lm;if(withMap)res.map[size_t(by)*bw+bx]=1;weakHit=false;break;}
+                noiseBound=noiseBound&&s4>0.15f*mb;
+                if(d>s4+0.15f*mb){
+                    ++lm;if(withMap)res.map[size_t(by)*bw+bx]=1;weakHit=false;
+                    if(!noiseOnly.empty()){
+                        for(int k2=k+1;k2<3;++k2){ // the colours after it: is the block bound by the noise in all three
+                            const float mb2=sb[k2]/count[k2],mf2=sf[k2]/count[k2];
+                            noiseBound=noiseBound&&4.f*std::sqrt(std::max((baseSlope*mb2+baseOffset+(slope*mf2+offset)/(e*e))/count[k2],0.f))>0.15f*mb2;
+                        }
+                        noiseOnly[size_t(by)*bw+bx]=noiseBound?1:0;
+                    }
+                    break;
+                }
                 if(weak>0.f&&d>s4+weak*mb)weakHit=true;
             }
             if(withMap&&weakHit&&res.map[size_t(by)*bw+bx]==0)res.map[size_t(by)*bw+bx]=2;
@@ -7335,6 +7354,21 @@ inline ShastaMotion shastaMotion(const Burst& b,int slot,const BackwardHomograph
         blocks+=lb;moved+=lm;
     });
     res.blocks=blocks;res.moved=moved;
+    if(!noiseOnly.empty()){ // lone: on the map as found (a lone block's neighbours are judged before any of them leaves)
+        std::vector<size_t> out;
+        for(int by=0;by<bh;++by)for(int bx=0;bx<bw;++bx){
+            const size_t i=size_t(by)*bw+bx;
+            if(res.map[i]!=1||!noiseOnly[i])continue;
+            bool near=false;
+            for(int dy=-1;dy<=1&&!near;++dy)for(int dx=-1;dx<=1&&!near;++dx){
+                const int xx=bx+dx,yy=by+dy;
+                if((dx||dy)&&xx>=0&&yy>=0&&xx<bw&&yy<bh&&res.map[size_t(yy)*bw+xx]==1)near=true;
+            }
+            if(!near)out.push_back(i);
+        }
+        for(size_t i:out)res.map[i]=0;
+        res.moved-=long(out.size());res.lone=long(out.size());
+    }
     if(withMap&&weak>0.f){ // the weak blocks within 2 blocks of a moved one (grown ring by ring) join it; the others leave the map
         // (2 rings: the arm's bands lay beside it; a frame whose level is off by more than weak everywhere must not flood whole)
         std::vector<int> ring,next;
@@ -11350,10 +11384,10 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             // a bracketed frame: its forced-Shasta motion check (the base's noise as the Shasta block takes it)
             if(role==kRoleBracketed&&tune.shastaForce&&tune.shastaMotionMax<100.f&&tune.shastaEnable){
                 const float bs=std::max(input.frames[0].slope,1e-9f),bo=std::max(input.frames[0].offset,0.f);
-                try{earlyMotion[size_t(f)].f=std::async(std::launch::async,[&b,&input,f,h=H[f],bs,bo,scopeMap=tune.shastaMotionScope>0&&native==nullptr,weak=tune.shastaScopeWeak]{
+                try{earlyMotion[size_t(f)].f=std::async(std::launch::async,[&b,&input,f,h=H[f],bs,bo,scopeMap=tune.shastaMotionScope>0&&native==nullptr,weak=tune.shastaScopeWeak,lone=tune.shastaScopeLone>0]{
                     const auto& fr=input.frames[f];
                     Burst one=b;one.raw[1]=fr.raw;one.exposure[1]=fr.exposure;
-                    return shastaMotion(one,1,h,fr.exposure,bs,bo,fr.slope,fr.offset,0.95f,scopeMap,scopeMap?weak:0.f);
+                    return shastaMotion(one,1,h,fr.exposure,bs,bo,fr.slope,fr.offset,0.95f,scopeMap,scopeMap?weak:0.f,scopeMap&&lone);
                 }).share();earlyMotion[size_t(f)].h=H[f];}catch(const std::exception&){}
             }
             // the ultrashort frames' Bento masks on the pool once the last of them (they come first) is in, all with final homographies
@@ -11693,9 +11727,9 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
                 const auto& fr=input.frames[f];
                 if(fr.role!=kRoleBracketed||!aligned[f])continue;
                 if(earlyMotion[size_t(f)].f.valid()&&sameH(earlyMotion[size_t(f)].h,H[f]))continue; // P364: running since the alignment
-                try{motions[size_t(f)]=std::async(std::launch::async,[&b,&fr,h=H[f],baseSlope,baseOffset,scopeMap=tune.shastaMotionScope>0&&native==nullptr,weak=tune.shastaScopeWeak]{
+                try{motions[size_t(f)]=std::async(std::launch::async,[&b,&fr,h=H[f],baseSlope,baseOffset,scopeMap=tune.shastaMotionScope>0&&native==nullptr,weak=tune.shastaScopeWeak,lone=tune.shastaScopeLone>0]{
                     Burst one=b;one.raw[1]=fr.raw;one.exposure[1]=fr.exposure;
-                    return shastaMotion(one,1,h,fr.exposure,baseSlope,baseOffset,fr.slope,fr.offset,0.95f,scopeMap,scopeMap?weak:0.f);
+                    return shastaMotion(one,1,h,fr.exposure,baseSlope,baseOffset,fr.slope,fr.offset,0.95f,scopeMap,scopeMap?weak:0.f,scopeMap&&lone);
                 });}catch(const std::exception&){} // no thread: in the loop below
             }
         for(int f=1;f<n;++f){
@@ -11714,11 +11748,13 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
                     const ShastaMotion m=motions[size_t(f)].valid()?motions[size_t(f)].get()
                         :earlyMotion[size_t(f)].f.valid()&&sameH(earlyMotion[size_t(f)].h,H[f])?earlyMotion[size_t(f)].f.get()
                         :shastaMotion(one,1,H[f],fr.exposure,baseSlope,baseOffset,fr.slope,fr.offset,0.95f,tune.shastaMotionScope>0&&native==nullptr,
-                                       tune.shastaMotionScope>0&&native==nullptr?tune.shastaScopeWeak:0.f);
+                                       tune.shastaMotionScope>0&&native==nullptr?tune.shastaScopeWeak:0.f,
+                                       tune.shastaMotionScope>0&&native==nullptr&&tune.shastaScopeLone>0);
                     const bool drop=m.share()>tune.shastaMotionMax;
                     // P392 shastaMotionScope: above shastaMotionMax and up to shastaScopeMax the frame stays, its moved blocks out
                     // (P392 review: plain merges only - the native mosaic merge has no scope planes, a kept frame would merge whole there)
                     const bool scope=(drop||(tune.shastaScopeAll>0&&m.moved>0))&&tune.shastaMotionScope>0&&native==nullptr&&m.share()<=tune.shastaScopeMax&&m.bw>0&&m.bh>0&&m.map.size()==size_t(m.bw)*m.bh;
+                    if(m.lone>0)report("HYBRID SHASTA MAP (P414): frame "+std::to_string(f)+": "+std::to_string(m.lone)+" lone blocks only the noise decided stay");
                     report("HYBRID SHASTA motion frame="+std::to_string(f)+" moved="+std::to_string(m.moved)+" of "+std::to_string(m.blocks)
                         +" blocks ("+std::to_string(m.share())+" %"+(scope?(drop?" > ":" <= ")+std::to_string(tune.shastaMotionMax)+" %: kept, moved blocks out)"
                         :drop?" > "+std::to_string(tune.shastaMotionMax)+" %: dropped)":", forced)"));

@@ -85,8 +85,8 @@ public class ScamLabFragment extends ModuleConceptFragment {
      */
     static final String[] GROUPS = {"scam_hybrid_why_ae_screen", "scam_hybrid_why_curves_screen", "scam_hybrid_why_tone_screen",
             "photo_processing_screen", "scam_hybrid_why_sharp_screen", "scam_hybrid_why_rl_screen", "scam_hybrid_photo_screen",
-            "scam_hybrid_merge_screen", "scam_hybrid_hdr_screen", "scam_hybrid_artifacts_screen", "noise_model_screen", "photo_size_screen", "adv_output",
-            "scam_hybrid_motion_screen", "root_colour", "colour_expert_category"};
+            "scam_hybrid_merge_screen", "scam_hybrid_hdr_screen", "scam_hybrid_artifacts_screen", "lens_noise_category", "photo_size_screen", "adv_output",
+            "scam_hybrid_motion_screen", "root_colour", "lens_colour_category"};   // P413: the camera colour rows on the lens page
     /**
      * Settings fixed at the shot: what the capture plan took (the exposures and counts of the highlight / shadow frames, the
      * «Движение» shutter, flicker and ring frames), what the burst holds (its noise model, its grid and output size, the crop

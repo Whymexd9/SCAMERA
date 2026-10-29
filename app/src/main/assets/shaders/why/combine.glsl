@@ -115,12 +115,12 @@ precision highp int;
 // P398 (owner, 2026-10-29, the ship's bridge: «света почему-то получаются кремовые»): 1 = a pale colour lands on white at the top of
 // the tone (hlNeutralU; 0 = the shader before)
 #define HL_NEUTRAL 0
-// P402 ARK_BASE 1 (WhyCombine sets it with the reference app v2.07's fusion layout, WhyTone.arkLayout): its base of the tone -
+// P402 ARK_BASE 1 (WhyCombine sets it with the reference app's fusion layout, WhyTone.arkLayout): its base of the tone -
 // with headroom (clip > 1.05) the fused target_lin goes softly into the tonemapper's top above 0.7 of it (AgX 0.18 x 2^(max EV +
 // EV), ACES 3, the others 4) instead of up the ACES inverse's asymptote, and the gain is held in 0.05 .. 12 against an auto
 // exposure above 1 that fades to 1 over the lights (Y 0.70 .. 1.20). 0: the shader before P402, token for token.
 #define ARK_BASE 0
-// P402 AGX_INSET 1 (WhyCombine sets it for «Плёночное выгорание светов» below 100 %): the reference app v2.07's inset strength - the
+// P402 AGX_INSET 1 (WhyCombine sets it for «Плёночное выгорание светов» below 100 %): the reference app's inset strength - the
 // inset matrix of the tone goes towards the identity (insetU 1: the matrix, 0: per channel) and the outset is its inverse, as there.
 // 0: the shader before P402, token for token.
 #define AGX_INSET 0
@@ -1263,7 +1263,7 @@ void main() {
     lab.yz *= satMult;
 #if ARK_VIB == 1
     {
-        // P404: v2.07 tonemap_final 4.1 - 4.4 (its strength, sky and green terms are ours above, its light-tone term ours below)
+        // P404: the reference's tonemap_final 4.1 - 4.4 (its strength, sky and green terms are ours above, its light-tone term ours below)
         float cs = max(length(lab.yz), 0.0001);
         float dth = atan(lab.z, lab.y) - arkSkinU.x;
         dth = mod(dth + 3.14159265, 6.2831853) - 3.14159265;
@@ -1289,7 +1289,7 @@ void main() {
 #if TONE_OP == 1
     // P407 (owner, 2026-10-29, OPPO Find X8 Ultra beside ArkCam: wallpaper, board and speakers too yellow): P341's term made up
     // AgX's shoulder loss; the per-channel curves keep a colour's chroma (the own curve raises it), so under them the light tones
-    // take the reference's own term (v2.07 tonemap_final 4.2: x (1 + str) from OKLab L 0.60 .. 0.80 to 0.88 .. 0.98), vibHlU 1 its
+    // take the reference's own term (tonemap_final 4.2: x (1 + str) from OKLab L 0.60 .. 0.80 to 0.88 .. 0.98), vibHlU 1 its
     // config's strength 0.25. Host model of the shot: wallpaper / board sRGB 168 150 121 / 167 142 92 -> 164 151 130 / 159 143 115,
     // ArkCam 162 150 129 / 160 144 118.
     // P393's cast gate kept (a white-balance cast on a near-white not raised; the reference raises it x1.25).

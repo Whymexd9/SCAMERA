@@ -455,7 +455,7 @@
     </string-array>
     <string-array name="scam_hybrid_why_fusion_layout_entries">
         <item>Ours</item>
-        <item>Classic (v2.07)</item>
+        <item>Classic</item>
     </string-array>
     <string-array name="scam_hybrid_why_fusion_layout_values" translatable="false">
         <item>0</item>

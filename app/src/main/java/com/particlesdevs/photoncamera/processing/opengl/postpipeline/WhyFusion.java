@@ -567,7 +567,7 @@ public final class WhyFusion extends Node {
 
     /** P401: build 31091's synthetic exposures: 2^(-1.5 effH) (no P340 cap by the headroom), 1, 2^effS (<= 8), 2^(2 effS) (<= 16). */
     /**
-     * P402: the reference app v2.07's synthetic exposures (ef_pyr_prep's em) in our layer order - darkest 2^(-2.5 effH), base 1,
+     * P402: the reference app's synthetic exposures (ef_pyr_prep's em) in our layer order - darkest 2^(-2.5 effH), base 1,
      * second dark 2^(-1.2 effH), bright min(2^(1.8 effS), 16).
      */
     static float[] exposures207(WhyAe.Result r) {

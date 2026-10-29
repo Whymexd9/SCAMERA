@@ -29,11 +29,11 @@ final class ModulePageFilter {
     static final String SENSOR_GROUP = SensorConfigPreferenceGenerator.GROUP_KEY;
     /**
      * SIMPLE_UI §4: the groups a module page never shows (the root is now groups of rows): «Система» has per-module rows by
-     * name only; the app's and the about rows are shared. P384: the module cards and the Camera ID rows are every module's, not one
-     * profile's.
+     * name only; the app's and the about rows are shared. P384: the module cards are every module's, not one profile's. P413: the
+     * lens settings are the module's lens page (ModuleRows.LENS), not its photo page.
      */
     static final List<String> NOT_MODULE = Collections.unmodifiableList(Arrays.asList("root_logs", "root_lab", "root_about",
-            ModuleRows.GROUP, ModuleRows.IDS));
+            ModuleRows.GROUP, "root_lenses"));   // P413: the lens settings are the module's lens page, not its photo page
 
     private ModulePageFilter() { }
 
@@ -57,7 +57,7 @@ final class ModulePageFilter {
                 if (n == 0) hide(p, hidden);
                 values += n;
             } else if (!moduleRow(p.getKey(), profile)) hide(p, hidden);
-            else if (p.isVisible() && p.isSelectable() && ModuleProfiles.isLocal(p.getKey())) values++;
+            else if (p.isVisible() && p.isSelectable() && (ModuleProfiles.isLocal(p.getKey()) || LensPage.sensorRow(p.getKey()))) values++;
         }
         return values;
     }
@@ -65,6 +65,7 @@ final class ModulePageFilter {
     /** A row of a module page: a per-module value (the hardware remosaic only where it acts), or a row without a value. */
     static boolean moduleRow(String key, String profile) {
         if (key == null) return true;
+        if (LensPage.sensorRow(key)) return true;   // P413: the module's sensor rows in the lens page's sections
         if (VivoSdkFullRes.PREF_HW_REMOSAIC.equals(key)) return FullResProfiles.hardwareRemosaicApplies(profile);
         // P190: «Кадров в снимке 50 / 200 Мп» only in the FULLRES profile of that size
         if (FullResProfiles.framesTag(key) != null) return FullResProfiles.framesRowApplies(key, profile);
@@ -84,7 +85,8 @@ final class ModulePageFilter {
     private static void retitle(PreferenceGroup page, String profile) {
         android.content.Context c = page.getContext();
         Preference sensor = SENSOR_GROUP.equals(page.getKey()) ? page : page.findPreference(SENSOR_GROUP);
-        if (sensor != null) {
+        // P413: the lens page keeps its section's own title (its subtitle names the module)
+        if (sensor != null && !ModuleRows.LENS.equals(page.getKey())) {
             sensor.setTitle(c.getString(R.string.module_sensor_this));
             String slot = FullResProfiles.slotOf(profile);
             if (FullResProfiles.isVariant(profile) || !FullResProfiles.variants(slot).isEmpty())
