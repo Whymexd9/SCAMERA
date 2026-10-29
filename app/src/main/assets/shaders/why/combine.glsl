@@ -137,6 +137,7 @@ uniform float detailGainU;          // why_detail_gain; 0 (unset) = no detail
 uniform int detailRefU;             // 1: bounded, compression-scaled delta against WhyDetailRef; unset -> unbounded delta
 uniform int sharpU;                 // 1: the delta's luminance is WhyLumaS; unset -> the full-size merge
 uniform int fullInputU;             // P349: 1 = InputBuffer is the full-size image (not given back above 100 MP); 0 / unset: it may not be
+uniform float edgeHoldU;            // P394: the sharpened luma held within the full-size merge's 3 x 3 range at a strong edge (0 / unset = off)
 uniform float sharpToneU;           // sharpU 1: ae / m (WhyLumaS domain -> ae domain); <= 0 -> 1
 uniform float deltaChromaU;         // 0..1: a darkening delta scales a, b with L (hue and relative chroma kept); 0 = kernel
 uniform float filmToeU;             // film toe (0 = off)
@@ -424,6 +425,48 @@ float trenchAt(ivec2 xy, ivec2 size) {
     float h = min(sceneY(xy - ivec2(1, 0), size), sceneY(xy + ivec2(1, 0), size));
     float v = min(sceneY(xy - ivec2(0, 1), size), sceneY(xy + ivec2(0, 1), size));
     return smoothstep(0.035, 0.06, 1.0 - c / max(max(h, v), 0.000001));
+}
+
+// P394 (owner, 2026-10-29: «нам нужно сделать грань максимально гладкой без зубчиков» - a lamp's rim, a window frame against a
+// clipped light): at a strong edge the sharpened luma (the domain m: min(m * Y, 1)) stays within the unsharpened merge's 3 x 3 range
+// (+-5 % of it): the sharpening's undershoot drew a dark outline along the edge and deepened the merge's pixel steps into teeth.
+// From a cube-root step of 0.10 (0.25 full) between the darkest and the brightest neighbour: texture and soft edges keep it all.
+float edgeHold(float yD, ivec2 xy, ivec2 size, float m) {
+    if (fullInputU != 1 || edgeHoldU <= 0.0) return yD;
+    float lo = 2.0, hi = 0.0;   // (min(m * Y, 1): never above 1)
+    for (int dy = -1; dy <= 1; dy++)
+        for (int dx = -1; dx <= 1; dx++) {
+            float v = min(sceneY(xy + ivec2(dx, dy), size) * m, 1.0);
+            lo = min(lo, v);
+            hi = max(hi, v);
+        }
+    float w = edgeHoldU * smoothstep(0.10, 0.25, cbrtp(hi) - cbrtp(lo));
+    if (w <= 0.0) return yD;
+    // along the edge (its tangent from the merge's gradient) the sharpened luma averaged over +-3 px: the pixel steps of a
+    // slanted edge (the merge's sharp kernel, then the sharpening) smooth out, the edge stays as sharp across
+    float gx = 0.0, gy = 0.0;
+    for (int k = -1; k <= 1; k++) {
+        float c = k == 0 ? 2.0 : 1.0;
+        gx += c * (sceneY(xy + ivec2(1, k), size) - sceneY(xy + ivec2(-1, k), size));
+        gy += c * (sceneY(xy + ivec2(k, 1), size) - sceneY(xy + ivec2(k, -1), size));
+    }
+    float gl = length(vec2(gx, gy));
+    float ys = yD;
+    if (gl > 1.0e-6) {
+        vec2 t = vec2(-gy, gx) / gl;
+        ivec2 last = textureSize(WhyLumaS, 0) - ivec2(1);
+        float sum = 3.0 * yD, sw = 3.0;
+        for (int k = 1; k <= 3; k++) {
+            float wk = float(4 - k);
+            ivec2 o = ivec2(floor(t * float(k) + 0.5));
+            sum += wk * (max(texelFetch(WhyLumaS, clamp(xy + o, ivec2(0), last), 0).r, 0.0)
+                       + max(texelFetch(WhyLumaS, clamp(xy - o, ivec2(0), last), 0).r, 0.0));
+            sw += 2.0 * wk;
+        }
+        ys = sum / sw;
+    }
+    float r = 0.05 * (hi - lo);
+    return mix(yD, clamp(ys, lo - r, hi + r), w);
 }
 
 // Output pixel x on a grid reduced by a box of f: centre (x + 0.5) / f - 0.5 as an integer base and a fraction.
@@ -987,6 +1030,7 @@ void main() {
             // bounded like the kernel's a3: min(m * Y, 1) (or its sharpened S) against the B-spline of its box mean
             lRef = cbrtp(max(yRef, 0.000001));
             float yD = sharpU == 1 ? yS : min(yFull * ae, 1.0);
+            if (sharpU == 1) yD = edgeHold(yD, xy, size, refDomain);   // P394
             delta = cbrtp(max(yD, 0.000001)) - lRef;
             // P311: beside a clipped light, against the side of the neighbourhood that is not the light
             if (delta < 0.0 && lightW > 0.0) delta = lightRimDelta(delta, yD, yRef, lightW, lbx, lby, lfx, lfy, refDomain);

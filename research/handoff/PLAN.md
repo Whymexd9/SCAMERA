@@ -8979,4 +8979,12 @@ Owner, same day: «сделай гпу выравнивание и дай воз
   2 x 2 blocks at a moving finger), the cellClipMin threshold.
 - Open: ArkCam's softer edges and weaker green lateral CA line (our RAW CA correction R -0.25 / B +0.39 px on these shots); the
   native Quad path keeps the same switch (the app's line reaches it too) - not measured on a Quad burst.
+- Round 2 (owner: «нам нужно сделать грань максимально гладкой без зубчиков»): with the cell clip off the lamp's rim kept a thin dark
+  outline and pixel steps along its slanted lower edge - the sharpening (WhyLumaSharpen + the detail delta), not the merge (no
+  outline without the detail). DONE: why/combine edgeHold (edgeHoldU, WhyTone.edgeHold 1, scam_dev hybrid_why_edge_hold): at a
+  strong edge (cube-root range of the full-size merge's 3 x 3 from 0.10, full at 0.25) the sharpened luma is averaged along the
+  edge's tangent (+-3 px, the merge's Sobel gradient) and held within that 3 x 3 range +-5 %; photo only (fullInputU), unset = off.
+  Host: the lamp's rim without the outline, the steps smoothed, sharp across; the window burst 0.01 % of the pixels change,
+  texture high-pass 3.319 -> 3.319. Checks: WhyEdgeHoldTest (CI), check_shader_fp16, check_why_sharpen / sky / highlights /
+  headroom, check_vibrance_hl, check_light_chroma pass.
 

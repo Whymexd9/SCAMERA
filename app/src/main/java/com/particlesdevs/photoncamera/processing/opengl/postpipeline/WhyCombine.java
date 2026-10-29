@@ -295,6 +295,7 @@ public final class WhyCombine extends Node {
             }
             glProg.setVar("sharpU", sharp ? 1 : 0);
             glProg.setVar("fullInputU", st.inputReleased ? 0 : 1);   // P349: the bright rim reads the full-size merge
+            glProg.setVar("edgeHoldU", WhyTone.edgeHold());          // P394: smooth edges (the full-size merge's range, photo only)
             glProg.setVar("sharpToneU", sharp ? r.ae / Math.max(st.sharpMul, 1e-6f) : 1f);
             glProg.setVar("fU", st.factor);
             glProg.setVar("colourFU", colourFactor);

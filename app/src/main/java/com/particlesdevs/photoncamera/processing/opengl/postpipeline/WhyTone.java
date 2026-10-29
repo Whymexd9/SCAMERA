@@ -374,6 +374,16 @@ public final class WhyTone {
     }
 
     /** P341: the vibrance of the light tones (why/combine.glsl vibHlU; 0 = off). */
+    /**
+     * P394 (owner, 2026-10-29: «нам нужно сделать грань максимально гладкой без зубчиков»): why/combine edgeHoldU - at a strong edge
+     * the sharpened luma averaged along the edge (+-3 px on its tangent) and held within the full-size merge's 3 x 3 range (+-5 %):
+     * no dark outline from the sharpening, no pixel steps on a slanted edge against a light; texture and soft edges as before.
+     * scam_dev hybrid_why_edge_hold 0..1 (0 = off, as before).
+     */
+    static float edgeHold() {
+        return Math.max(0f, Math.min(1f, value("edge_hold", 1f)));
+    }
+
     static float vibranceHl() {
         return Math.max(0f, value("vibrance_hl", 1.0f));
     }
