@@ -60,6 +60,28 @@ public final class HybridPlan {
 
     public static void setMotionCap(long ns) { sMotionCapNs = Math.max(0, ns); }
 
+    /**
+     * P409 (owner, 2026-10-29, the window burst: «Нам нужно чтобы длинный давал больше информации в тенях»): the share of the
+     * newest ring frame's samples within 1/64 of the RAW range above black (the room 5-7 EV under a window: 60 % of the frame at
+     * 1-16 DN of 1023, where one gain-first x2 frame was worth 1.5-2.3 N frames). Set by the camera before a plan build.
+     */
+    static volatile float sDeepShadow;
+
+    public static void setDeepShadow(float share) { sDeepShadow = Float.isNaN(share) ? 0f : Math.max(0f, Math.min(1f, share)); }
+
+    /** P409: the deep-shadow share from which the bracketed frames go to +2 EV. */
+    static final float DEEP_SHADOW_SHARE = 0.15f;
+    /**
+     * P409: with deep shadows a bracketed frame's shutter grows first up to 1/60 s (never past the handheld or the HAL's motion
+     * cap): its light then is real - a gain-first frame has the N frames' photons and only less read noise. The gain part at most
+     * x2 as before; past it the shutter only where the gain range ends (P68's rule; 33 ms frames blurred at sea). Without deep
+     * shadows the plan is the one before, gain first.
+     */
+    static final long BRACKET_SAFE_SHUTTER_NS = 16_666_667L;
+
+    /** P409: «Длинные кадры для глубоких теней» (pref_scam_hybrid_shasta_deep, on by default). */
+    public static boolean shastaDeep() { return PreferenceKeys.hybridSwitch("shasta_deep", true); }
+
     /** The handheld shutter cap of a plan with N at {@code nShutterNs} and the HAL's motion cap {@code motionCapNs}. */
     static long handheldCap(long nShutterNs, long motionCapNs) {
         long cap = HANDHELD_SHUTTER_CAP_NS;
@@ -176,13 +198,23 @@ public final class HybridPlan {
         // gain range, within the handheld cap. Never for DCG (above): its high-gain read holds the shadows.
         final int count = shastaEnabled() && !dcg ? bracketCount() : 0;
         if (count > 0) {
-            final double ev = bracketEv(), target = n * Math.pow(2, ev);
-            int iso = (int) Math.max(isos.getLower(), Math.min(isos.getUpper(), Math.round(target / nShutterNs)));
+            // P409: deep shadows in the buffered frame: +2 EV (the frames' light first from the shutter, below)
+            final boolean deep = shastaDeep() && sDeepShadow >= DEEP_SHADOW_SHARE;
+            final double ev = deep ? Math.max(bracketEv(), 2.0) : bracketEv(), target = n * Math.pow(2, ev);
+            final long cap = Math.min(times.getUpper(), handheldCap(nShutterNs, sMotionCapNs));
             long ns = nShutterNs;
-            if ((double) ns * iso < target * 0.95) {
-                final long cap = Math.min(times.getUpper(), handheldCap(nShutterNs, sMotionCapNs));
-                ns = snapAntibanding(Math.max(nShutterNs, Math.min(cap, Math.round(target / iso))), nShutterNs);
+            if (deep) {
+                ns = Math.max(nShutterNs, Math.min(Math.round(nShutterNs * Math.pow(2, ev)), Math.min(cap, Math.max(nShutterNs, BRACKET_SAFE_SHUTTER_NS))));
+                ns = flickerSafe(Math.max(nShutterNs, Math.min(ns, times.getUpper())), nShutterNs);
             }
+            // the gain part at most x2 beyond the shutter's (as the gain-first x2 frames before P409)
+            final double gainWanted = target / ((double) ns * nIso);
+            final double gain = deep ? Math.min(gainWanted, 2.0) : gainWanted;
+            int iso = (int) Math.max(isos.getLower(), Math.min(isos.getUpper(), Math.round(nIso * gain)));
+            if ((double) ns * iso < target * 0.95 && iso >= isos.getUpper()) {
+                ns = snapAntibanding(Math.max(ns, Math.min(cap, Math.round(target / iso))), nShutterNs);
+            }
+            if (deep) why.append(String.format(Locale.ROOT, " deep shadows %.0f%%: +%.0f EV", 100f * sDeepShadow, ev));
             double ratio = (double) ns * iso / n;
             if (ratio > maxBracketRatio() && !shastaForced()) why.append(String.format(Locale.ROOT, " brackets skipped (ratio %.1f)", ratio));
             else if (ratio < 1.2) why.append(String.format(Locale.ROOT, " brackets skipped (ratio %.2f)", ratio));
@@ -395,6 +427,19 @@ public final class HybridPlan {
     }
 
     /** Long shutters snap to whole flicker periods (pref_antibanding_hz_key), never below the N shutter. */
+    /**
+     * P409: a bracketed shutter between N and the safe limit under mains light: N at a whole flicker period or more (the AE's
+     * antibanding) keeps the bracketed shutter on whole periods too (down, never below N); a shorter N is left as it is.
+     */
+    static long flickerSafe(long ns, long nShutterNs) {
+        int hz;
+        try { hz = PreferenceKeys.getAntibandingHz(); } catch (RuntimeException e) { hz = 0; }
+        if (hz <= 0 || ns <= nShutterNs) return ns;
+        final long period = Math.round(1e9 / hz);   // hz: the light's flicker (100 / 120)
+        if (nShutterNs < period) return ns;
+        return Math.max(nShutterNs, (ns / period) * period);
+    }
+
     private static long snapAntibanding(long ns, long nShutterNs) {
         int hz;
         try { hz = PreferenceKeys.getAntibandingHz(); } catch (RuntimeException e) { hz = 0; }

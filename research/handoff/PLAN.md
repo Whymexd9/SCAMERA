@@ -9222,3 +9222,17 @@ wallpaper, speakers, board): DONE
   «Своя оценка SCAMERA» keeps P121 / P212g / P366.
 - Not ported: the reference's per-device auto profile (X7U / X6 Pro only; ours has the OPPO tuned matrix there), its native
   quad colour regularisation and speckle filter (native engine).
+
+### P409 - the long (Shasta) frames give more in deep shadows (owner, 2026-10-29, the window burst: «проверь есть ли польза от длинных
+шаста кадров», then «Нам нужно чтобы длинный давал больше информации в тенях»): DONE in code (host), not tried on a phone
+- Window burst (OPPO, 20 N + 3 L x2 + 2 ES): host merges with / without the L frames (shastaEnable 0): without them the room's
+  noise x1.28 / x1.58 / x1.42 at G < 0.002 / 0.002 - 0.005 / 0.005 - 0.01, texture -2 .. -3.5 %, no ghost (0.005 % of the pixels
+  above G 0.02 differ by more than 10 %).
+- RAW pairs (frame 0 - 1 against 20 - 21, green sites, 32 px tiles): the room lies at 1 - 16 DN of 1023 in N; the L frames were
+  gain-first (ISO 200 at the N shutter: the same photons), one worth 1.5 - 2.3 N frames there, ~6 at 16 - 64 DN.
+- HybridPlan: zslClipFraction also counts the ring frame's samples within 1/64 of the range above black (setDeepShadow); from
+  15 % the bracketed frames go to +2 EV with their shutter first up to 1/60 s (handheld / HAL motion cap; on whole flicker
+  periods when N is), the gain part at most x2. Without deep shadows, or «Длинные кадры для глубоких теней» off, the plan is
+  the one before (the plans of the logs unchanged, HybridPlanTest).
+- Expected: a x4 frame of real light at the weight the worker gives it (t^2 x the read ratio, 16) carries the deep shadows; the
+  mid-tones slightly over-weighted (model: noise +3 % against the x2 frames). The merge (kHybMergeMain1) unchanged.
