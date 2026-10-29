@@ -135,7 +135,7 @@ uniform float gammaInvU;            // 1 / ef_gamma; <= 0 -> 1 / 2.2
 uniform float macroU;               // OKLab macro contrast; <= 0 -> 1.1
 uniform vec3 vibU;                  // vibrance: overall, sky, green (0 = off)
 uniform float vibHlU;               // P341: vibrance of the light tones (OKLab L 0.45 .. 0.75 up), lightness kept (0 = off)
-uniform vec4 vibHlShapeU;           // P393: its shape for pale colour - OKLab L from / full, chroma gate from / full; unset: 0.50 / 0.85, 0.010 / 0.025
+uniform vec4 vibHlShapeU;           // P393: its shape for pale colour - OKLab L from / full, chroma gate from / full; unset: 0.57 / 0.89, 0.010 / 0.025
 uniform float chromaDnU;            // chroma denoise of strongly lifted pixels (0 = off)
 uniform float clarityU;             // delta * (1 + clarity)
 uniform float flatProtectU;         // flat-area protection of the delta (0 = off)
@@ -281,10 +281,15 @@ float max3(vec3 v) { return max(v.r, max(v.g, v.b)); }
 // 10.2. From chroma 0.020 .. 0.035 up P341's ramp: a clearly coloured surface (skin, a yellow leaf, a facade, a sunset's glow off
 // the sky mask) as before - the pale class reaching to 0.04 .. 0.07 took a skin tone or a yellow at L* 55 - 76 to x0.74 - 0.88
 // of P341's chroma (the owner's trees pair: ours already paler than the reference app's). Under the sky mask P378's ramp and gate.
+// P396 (owner, 2026-10-29, the same bedroom shot again beside ArkCam: «проблема с жёлтым», the wallpaper's golden pattern by the
+// window yellow, «насыщенность жёлтого -40» right but no solution): the pattern lies at chroma ~0.02 at L 0.65 - 0.70, where the
+// ramp 0.50 .. 0.85 still raised it x1.6 over the tone (display C / L 0.044 against ArkCam's 0.035; the plain wall under it as
+// ArkCam's). The pale ramp is now 0.57 .. 0.89: x0.82 of that (C / L ~0.036), the cast gate and every colour from chroma 0.035 up
+// (skin, leaves, facades) as before; 0.60 .. 0.95 cut more but made the chroma slope x1.18 of P341's (chroma noise on walls).
 // vibHlShapeU (0.45, 0.75, 0.002, 0.008) (scam_dev vibrance_hl_shape 0) is P341's shape (bit for bit on the host's GL, within
 // rounding on a phone GPU).
 vec4 vibHlShape() {
-    return vibHlShapeU.y > vibHlShapeU.x && vibHlShapeU.w > vibHlShapeU.z ? vibHlShapeU : vec4(0.50, 0.85, 0.010, 0.025);
+    return vibHlShapeU.y > vibHlShapeU.x && vibHlShapeU.w > vibHlShapeU.z ? vibHlShapeU : vec4(0.57, 0.89, 0.010, 0.025);
 }
 
 // P393: the lightness ramp of a colour of chroma c0 (P341's 0.45 .. 0.75 from chroma 0.035 up; nothing added at P341's shape)

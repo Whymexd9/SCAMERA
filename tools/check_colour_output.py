@@ -146,7 +146,7 @@ P341_VIB_BLOCK = ('    if (vibHlU > 0.0) {\n'
 # (vibHlShapeU, the two functions vibHlShape / vibHlRamp; unset: P393's defaults) - the block now reads it; the token comparison
 # takes the uniform, the functions and the block out with P341's.
 P393_SHAPE_UNIFORM = ('uniform vec4 vibHlShapeU;           // P393: its shape for pale colour - OKLab L from / full, chroma gate from / '
-                      'full; unset: 0.50 / 0.85, 0.010 / 0.025\n')
+                      'full; unset: 0.57 / 0.89, 0.010 / 0.025\n')
 P393_FUNCTIONS = re.compile(r'\n// P393 \(owner, 2026-10-29.*?\nvec4 vibHlShape\(\) \{\n.*?\n\}\n\n// P393: the lightness ramp[^\n]*\n'
                             r'float vibHlRamp\(vec4 s, float lx, float c0\) \{\n.*?\n\}\n', re.S)
 P393_VIB_BLOCK = ('    if (vibHlU > 0.0) {\n'

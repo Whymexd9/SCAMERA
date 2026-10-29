@@ -407,8 +407,10 @@ public final class WhyTone {
      * (a near-white's cast not raised; the gate about as steep as P341's: chroma noise on a white wall x1.12 of P341's, not x1.41):
      * the owner's bedroom walls b* 11.2 / 7.5 / 16.0 -> 6.6 / 3.2 / 11.0, the reference app's 6.2 / 3.6 / 10.2. A colour from
      * chroma 0.020 .. 0.035 up (skin, yellow leaves, facades) and the sky keep P341's / P378's.
+     * P396 (owner, the same bedroom again: the wallpaper's golden pattern by the window still yellow beside ArkCam): the pale ramp
+     * 0.57 .. 0.89 - the pattern (chroma ~0.02 at L 0.65 - 0.70) took x1.6 over the tone with 0.50 .. 0.85, now x0.82 of that.
      */
-    static final float[] VIBRANCE_HL_SHAPE = {0.50f, 0.85f, 0.010f, 0.025f};
+    static final float[] VIBRANCE_HL_SHAPE = {0.57f, 0.89f, 0.010f, 0.025f};
     /** P341's shape (scam_dev.txt "vibrance_hl_shape 0"): the shader before P393 (bit for bit on the host's GL, within rounding on a phone GPU). */
     static final float[] VIBRANCE_HL_SHAPE_P341 = {0.45f, 0.75f, 0.002f, 0.008f};
 

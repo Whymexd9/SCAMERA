@@ -9003,3 +9003,17 @@ Owner, same day: «сделай гпу выравнивание и дай воз
   blues bit for bit, hue and saturation sweeps without a step.
 - Not changed: ArkCam's darker exposure of the pair (the owner: «Арк камера в этой паре сильно темнит, нам такое не нужно»).
 
+
+### P396 - the bedroom wallpaper's golden pattern yellow in the light tones beside ArkCam (owner, 2026-10-29: SCA_20261029_100119, «проблема с жёлтым», the upper wall circled; the same shot at saturation -40, «не решение»; ArkCam's; JPEG screenshots, no RAW): DONE (host), not tried on a phone
+- Measured on the JPEGs (OKLab, pattern = the top 1/8 by chroma, wall = the lower half): the lower wall as ArkCam's (wall C / L
+  0.003 / 0.002, pattern 0.021 / 0.020); the upper wall by the window warmer in both (wall 0.018 / 0.021), but our pattern
+  0.044 against ArkCam's 0.035 (x1.27; absolute chroma x1.57, ours at L 0.80 where ArkCam is at 0.67).
+- Cause: the light-tone vibrance (vibHlU) on the pale class: the pattern lies at chroma ~0.02 at OKLab L 0.65 - 0.70, where
+  P393's ramp 0.50 .. 0.85 raised it x1.6 over the tone (host bench, tools/check_vibrance_hl.Bench, hue 83: display C / L 0.040
+  against 0.025 without the vibrance). LIGHT_CHROMA (LC_SAT) and YELLOW_HUE (C / L 0.10) do not reach it.
+- DONE: WhyTone.VIBRANCE_HL_SHAPE / the shader's unset default 0.57 .. 0.89 (gate 0.010 .. 0.025 as before): the pattern x0.82
+  (display C / L ~0.033 - 0.036, ArkCam 0.035), a near-white's cast and every colour from chroma 0.035 up (skin, leaves, facades)
+  as P341, the sky as P378. 0.60 .. 0.95 cut more but the chroma slope went x1.18 of P341's (check_vibrance_hl's limit x1.10:
+  chroma noise on white walls); 0.57 .. 0.89: x4.62 (P341 x4.26, P393 x4.66), the boundary at 0.035 1.67e-6 from P341.
+  Host checks: vibrance_hl, colour_output, light_chroma, yellow_hue, why_sky, vf_fused, viewfinder_look, colour_look, tone_ops,
+  why_highlights, why_headroom, highlight_landing, shader_fp16 PASS.
