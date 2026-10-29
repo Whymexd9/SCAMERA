@@ -9173,3 +9173,18 @@ dump 14:14:07 and the full JPEG pair): DONE (host), not tried on a phone
   edge damping); the TV damping of rl_mult per RL stage.
 - Defaults bit for bit: combine (check_colour_output --shader), lpyr / gf / msdn token streams (check_why_p404.py), the new
   runtime terms 0. GPU vs numpy: Sobel / thinning / RL damping (check_why_p404.py); WhyV207PortTest.
+
+### P405 - the owner's reference config as our defaults (owner, 2026-10-29: «сделай так чтобы настройки из этого конфига были у
+нас дефолтные», init35burial_v3_1.xml): DONE
+- The engine's rows of the config (prefs_map of the reference APK) mapped to ours; 44 defaults moved (XML and every Java reader):
+  AE (bright 0.9, dark 12.5 / 22, hl boost 1.1, hl blend 0.5, contrast boost 0.3, highlight str 2.1), the classic fusion layout
+  (weights 0.7 / 1 / 2 / 1, centre 1, smoothness 0.45; the v2.07 AE with it), operator 3 = the own curve on with the config's 17
+  points (ToneCurve.SETTING_POINTS; «S-кривая» stays WhyCam's S) and its contrast boost 1, AgX 2.45 / 2.0 / ev 0 / inset 50,
+  Uchimura post gain 1, film toe 0, gamma 2.2 pure power, shoulder 0.6 / 0.6 / 0.35, cct_sat 1.25, sky / green vibrance 0.25 /
+  0.05, USM 0.1 / 0.5 / 0, gf lc 0, RL3 1.5, bracket denoise 0, the pyramid denoise on (0.2: 0.4 / 0.1 / 0.35, 0.5: 0.2 / 0.4 /
+  0.6, model 1.5), dezipper 4.5.
+- Not mapped: per-lens rows (the reference phone's lens ids), AWB, lateral CA, output size / format / app rows, the reference
+  merge's own sabre_* / cov_* rows; «Сочность в светах» stays ours.
+- SettingsMigration CONFIG_DEFAULTS_REV: a stored former default moves once, a hand-set value stays (setDefaultValues wrote the
+  old XML defaults on every install).
+- With the classic layout the room-window term (P401) and P291 / P310 do not run (as before in that layout).

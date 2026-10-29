@@ -120,7 +120,8 @@ def thresholds(luma=1.0, chroma=2.0, model=1.0, levels_l=(1, 1, 1), levels_c=(1,
 
 
 def main():
-    check('0.012f * Math.max(0f, WhyTone.value("ms_luma", 1f)) * model' in JAVA and '0.02f * Math.max(0f, WhyTone.value("ms_chroma", 2f)) * model' in JAVA
+    check('0.012f * Math.max(0f, WhyTone.value("ms_luma", 0.2f)) * model' in JAVA and '0.02f * Math.max(0f, WhyTone.value("ms_chroma", 0.5f)) * model' in JAVA
+          and 'LUMA_LEVELS = {0.4f, 0.1f, 0.35f}, CHROMA_LEVELS = {0.2f, 0.4f, 0.6f}' in JAVA
           and 't[3][1] = t[2][1];' in JAVA and '20.0 / Math.max(0.18 / sigma, 1.0)' in JAVA and 'Math.min(4.0, 1.0 + (nf - 1.0) * scale)' in JAVA,
           'WhyMsDenoise.thresholds / modelFactor as mirrored here')
     check(abs(model_factor(1e-5, 1e-7, 1.0) - 0.4) < 1e-9 and model_factor(0, 0, 1) == 1.0 and model_factor(1e-3, 1e-5, 0.0) == 1.0

@@ -91,8 +91,8 @@ public final class WhyTone {
      * the one bright layer 1.0 (the closest to the old set's shadows and mid-tones of the curves on a grid of strengths).
      */
     static float[] layerWeights() {
-        if (arkLayout()) return new float[]{value("classic_weight_ext_hl", 0.7f), value("classic_weight_mid", 1f), value("classic_weight_hl", 0.8f),
-                value("classic_weight_shadow", 0.5f)};
+        if (arkLayout()) return new float[]{value("classic_weight_ext_hl", 0.7f), value("classic_weight_mid", 2f), value("classic_weight_hl", 1f),
+                value("classic_weight_shadow", 1f)};
         return new float[]{value("weight_hl", LAYER_WEIGHTS[0]), value("weight_mid", LAYER_WEIGHTS[1]),
                 value("weight_dark2", LAYER_WEIGHTS[2]), value("weight_bright", LAYER_WEIGHTS[3])};
     }
@@ -105,12 +105,12 @@ public final class WhyTone {
      * default): ours.
      */
     static boolean arkLayout() {
-        return value("fusion_layout", 0f) >= 0.5f;
+        return value("fusion_layout", 1f) >= 0.5f;
     }
 
     /** The fusion's well-exposed centre without headroom: weight_center (0.6), the v2.07 layout's classic_weight_center (0.5). */
     static float fusionCenter() {
-        return arkLayout() ? value("classic_weight_center", 0.5f) : value("weight_center", 0.6f);
+        return arkLayout() ? value("classic_weight_center", 1f) : value("weight_center", 0.6f);
     }
 
     /** AE / Smart-HDR / AgX settings (defaults: WhyCam 2.85 X8U effective values, tone_port.md section 3). */
@@ -121,7 +121,7 @@ public final class WhyTone {
         s.minLimit = Math.min(value("ae_min_limit", 0.5f), s.maxBoost);
         s.hlOverflow = value("hl_overflow", 2.0f);
         // P402: the share of the frame's exposure kept above the highlight overflow's limit (the reference app's ae_hl_blend)
-        s.hlBlend = Math.max(0f, Math.min(1f, value("hl_blend", 0.33f)));
+        s.hlBlend = Math.max(0f, Math.min(1f, value("hl_blend", 0.5f)));
         float nightVal = value("night_thresh", 0.05f);
         if (nightVal >= 1.0f) nightVal = 0.05f; // migration of legacy ISO values (e.g. 100)
         // The row is the noise-based gain clamp only. Since P63 the ISO night threshold took the same value, always below ISO 1,
@@ -132,22 +132,22 @@ public final class WhyTone {
         s.noiseMax = nightVal;
         s.nightDim = value("night_dim", 1.0f);
         s.metering = Math.round(value("metering", 0f));
-        s.brightThresh = value("bright_thresh", 0.8f);
-        s.darkThresh = value("dark_thresh", 15f);
-        s.darkPixelThresh = value("dark_pixel_thresh", 10f);
-        s.hlBoost = value("hl_boost", 1.0f);
-        s.contrastBoost = value("contrast_boost", 0.5f);
+        s.brightThresh = value("bright_thresh", 0.9f);
+        s.darkThresh = value("dark_thresh", 12.5f);
+        s.darkPixelThresh = value("dark_pixel_thresh", 22f);
+        s.hlBoost = value("hl_boost", 1.1f);
+        s.contrastBoost = value("contrast_boost", 0.3f);
         s.shadowStr = Math.max(value("shadow_str", 2.0f), 0f);   // pushCurrentLut 0x80db8
-        s.highlightStr = value("highlight_str", 2.0f);
+        s.highlightStr = value("highlight_str", 2.1f);
         s.efEnabled = true;
         s.look = Math.round(value("agx_look", 4f));
-        s.slope = value("agx_slope", 2.7f);
+        s.slope = value("agx_slope", 2.45f);
         s.sp = value("agx_sp", 1.35f);
-        s.tp = value("agx_tp", 1.6f);
+        s.tp = value("agx_tp", 2.0f);
         s.minEv = value("agx_min_ev", -8.5f);
         s.maxEv = value("agx_max_ev", 3.5f);
         s.sat = value("agx_sat", 1.0f);
-        s.ev = value("agx_ev", 0.30f);
+        s.ev = value("agx_ev", 0f);
         // P216: the Bento ultrashort frames merged - data above the native ceiling of 4 is the shot's real highlight range
         s.bentoHeadroom = ScamHybridBurst.lastBentoApplied;
         s.hrMix = Math.max(0f, Math.min(1f, value("hr_mix", 0.5f)));
@@ -491,16 +491,16 @@ public final class WhyTone {
      * towards the identity, the outset its inverse; 1 = the full matrix, as before).
      */
     static float insetStrength() {
-        return Math.max(0f, Math.min(1f, value("agx_inset", 100f) / 100f));
+        return Math.max(0f, Math.min(1f, value("agx_inset", 50f) / 100f));
     }
 
     /** P402: the headroom shoulder's strength 0..1 (hdr_shoulder_strength; 1 = the full shoulder, as before). */
     static float shoulderStrength() {
-        return Math.max(0f, Math.min(1f, value("hr_strength", 1f)));
+        return Math.max(0f, Math.min(1f, value("hr_strength", 0.6f)));
     }
 
     static float[] headroomTone() {
-        return new float[]{value("hr_knee", 0.5f), value("hr_room", 0.4f), Math.max(0f, value("hr_detail", 0.35f))};
+        return new float[]{value("hr_knee", 0.6f), value("hr_room", 0.35f), Math.max(0f, value("hr_detail", 0.35f))};
     }
 
     /**
@@ -531,7 +531,7 @@ public final class WhyTone {
      * settings keep one on at a time; should several be stored, that order wins).
      */
     static int toneOperator() {
-        if (PreferenceKeys.hybridSwitch("why_curve_on", false)) return com.particlesdevs.photoncamera.processing.color.ToneCurve.CUSTOM;
+        if (PreferenceKeys.hybridSwitch("why_curve_on", true)) return com.particlesdevs.photoncamera.processing.color.ToneCurve.CUSTOM;
         if (PreferenceKeys.hybridSwitch("why_uchi_on", false)) return com.particlesdevs.photoncamera.processing.color.ToneCurve.UCHIMURA;
         if (PreferenceKeys.hybridSwitch("why_aces_on", false)) return com.particlesdevs.photoncamera.processing.color.ToneCurve.ACES;
         return com.particlesdevs.photoncamera.processing.color.ToneCurve.AGX;
@@ -547,7 +547,7 @@ public final class WhyTone {
         float m = Math.max(value("uchi_m", 0.22f), 0.01f), a = Math.max(value("uchi_a", 1.0f), 0.05f);
         // the shoulder needs P above the linear start (P - S1 = (P - m)(1 - l) > 0): the ranges allow P 0.5 with m 0.8
         float p = Math.max(value("uchi_p", 1.0f), m + 0.05f), l = Math.min(Math.max(value("uchi_l", 0.4f), 0f), 0.95f);
-        return new float[][]{{value("uchi_pre_gain", 1.0f), value("uchi_post_gain", 0.9f), p, a},
+        return new float[][]{{value("uchi_pre_gain", 1.0f), value("uchi_post_gain", 1.0f), p, a},
                 {m, l, value("uchi_c", 1.33f), value("uchi_b", 0.0f)}};
     }
 
@@ -565,15 +565,15 @@ public final class WhyTone {
             final float[][] u = uchimuraUniforms();
             return x -> com.particlesdevs.photoncamera.processing.color.ToneCurve.uchimuraAt((float) x, u[0], u[1]);
         }
-        final float slope = value("agx_slope", 2.7f), sp = value("agx_sp", 1.35f), tp = value("agx_tp", 1.6f),
-                minEv = value("agx_min_ev", -8.5f), maxEv = value("agx_max_ev", 3.5f), ev = value("agx_ev", 0.30f);
+        final float slope = value("agx_slope", 2.45f), sp = value("agx_sp", 1.35f), tp = value("agx_tp", 2.0f),
+                minEv = value("agx_min_ev", -8.5f), maxEv = value("agx_max_ev", 3.5f), ev = value("agx_ev", 0f);
         return x -> com.particlesdevs.photoncamera.processing.color.ToneCurve.agxAt((float) x, slope, sp, tp, minEv, maxEv, ev);
     }
 
     /** The own curve's 256 samples (pref_scam_hybrid_why_curve_points, WhyCam's S when empty). */
     static float[] curveSamples() {
         return curveModified(com.particlesdevs.photoncamera.processing.color.ToneCurve
-                .parse(PreferenceKeys.hybridString("why_curve_points", com.particlesdevs.photoncamera.processing.color.ToneCurve.DEFAULT_POINTS))
+                .parse(PreferenceKeys.hybridString("why_curve_points", com.particlesdevs.photoncamera.processing.color.ToneCurve.SETTING_POINTS))
                 .samples(com.particlesdevs.photoncamera.processing.color.ToneCurve.SAMPLES), new float[]{value("curve_lift", 0f),
                 value("curve_contrast", 0f), value("curve_shadow_contrast", 0f), value("curve_highlight_contrast", 0f),
                 value("curve_deep_shadows", 0f), value("curve_extreme_highlights", 0f), value("curve_offset", 0f)});
@@ -634,7 +634,7 @@ public final class WhyTone {
      * (0..2; 0 by default: the own curve as before, 1 as the reference app).
      */
     static float curveBoost(float c) {
-        return c * Math.max(0f, Math.min(2f, value("curve_boost", 0f)));
+        return c * Math.max(0f, Math.min(2f, value("curve_boost", 1f)));
     }
 
     /** P404: «Стандарт гаммы дисплея» - 0 the pure power 1 / gamma (as before), 1 sRGB, 2 Rec.709 (why/combine GAMMA_TYPE). */
@@ -739,7 +739,7 @@ public final class WhyTone {
      */
     public static float[] withCctSat(float[] white) {
         return cctGain(new float[]{gain("cct_gain_r"), gain("cct_gain_g"), gain("cct_gain_b")},
-                cctSat(Math.max(0f, Math.min(2f, value("cct_sat", 1f))), white));
+                cctSat(Math.max(0f, Math.min(2f, value("cct_sat", 1.25f))), white));
     }
 
     private static float gain(String key) {

@@ -320,7 +320,9 @@ public class ShadeCatalogTest {
         ShadeCatalog.Entry plain = catalog.entry(rl3);
         assertNotNull(plain);
         assertEquals(ShadeCatalog.SLIDER, plain.kind);
-        assertEquals("no device value here: the XML's", 1f, ((Number) plain.defaultValue).floatValue(), 1e-6f);
+        assertEquals("no device value here: the XML's (P405: the reference config's 1.5)", 1.5f, ((Number) plain.defaultValue).floatValue(), 1e-6f);
+        final String zsl = "pref_scam_hybrid_zsl_frames";
+        assertEquals("no device value here: the XML's", 20f, ((Number) catalog.entry(zsl).defaultValue).floatValue(), 1e-6f);
 
         org.robolectric.shadows.ShadowBuild.setManufacturer("Xiaomi");
         org.robolectric.shadows.ShadowBuild.setDevice("viva"); // Redmi Note 11 Pro: RL 3 at 1.5, 12 frames
@@ -328,6 +330,8 @@ public class ShadeCatalogTest {
         ShadeCatalog.Entry e = note.entry(rl3);
         assertEquals(DeviceDefaults.NOTE11PRO_RL3, ((Number) e.defaultValue).floatValue(), 1e-6f);
         assertEquals(DeviceDefaults.NOTE11PRO_RL3, (float) PreferenceNumber.read(note.defaultOf(e), 0), 1e-6f);
+        // the XML's 1.5 is the Note's own value too since P405: the frames tell the device value from the XML's
+        assertEquals("the Note's 12 frames", 12f, ((Number) note.entry(zsl).defaultValue).floatValue(), 1e-6f);
         prefs.edit().putString(rl3, String.valueOf(DeviceDefaults.NOTE11PRO_RL3)).commit();
         assertFalse("the factory value is no change", note.changed(e));
         prefs.edit().putString(rl3, "1").commit();

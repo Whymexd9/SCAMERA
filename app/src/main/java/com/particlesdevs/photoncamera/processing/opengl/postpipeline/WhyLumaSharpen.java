@@ -307,9 +307,9 @@ public final class WhyLumaSharpen extends Node {
 
         // P135: a noisy (night) shot gets a share of the sharpening, by the SNR the denoise measured
         final float lowLight = lowLightFactor(pipeline.mParameters.finishSnr);
-        float usmRadius = WhyTone.value("sharp_usm_radius", 0.5f);
-        float usmAmount = WhyTone.value("sharp_usm_amount", 1f) * lowLight;
-        float usmThresh = WhyTone.value("sharp_usm_thresh", 50f) / 255f;
+        float usmRadius = WhyTone.value("sharp_usm_radius", 0.1f);
+        float usmAmount = WhyTone.value("sharp_usm_amount", 0.5f) * lowLight;
+        float usmThresh = WhyTone.value("sharp_usm_thresh", 0f) / 255f;
         float bilRadius = WhyTone.value("sharp_bilateral_radius", 0.5f);
         float bilAmount = WhyTone.value("sharp_bilateral_amount", 1f) * lowLight;
         float bilColor = Math.max(WhyTone.value("sharp_bilateral_color", 10f) / 100f, 0.001f);
@@ -320,7 +320,7 @@ public final class WhyLumaSharpen extends Node {
         float gfEps = Math.max(WhyTone.value("sharp_gf_eps_e3", 10f) * 0.001f, 1e-6f);
         // P369 (texture-sharpen): with a film (any, B10) the guided filter's local contrast and the sharpening's own grain - our
         // look - only on the share the simulation's strength leaves; USM, bilateral and RL (they restore the merge's blur) stay
-        float gfLc = filmShare(WhyTone.value("sharp_gf_lc", 0.25f) * lowLight, pipeline.film);
+        float gfLc = filmShare(WhyTone.value("sharp_gf_lc", 0f) * lowLight, pipeline.film);
         float grain = filmShare(WhyTone.value("sharp_film_grain", 0f) / 255f, pipeline.film);
         // P404: the reference app's Sobel edge boost (amount, threshold / 255) and edge thinning; 0 = off
         float sobelAmount = WhyTone.value("sharp_sobel_amount", 0f) * lowLight, sobelThresh = WhyTone.value("sharp_sobel_thresh", 0f) / 255f;
@@ -335,7 +335,7 @@ public final class WhyLumaSharpen extends Node {
                 {WhyTone.value("sharp_rl2_kernel", 1f), WhyTone.value("sharp_rl2_rad", 0f), WhyTone.value("sharp_rl2_amount", 0f) * lowLight, WhyTone.value("sharp_rl2_iters", 0f),
                         WhyTone.value("sharp_rl2_damping", 0f)},
                 {WhyTone.value("sharp_rl3_kernel", 0f), WhyTone.value("sharp_rl3_rad", 0.5f),
-                        com.particlesdevs.photoncamera.settings.DeviceDefaults.rl3Amount(WhyTone.value("sharp_rl3_amount", 1f), pipeline.mParameters.cameraID) * lowLight,
+                        com.particlesdevs.photoncamera.settings.DeviceDefaults.rl3Amount(WhyTone.value("sharp_rl3_amount", 1.5f), pipeline.mParameters.cameraID) * lowLight,
                         WhyTone.value("sharp_rl3_iters", 3f), WhyTone.value("sharp_rl3_damping", 0f)}};   // P404: the TV damping per stage
 
         GLTexture gainMap = pipeline.GainMap;

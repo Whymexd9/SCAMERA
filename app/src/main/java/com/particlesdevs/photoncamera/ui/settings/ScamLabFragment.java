@@ -2303,7 +2303,7 @@ public class ScamLabFragment extends ModuleConceptFragment {
         if (AS_SHOT.equals(value)) text = s.pref(CURVE) == null ? null : String.valueOf(s.pref(CURVE));
         else if (IN_SETTINGS.equals(value)) text = prefs().getString(CURVE, null);
         else text = value == null ? null : String.valueOf(value);
-        if (text == null) text = com.particlesdevs.photoncamera.processing.color.ToneCurve.DEFAULT_POINTS;
+        if (text == null) text = com.particlesdevs.photoncamera.processing.color.ToneCurve.SETTING_POINTS;
         LinearLayout box = column();
         final com.particlesdevs.photoncamera.ui.settings.custompreferences.ToneCurveView graph =
                 new com.particlesdevs.photoncamera.ui.settings.custompreferences.ToneCurveView(c);

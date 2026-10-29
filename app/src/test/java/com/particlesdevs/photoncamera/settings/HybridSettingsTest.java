@@ -1086,6 +1086,40 @@ public class HybridSettingsTest {
         assertEquals(7,prefs.getInt("pref_scam_hybrid_defaults_rev",0));
     }
 
+    @Test public void referenceConfigDefaultsMoveOnce() throws Exception {
+        // P405: the XML's default of every row is the reference config's value of the table
+        final String xml = new String(java.nio.file.Files.readAllBytes(new java.io.File(new java.io.File("src/main/res/xml/preferences.xml").isFile()
+                ? "src/main/res/xml/preferences.xml" : "app/src/main/res/xml/preferences.xml").toPath()), java.nio.charset.StandardCharsets.UTF_8);
+        for (Object[] row : SettingsMigration.CONFIG_DEFAULTS) {
+            final String key = "pref_scam_hybrid_" + row[0];
+            final java.util.regex.Matcher m = java.util.regex.Pattern.compile("<[^>]*android:key=\"" + key + "\"[^>]*>").matcher(xml);
+            assertTrue(key, m.find());
+            final java.util.regex.Matcher d = java.util.regex.Pattern.compile("android:defaultValue=\"([^\"]*)\"").matcher(m.group());
+            if (row[0].equals("why_curve_points")) { assertFalse("the curve takes ToneCurve.SETTING_POINTS", d.find()); continue; }
+            assertTrue(key, d.find());
+            if (row[2] instanceof Float) assertEquals(key, (Float) row[2], Float.parseFloat(d.group(1)), 1e-6f);
+            else assertEquals(key, String.valueOf(row[2]), d.group(1));
+        }
+        // a stored former default moves, a value chosen by hand stays, once
+        prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putInt("pref_scam_hybrid_defaults_rev",7)
+                .putString("pref_scam_hybrid_why_agx_slope","2.70").putString("pref_scam_hybrid_why_cct_sat","1.1")
+                .putBoolean("pref_scam_hybrid_why_curve_on",false).putString("pref_scam_hybrid_why_fusion_layout","0")
+                .putFloat("pref_scam_hybrid_dezipper",0f).putString("pref_scam_hybrid_why_agx_inset","100")
+                .putString("pref_scam_hybrid_why_curve_points",com.particlesdevs.photoncamera.processing.color.ToneCurve.DEFAULT_POINTS).commit();
+        assertTrue(SettingsMigration.migrateScamHybrid(prefs,false));
+        assertEquals("2.45",prefs.getString("pref_scam_hybrid_why_agx_slope",""));
+        assertEquals("chosen by hand","1.1",prefs.getString("pref_scam_hybrid_why_cct_sat",""));
+        assertTrue(prefs.getBoolean("pref_scam_hybrid_why_curve_on",false));
+        assertEquals("1",prefs.getString("pref_scam_hybrid_why_fusion_layout",""));
+        assertEquals(4.5f,prefs.getFloat("pref_scam_hybrid_dezipper",0f),0f);
+        assertEquals("50",prefs.getString("pref_scam_hybrid_why_agx_inset",""));
+        assertEquals(com.particlesdevs.photoncamera.processing.color.ToneCurve.SETTING_POINTS,prefs.getString("pref_scam_hybrid_why_curve_points",""));
+        assertEquals(1,prefs.getInt(SettingsMigration.CONFIG_DEFAULTS_REV,0));
+        prefs.edit().putBoolean("pref_scam_hybrid_why_curve_on",false).commit();
+        SettingsMigration.migrateScamHybrid(prefs,false);
+        assertFalse("turned off after the move: stays",prefs.getBoolean("pref_scam_hybrid_why_curve_on",true));
+    }
+
     @Test public void cellClipFormerDefaultMovesOffOnce() {
         // P394: a stored «Клип ячейки 2×2 целиком» on (the former XML default) moves off once; turned on after the move it stays
         prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putInt("pref_scam_hybrid_defaults_rev",7)

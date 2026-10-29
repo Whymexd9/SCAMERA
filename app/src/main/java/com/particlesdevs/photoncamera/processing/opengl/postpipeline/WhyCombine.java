@@ -335,7 +335,7 @@ public final class WhyCombine extends Node {
             glProg.setVar("toeU", WhyTone.value("aces_toe", 0.05f));
             glProg.setVar("gammaInvU", 1f / WhyTone.gamma());
             glProg.setVar("macroU", WhyTone.value("macro_contrast", 1.1f));
-            glProg.setVar("vibU", WhyTone.value("vibrance", 0f), WhyTone.value("vibrance_sky", 0.40f), WhyTone.value("vibrance_green", 0.20f));
+            glProg.setVar("vibU", WhyTone.value("vibrance", 0f), WhyTone.value("vibrance_sky", 0.25f), WhyTone.value("vibrance_green", 0.05f));
             glProg.setVar("vibHlU", WhyTone.vibranceHl());
             glProg.setVar("vibHlShapeU", WhyTone.vibranceHlShape());   // P393: no cast doubled on pale mid-light tones
             if (WhyTone.yellowHue() > 0f) glProg.setVar("yellowHueU", WhyTone.yellowHue());   // P395: the orange-yellows towards yellow
@@ -345,7 +345,7 @@ public final class WhyCombine extends Node {
             glProg.setVar("flatProtectU", WhyTone.value("flat_protect", 0f));
             glProg.setVar("detailGainU", detail);
             glProg.setVar("deltaChromaU", Math.max(0f, Math.min(1f, WhyTone.value("delta_chroma", 1f))));
-            glProg.setVar("filmToeU", WhyTone.value("film_toe", 0.10f));
+            glProg.setVar("filmToeU", WhyTone.value("film_toe", 0f));
             glProg.setVar("agxAU", r.slope, r.sp, r.tp, r.sat);
             glProg.setVar("agxBU", r.minEv, r.maxEv, r.ev,
                     toneOp == com.particlesdevs.photoncamera.processing.color.ToneCurve.AGX ? (float) r.look : 0f);

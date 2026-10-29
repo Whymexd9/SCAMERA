@@ -529,7 +529,7 @@ public final class ShadeCatalog {
         if (p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.ToneCurvePreference) {
             // P169 (owner, 2026-10-16: «дай возможность добавлять кастомную кривую в шторку чтобы там её регулировать»)
             e.kind = CURVE;
-            e.defaultValue = com.particlesdevs.photoncamera.processing.color.ToneCurve.DEFAULT_POINTS;
+            e.defaultValue = com.particlesdevs.photoncamera.processing.color.ToneCurve.SETTING_POINTS;
             e.storage = STORE_STRING;
         } else if (p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.FilmLutPreference) {
             // P170 (owner, 2026-10-16: «дай возможность выбора импортированных лутов из списка в шторке»)
