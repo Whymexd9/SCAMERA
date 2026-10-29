@@ -196,10 +196,12 @@ void main(){
                 // research/hybrid5/review_fix_rim.md
                 vec3 rf = mix(vec3(1.0), rel, fl);
                 w = (1.0 - min(min(s.r, s.g), s.b)) * smoothstep(0.12, 0.25, min(min(rf.r, rf.g), rf.b));
-            } else if ((f & 7u) == 0u && (f & 64u) == 0u && !(clipHiUnflaggedU != 0 && (f & 16u) != 0u)) {
-                // no worker pass: the blanket border defringe. Not inside the Bento mask when the ultrashort clipped below
-                // the worker's flag threshold (P58): there bit 3 only marks the base frames' clipped samples at weight
-                // 1 - m, the pixel is recovered like its unflagged neighbours (a recoloured cell was a 5 % brighter blotch)
+            } else if ((f & 7u) == 0u && (f & 64u) == 0u && (f & 16u) == 0u) {
+                // no worker pass: the blanket border defringe. Not inside the Bento mask (P58 for an ultrashort clipped below
+                // the worker's flag threshold, P396 for every shot): there bit 3 only marks the base frames' clipped samples at
+                // weight 1 - m and the colour is the ultrashort's, measured (a recoloured cell was a 5 % brighter blotch; on
+                // the native mosaic route, whose worker sets no bit 6, a whole sunlit yellow wall went 85 % of the way to the
+                // local light, near-neutral: cream-white, the owner's «засвет», vivo X200 Ultra 2026-10-29)
                 w = 1.0;
             }
             w *= clamp(fringe, 0.0, 1.0);

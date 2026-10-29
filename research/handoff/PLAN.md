@@ -9017,3 +9017,24 @@ Owner, same day: «сделай гпу выравнивание и дай воз
   chroma noise on white walls); 0.57 .. 0.89: x4.62 (P341 x4.26, P393 x4.66), the boundary at 0.035 1.67e-6 from P341.
   Host checks: vibrance_hl, colour_output, light_chroma, yellow_hue, why_sky, vf_fused, viewfinder_look, colour_look, tone_ops,
   why_highlights, why_headroom, highlight_landing, shader_fp16 PASS.
+
+### P397 - the sunlit wall beside «Лента» flat cream-white («засвет») (owner, 2026-10-29: «исправь также засвет на этом бурсте»,
+the circled building of scam_burst-20261029-102753; «Арк камера в этой паре сильно темнит, нам такое не нужно»): DONE (host), not tried on a phone
+- The phone's photo: the wall R 254 G 239 B 223 (87 % of it R >= 250), the yellow complex round it 189 / 137 / 17.
+- The raw frames (quad Bayer, 4 x 4 period: B at (0, 0), G at (0, 2) / (2, 0), R at (2, 2)): normal frame B 0.31, G clipped, R 0.94;
+  ultrashort (x8.04 with the measured gain) B 0.29, G 1.25, R 0.90 - the merge holds it (0.96, 1.32, 0.31): after the white
+  balance 2.37 : 1.32 : 0.49, the same yellow as the complex beside it, brighter (its face to the sun). Not clipped anywhere.
+- Cause: ScamRgb's blanket border defringe. The native mosaic route's worker runs no clip-border pass (no flag bit 6) and
+  marks every Bento-recovered pixel with bits 3 + 4 (the base frames' clipped samples at weight 1 - m: 99.8 % of the wall);
+  the blanket defringe then mixed 85 % of the local light's chromaticity in at the channels' mean (a strongly coloured light
+  fades to neutral there): the wall (2.37, 1.32, 0.49) -> (1.75, 1.36, 1.06), cream-white at the top of the tone. P58 had
+  exempted the Bento mask only for an ultrashort clipped under the flag threshold (clipHiUnflaggedU).
+- DONE: scamhdr/scamrgb the blanket defringe never inside the Bento mask (bit 4), on every shot; the mixed-origin defringe
+  (flagged clipped means), the worker-pass path (bit 6) and clipband as before. Host chain (ScamRgb on the full burst, colour,
+  WHY with the phone's hl_soft / hl_white): the wall 244 / 219 / 191 -> 255 / 234 / 129, the yellow complex continuous.
+  WhyAe's highlight overflow (the kernel's p995 of the brightest channel) now sees the wall's R: ae 1.23 -> 1.07 (-0.2 EV for
+  this frame; not changed - the reference kernel's rule, hybrid_why_hl_overflow raises it). tools/check_highlight_recovery.py
+  case 8 (a Bento-recovered yellow wall with bits 3 + 4 keeps its colour; before: chroma 0.132 -> 0.047); highlight_*, opposed
+  foliage, scam_hdr_gpu, signed_rgb PASS.
+- The tone alone (before the cause was found): the wall's texture after the Bento ceiling is x0.3 of the fusion's; a
+  texture-keeping ceiling and a highlight shoulder in the fusion were tried on the host and not kept (a few codes only).

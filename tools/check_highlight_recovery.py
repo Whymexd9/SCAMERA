@@ -22,7 +22,8 @@ Checks:
 - the recovered core joins its unclipped rim: hue step across the boundary of the clipped cells < 0.01 per pixel;
 - the dotted red line on the dark side of the clip edge disappears (dots vs the pixels between them < 0.02);
 - the LEDs, the orange light and the blue screen keep their colour (chroma within 3 % of the input);
-- pixels without flags away from the band are passed through unchanged (white balance only).
+- pixels without flags away from the band are passed through unchanged (white balance only);
+- P396: a Bento-recovered coloured surface without the worker's border pass (bits 3 + 4, the native mosaic route) keeps its colour.
 Usage: check_highlight_recovery.py [--shaders DIR] [--report]   (DIR: another asset shader tree, e.g. an older one)
 """
 from pathlib import Path
@@ -241,6 +242,23 @@ for name, m in (('red LED', RED), ('green LED', GREEN), ('orange', ORANGE), ('bl
 away = ~dilate((flags & 15) != 0, 3)
 check(np.abs(out[away] - c[away]).max() <= 2e-3 * max(1.0, float(c[away].max())), 'pass-through away from the flags: max |diff| %.2e'
       % np.abs(out[away] - c[away]).max())
+
+# 8) P396 (owner, vivo X200 Ultra 2026-10-29: a sunlit yellow wall came out cream-white, «засвет»): the native mosaic route's
+# worker sets no bit 6, so a Bento-recovered surface carries bits 3 + 4 (the base frames' clipped samples at weight 1 - m)
+# all over; the blanket border defringe must leave that measured ultrashort colour alone (it took it 85 % of the way to the
+# near-neutral local light). The wall's camera colour as the burst's (white-balanced 2.37 : 1.32 : 0.49, G above the base white).
+WH, WW = 96, 128
+wy, wx = np.mgrid[0:WH, 0:WW].astype(np.float32)
+wall = np.array([2.37, 1.32, 0.49], np.float32) * (1.0 + 0.08 * np.sin(wx / 5.0) * np.cos(wy / 7.0))[..., None]
+wraw = (wall * WP).astype(np.float32)
+wflags = np.full((WH, WW), 8 | 16, np.uint8)
+wout = recover(wraw, wflags)
+wcore = (slice(8, WH - 8), slice(8, WW - 8))
+cin = np.linalg.norm(ab(wall[wcore]), axis=-1).mean()
+cout = np.linalg.norm(ab(wout[wcore]), axis=-1).mean()
+check(abs(cout / cin - 1) < 0.03 and np.abs(wout[wcore] - wall[wcore]).max() <= 2e-3 * float(wall.max()),
+      'a Bento-recovered yellow wall without the worker\'s border pass keeps its colour: chroma %.3f -> %.3f, max |diff| %.2e'
+      % (cin, cout, np.abs(wout[wcore] - wall[wcore]).max()))
 
 if REPORT:
     try:
