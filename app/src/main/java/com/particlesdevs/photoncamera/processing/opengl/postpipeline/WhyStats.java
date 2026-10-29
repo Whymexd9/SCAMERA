@@ -206,7 +206,26 @@ public final class WhyStats extends Node {
                         ScamHybridBurst.lastEffectiveMedian, ScamHybridBurst.lastNormals);
             }
             if (clamp != null) Log.i("SCAM_PIPELINE", clamp);
+            // P391: the fusion's noise (the noise-bound deep floor, the bands' noise cap): the one-frame model over N_eff^0.8 of the
+            // merge's frame map on every shot (not only FULLRES, as the clamp), times the worker's measured correction of the model
+            // (ScamDenoise's; never on a DCG shot's measured zones); a lab fragment takes the whole frame's. P391 (review): a DCG
+            // shot with measured zones takes its deep shadows' zone (high gain), not the clamp's mid grey (low gain)
+            st.noiseS = Float.isFinite(pipeline.fusionNoiseS) && pipeline.fusionNoiseS > 0f ? pipeline.fusionNoiseS : (float) noiseS0;
+            st.noiseO = Float.isFinite(pipeline.fusionNoiseO) && pipeline.fusionNoiseO > 0f ? pipeline.fusionNoiseO : (float) noiseO0;
+            if (frozen != null) {
+                st.noiseMerged = Float.isFinite(frozen.fusionNoise) && frozen.fusionNoise > 0f ? frozen.fusionNoise : WhyTone.expectedMerged();
+            } else if (!legacy) {
+                final float neff = WhyNoiseClamp.fusionFrames(ScamHybridBurst.lastEffectiveFrames, WorkingTexture.mSize.x,
+                        WorkingTexture.mSize.y, ScamHybridBurst.lastEffectiveMedian, ScamHybridBurst.lastNormals);
+                final boolean zones = pipeline.mParameters.dcgShot
+                        && com.particlesdevs.photoncamera.processing.render.NoiseModeler.dcgZones(pipeline.mParameters.dcgNoise) != null;
+                final float k = zones ? 1f : ScamHybridBurst.lastNoiseFactor;
+                st.noiseMerged = (float) (k * WhyNoiseClamp.modelScale(neff));
+                Log.i("SCAM_PIPELINE", String.format(java.util.Locale.ROOT, "WHY fusion noise: S=%.4g O=%.4g Neff=%.2f model x%.3g -> x%.4g",
+                        st.noiseS, st.noiseO, neff, k, st.noiseMerged));
+            }
             if (record != null) {
+                record.fusionNoise = st.noiseMerged;
                 record.noiseScale = (float) (noiseS0 > 0 ? settings.noiseS / noiseS0 : noiseO0 > 0 ? settings.noiseO / noiseO0 : 1.0);
                 record.inScale = st.inScale;
                 record.lowWidth = lowSize.x;

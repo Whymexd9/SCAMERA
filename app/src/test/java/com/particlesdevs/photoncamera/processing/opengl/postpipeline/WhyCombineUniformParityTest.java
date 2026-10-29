@@ -100,4 +100,40 @@ public class WhyCombineUniformParityTest {
         assertTrue("the draws take the kind of the table shown", live.contains("combineDefines(lutOn, lutShownScene, true, true)")
                 && live.contains("combineDefines(lutOn, lutShownScene, point, false)"));
     }
+
+    @Test
+    public void theLightChromaIsTheAgxPhotosAndTheViewfindersAlike() throws IOException {
+        // P393: LIGHT_CHROMA (a saturated colour's light tones keep its mid-tone chroma) on the photo and the viewfinder with AgX only
+        // (the block sits under TONE_OP 0), its uniform beside the define; the dev key's default on, clamped to 0 .. 1
+        final String why = read(SRC + "WhyCombine.java");
+        assertTrue(why.contains("final float lightChroma = toneOp == com.particlesdevs.photoncamera.processing.color.ToneCurve.AGX ? WhyTone.lightChroma() : 0f;"));
+        assertTrue(why.contains("if (lightChroma > 0f) glProg.setDefine(\"LIGHT_CHROMA\", 1);"));
+        assertTrue(why.contains("if (lightChroma > 0f) glProg.setVar(\"lightChromaU\", lightChroma);"));
+        final String live = read(SRC + "LiveWhyTone.java");
+        // P393 review: the viewfinder's define and its uniform from the same cached setting (refreshSettings), as colourOn / toneOp
+        assertTrue(live.contains("if (toneOp == ToneCurve.AGX && lightChroma > 0f) defs.add(new String[]{\"LIGHT_CHROMA\", \"1\"});"));
+        assertTrue(method(live, "private void refreshSettings(").contains("lightChroma = WhyTone.lightChroma();"));
+        assertTrue(method(live, "private void combineUniforms(").contains("set(p, \"lightChromaU\", lightChroma);"));
+        // P393 review: Ultra HDR's sky ratio draws both without the term (the sky term holds it back under the mask)
+        assertTrue(why.contains("skyHdrRatio(pipeline, st, r, skyWith, skyWithout, lightChroma > 0f);"));
+        assertTrue(method(why, "private void skyHdrRatio(").contains("if (lightChroma) glProg.setVar(\"lightChromaU\", 0f);"));
+        final String tone = read(SRC + "WhyTone.java");
+        assertTrue(tone.contains("return Math.max(0f, Math.min(1f, value(\"light_chroma\", 1f)));"));
+        final String shader = read("src/main/assets/shaders/why/combine.glsl");
+        assertTrue("0: the shader before P393", shader.contains("#define LIGHT_CHROMA 0\n"));
+        final int block = shader.indexOf("#if LIGHT_CHROMA == 1\n#if TONE_OP == 0\n");
+        assertTrue("the term is AgX's (TONE_OP 0)", block > 0 && shader.indexOf("float keepK", block) > block);
+        // P393 review: the orange-yellow scene hues only, the chroma raised from AgX's own continuously, the hue turned by the share of that
+        // chroma the locked hue loses to the gamut (no gate where the target first passes the chroma: the hue snapped there)
+        final int end = shader.indexOf("    if (look != 3 && inChroma > 0.000001 && hueLockU != 2) {", block);
+        assertTrue("the hue lock follows the term", end > block);
+        final String term = shader.substring(block, end);
+        assertTrue(term.contains("float bandK = smoothstep(LC_HUE_IN.x, LC_HUE_IN.y, hueK) * (1.0 - smoothstep(LC_HUE_OUT.x, LC_HUE_OUT.y, hueK));"));
+        assertTrue(term.contains("float cOutK = cNowK * mix(1.0, max(targetK / cNowK, 1.0), keepK);"));
+        assertTrue(term.contains("turnK *= clamp(LC_TURN * (1.0 - holdK / cOutK), 0.0, 1.0);"));
+        assertTrue("no step where the target meets the chroma", !term.contains("targetK > cNowK"));
+        // P393 review (M3 / M4): saturated from the leaves' C / L (skin of their hue, a lit lampshade, a yellow wallpaper under it)
+        assertTrue(shader.contains("const vec2 LC_SAT = vec2(0.14, 0.17);"));
+        assertTrue(term.contains("float saturatedK = smoothstep(LC_SAT.x, LC_SAT.y, cMidK / max(midK.x, 0.0001));"));
+    }
 }

@@ -27,6 +27,9 @@ uniform float defringeU;          // clip-border colour suppression 0..1 (0 = un
 // P362: «Inpaint opposed» (RawTherapee / darktable, hlrecovery/opposed) where the pixel holds no ultrashort content.
 uniform int oppU;                 // 1: on
 uniform vec3 oppChromaU;          // the global chrominance correction per channel (white-balanced)
+// P393: 1 = a clipped channel of a coloured surface also takes the local light's colour (Chroma8 / 32 / 128) fitted to the pixel's
+// bounds (below, in the opposed branch); 0 (unset) = RawTherapee's reference alone, as before
+uniform int oppLocalU;
 // 1 (SCAM Hybrid): the worker's signed values pass on. The merge keeps its noise signed and clips once; a per-pixel
 // max(0) here lifted the mean of every channel near zero by up to half its noise - x1.5 red along the frame edge of a dark
 // teal curtain, where fewer donors overlap (OPPO X8U 2026-10-07), and red mottling of dark saturated colours once the WHY
@@ -230,6 +233,53 @@ void main(){
                     m = pow(max(m / 9.0, vec3(0.0)), vec3(1.0 / 3.0));
                     vec3 ref = pow(0.5 * vec3(m.g + m.b, m.r + m.b, m.r + m.g), vec3(3.0)) + oppChromaU;
                     vec3 r = mix(c, max(c, ref), vec3(clipped));
+                    // P393 (owner, 2026-10-29: sunlit yellow birches pale peach beside ArkCam): RT's reference takes a clipped channel
+                    // from the other two with ONE additive chrominance for the whole frame, measured where the channel is just under
+                    // its clip; textured foliage (dark gaps in every 3 x 3) measured it at -0.12 .. -0.99 for G (tools/check_opposed_
+                    // foliage.py), so on yellow leaves a clipped G stayed at its clip while R rose - orange, then salmon / pink once R
+                    // clipped too and the anti-magenta rule lifted G only to B (hue 69 -> 58 -> 25 -> 12 deg, R G B 1 : 0.25 : 0.32).
+                    // The local light (the bright unclipped pixels around: the neighbouring leaves) is the surface's colour: one
+                    // channel clipped - the light fitted on the two measured channels where their ratio agrees with it (misfit in log
+                    // 0.05 .. 0.20); two clipped - the light at the measured channel's scale (which keeps its value) where that scale
+                    // meets both lower bounds (below). Only ever raised; the neutral terms below (every channel at its clip, the clip
+                    // band) are unchanged, so a blown lamp or sun still goes white.
+                    if (oppLocalU != 0 && chromaU != 0) {
+                        vec3 qK = max(localLight(ivec2(gl_FragCoord.xy)).rgb, vec3(1.0e-4));
+                        vec3 uK = vec3(not(clipped));
+                        vec3 cl = vec3(clipped);
+                        float nK = uK.r + uK.g + uK.b;
+                        vec3 estK = r;
+                        float wK = 0.0;
+                        if (nK > 1.5) {
+                            vec3 lr = log(max(c, vec3(1.0e-4))) - log(qK);
+                            float mK = dot(uK, lr) * 0.5;
+                            float misK = sqrt(dot(uK, (lr - mK) * (lr - mK)) * 0.5);
+                            wK = 1.0 - smoothstep(0.05, 0.20, misK);
+                            estK = qK * exp(mK);
+                        } else if (nK > 0.5) {
+                            // P393 review (B2): the light at the measured channel's scale (measK), where it agrees with that channel - the
+                            // surface's own colour reaches both clipped channels' bounds there (the least scale that meets them, boundK, is
+                            // not above it); where it does not (misfit in log 0.05 .. 0.20) the light is another surface's and RT's
+                            // reference stays: a blue sky round yellow leaves with R and G clipped (its B / R x5 the leaves') made them
+                            // lime green (OKLab hue 130 for 69), the neutral prior deep inside a clipped area (no unclipped light around)
+                            // set G = R (a yellow leaf's gradient beside green ones: hue 80 -> 117 in 4 px; now 78 - 82, RT 77 - 80). At
+                            // the measured scale, not the bounds' (as before): where the second channel just clipped the one-clipped fit
+                            // above did not lift it, and a light past the new bound stepped in (a white neighbour: 0.094 OKLab in 1 px)
+                            float measK = dot(uK, c / qK);
+                            float boundK = max(max(cl.r * c.r / qK.r, cl.g * c.g / qK.g), cl.b * c.b / qK.b);
+                            estK = qK * measK;
+                            wK = 1.0 - smoothstep(0.05, 0.20, log(max(boundK, 1.0e-6) / max(measK, 1.0e-6)));
+                        }
+                        // not where the neutral ramp below takes the pixel (full, band: the same terms of c), so a lamp's or the sun's
+                        // core and clip band stay as they were made
+                        vec3 tcK = c / max(clipW, vec3(1.0e-6));
+                        float loK = min(min(tcK.r, tcK.g), tcK.b);
+                        float midK = max(min(tcK.r, tcK.g), min(max(tcK.r, tcK.g), tcK.b));
+                        float leftK = tcK.r == loK ? c.r : (tcK.g == loK ? c.g : c.b);
+                        wK *= 1.0 - max(smoothstep(0.85, 1.0, loK),
+                                        smoothstep(0.85, 1.0, midK) * smoothstep(0.80, 0.95, leftK / max(max(max(c.r, c.g), c.b), 1.0e-6)));
+                        r = mix(r, max(r, estK), cl * wK);
+                    }
                     // never magenta (owner, 2026-10-19: «никогда не было фиолетовых засветов»): a clipped G is a lower bound and the
                     // channel a white light clips first; the opposed chrominance of a fully blown lamp (G below R and B around
                     // it) left its core lavender (lamp2324 without ultrashort frames: G 1.78 against R / B 1.86) - G comes up to

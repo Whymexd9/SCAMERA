@@ -115,6 +115,8 @@ public final class WhyCombine extends Node {
         final com.particlesdevs.photoncamera.processing.color.ColourLook look = WhyTone.colourLook(pipeline);
         final boolean colourOn = !look.shaderNeutral();
         final int toneOp = WhyTone.toneOperator();
+        // P393: the light tones of a saturated colour keep its mid-tone chroma (LIGHT_CHROMA; AgX only, the other operators as before)
+        final float lightChroma = toneOp == com.particlesdevs.photoncamera.processing.color.ToneCurve.AGX ? WhyTone.lightChroma() : 0f;
         // P369: with a film the scene-referred table (FILM_SIM: the film fed the exposed scene light, the chosen LUT on its print);
         // a film whose data cannot be read gives the photo no film (never the display table)
         final com.particlesdevs.photoncamera.processing.color.FilmChain.Scene scene = film == null ? null
@@ -220,6 +222,8 @@ public final class WhyCombine extends Node {
             if (st.sky != null) glProg.setDefine("SKY", 1);
             // window burst (a room 7 EV under the window crushed to black): the macro contrast below its pivot as a power
             if (WhyTone.macroToe()) glProg.setDefine("MACRO_TOE", 1);
+            // P393: a saturated colour's light tones under the AgX white keep its mid-tone chroma (0: the shader before, token for token)
+            if (lightChroma > 0f) glProg.setDefine("LIGHT_CHROMA", 1);
             skyLog = st.sky == null ? "" : " sky=" + Math.round(100f * st.skyMask.coverage) + "%" + (st.skyMask.keep < 1f
                     ? " backlit (level x" + Math.round(100f * st.skyMask.keep) / 100f + ")" : "");
             // P378 review: Ultra HDR keeps the sky term's change - the combine at whyLow with and without it (skyHdrRatio), its
@@ -310,6 +314,7 @@ public final class WhyCombine extends Node {
             // P11: the Bento ceiling / roll-off only with real headroom; saturated light fades towards white in the shoulder.
             glProg.setVar("headroomU", ScamRgb.lastRealClip || ScamHybridBurst.lastBentoUsClipped > 0f ? 1 : 0);
             glProg.setVar("hlWhiteU", Math.max(0f, Math.min(1f, WhyTone.value("hl_white", 0.15f))));
+            if (lightChroma > 0f) glProg.setVar("lightChromaU", lightChroma);
             // P154 «Мягкость засветов»: the landing of blown light on the white point starts this far below the ceiling
             if (hlB != null) glProg.setVar("hlSoftU", hlSoft);
             glProg.setVar("toeU", WhyTone.value("aces_toe", 0.05f));
@@ -317,6 +322,7 @@ public final class WhyCombine extends Node {
             glProg.setVar("macroU", WhyTone.value("macro_contrast", 1.1f));
             glProg.setVar("vibU", WhyTone.value("vibrance", 0f), WhyTone.value("vibrance_sky", 0.40f), WhyTone.value("vibrance_green", 0.20f));
             glProg.setVar("vibHlU", WhyTone.vibranceHl());
+            glProg.setVar("vibHlShapeU", WhyTone.vibranceHlShape());   // P393: no cast doubled on pale mid-light tones
             glProg.setVar("chromaDnU", WhyFusion.whyDenoise(basePipeline.mParameters) ? WhyTone.value("chroma_denoise", 0f) : 0f);
             glProg.setVar("clarityU", WhyTone.value("clarity", 0f));
             glProg.setVar("flatProtectU", WhyTone.value("flat_protect", 0f));
@@ -350,7 +356,7 @@ public final class WhyCombine extends Node {
             glProg.drawBlocks(WorkingTexture);
             if (skyWith != null) {
                 try {
-                    skyHdrRatio(pipeline, st, r, skyWith, skyWithout);
+                    skyHdrRatio(pipeline, st, r, skyWith, skyWithout, lightChroma > 0f);
                     skyLog += pipeline.skyHdrRatio != null ? " hdrSkyRatio=" + pipeline.skyHdrRatioSize.x + "x" + pipeline.skyHdrRatioSize.y : "";
                 } catch (RuntimeException e) {
                     // the photo stands; its gain map takes the scene as before
@@ -372,7 +378,8 @@ public final class WhyCombine extends Node {
             if (oppShare != null) oppShare.close();
         }
         Log.i("SCAM_PIPELINE", "WHY combine ae=" + r.ae + " clip=" + r.clip + (r.hr > 0f ? " hr=" + r.hr : "") + " headroom=" + (ScamRgb.lastRealClip || ScamHybridBurst.lastBentoUsClipped > 0f)
-                + " hlWhite=" + WhyTone.value("hl_white", 0.15f) + " hlSoft=" + WhyTone.value("hl_soft", 0.7f) + " grid=" + input.mSize.x + "x" + input.mSize.y
+                + " hlWhite=" + WhyTone.value("hl_white", 0.15f) + " hlSoft=" + WhyTone.value("hl_soft", 0.7f)
+                + (lightChroma > 0f ? " lightChroma=" + lightChroma : "") + " grid=" + input.mSize.x + "x" + input.mSize.y
                 + " lowFactor=" + st.factor + (st.factor > 2 ? " colour=whyMid" : " colour=whyLow") + " detail=" + detail
                 + (sharp ? " (WhyLumaS, mul " + sharpMul + ")" : " (Sabre Y, bounded ref)")
                 + (sunBloomOn ? " sunBloom=" + WhyTone.sunBloom()[0] + "@" + WhyTone.sunBloom()[1] : "")
@@ -393,10 +400,13 @@ public final class WhyCombine extends Node {
      * still bound draws whyLow (the kernel's same-size bypass fU 1 on whyLow: no detail, no dither) with the sky term and without
      * it (skyU.x, skyMU 0: every sky branch is skipped, as off the mask), then why/skyratio takes their luminance ratio on a grid
      * of whyLow (its longer side SKY_RATIO_SIDE) and it is read back. RunHDRGainMap scales the scene plane by it: the HDR
-     * rendition is the SDR's sky term times the scene's own headroom over the SDR before it.
+     * rendition is the SDR's sky term times the scene's own headroom over the SDR before it. P393 review: both draws without the light
+     * tones' chroma (LIGHT_CHROMA, lightChromaU 0 when {@code lightChroma}): the sky term holds it back under the mask, so the draw
+     * without the sky term took it there and the ratio carried it.
      */
-    private void skyHdrRatio(PostPipeline pipeline, WhyTone.State st, WhyAe.Result r, GLTexture with, GLTexture without) {
+    private void skyHdrRatio(PostPipeline pipeline, WhyTone.State st, WhyAe.Result r, GLTexture with, GLTexture without, boolean lightChroma) {
         final GLTexture colour = st.lowDn != null ? st.lowDn : st.low;
+        if (lightChroma) glProg.setVar("lightChromaU", 0f);
         glProg.setTexture("InputBuffer", st.low);
         glProg.setTexture("WhyColour", colour);
         glProg.setVar("fU", 1);

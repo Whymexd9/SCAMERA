@@ -319,9 +319,23 @@ public final class WhyAe {
      * stacking; 1 when that term is not a positive finite number). Returns {S, O}.
      */
     public static float[] dcgClampModel(float[] zones, float avgS, float avgO, double baseS, double baseO) {
+        return dcgModelAt(0.5f, zones, avgS, avgO, baseS, baseO);
+    }
+
+    /**
+     * P391 (review of P391): the WHY fusion's noise model of a DCG shot with measured zones - its caps (the deep floor, the fine
+     * bands' gain) act on the deep shadows, under the knee: the slope and the high-gain offset, carried as {@link #dcgClampModel}'s
+     * (the clamp's mid grey sits above the knee, in the low-gain zone, and its offset overstated the cleanest shadows' noise).
+     */
+    public static float[] dcgShadowModel(float[] zones, float avgS, float avgO, double baseS, double baseO) {
+        return dcgModelAt(0f, zones, avgS, avgO, baseS, baseO);
+    }
+
+    /** P320 / P391: {slope, the offset of level {@code x}'s zone} of the measured zones, carried by the averaged model's scale. */
+    static float[] dcgModelAt(float x, float[] zones, float avgS, float avgO, double baseS, double baseO) {
         final double kS = baseS > 0 && Double.isFinite(baseS) && avgS > 0f && Float.isFinite(avgS) ? avgS / baseS : 1.0;
         final double kO = baseO > 0 && Double.isFinite(baseO) && avgO > 0f && Float.isFinite(avgO) ? avgO / baseO : 1.0;
-        final float o = com.particlesdevs.photoncamera.processing.render.NoiseModeler.zoneOffset(0.5f, zones[1], zones[2], zones[3]);
+        final float o = com.particlesdevs.photoncamera.processing.render.NoiseModeler.zoneOffset(x, zones[1], zones[2], zones[3]);
         return new float[]{(float) (zones[0] * kS), (float) (o * kO)};
     }
 

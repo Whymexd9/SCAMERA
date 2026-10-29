@@ -628,6 +628,33 @@ public class HybridSettingsTest {
         assertArrayEquals(new CharSequence[]{"2","1","0"},engine.getEntryValues());
     }
 
+    @Test public void p392DevSwitchesTakeTheirLinesOut() throws Exception {
+        // P392 review: scam_dev.txt "hybrid_us_partial 0" takes the partial ultrashort refusal out of the worker's tuning and
+        // "hybrid_long_scope 0" the long frames' block scope (each the worker as before P392), the other block stays
+        String on=PreferenceKeys.hybridTuningText();
+        assertTrue(on,on.contains("bentoPartial 1\nbentoAliasDamp 1\n")&&on.contains("shastaMotionScope 1\n"));
+        java.io.File file=ScamDevFile.file(context);
+        if(file.getParentFile()!=null)file.getParentFile().mkdirs();
+        java.lang.reflect.Field stamp=PreferenceKeys.class.getDeclaredField("scamDevStamp");
+        stamp.setAccessible(true);
+        try{
+            java.nio.file.Files.write(file.toPath(),"hybrid_us_partial 0\n".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            stamp.setLong(null,-1);
+            String t=PreferenceKeys.hybridTuningText();
+            assertFalse(t,t.contains("bentoPartial")||t.contains("bentoAliasDamp"));
+            assertTrue(t,t.contains("shastaMotionScope 1\n"));
+            java.nio.file.Files.write(file.toPath(),"hybrid_long_scope 0\n".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            stamp.setLong(null,-1);
+            t=PreferenceKeys.hybridTuningText();
+            assertFalse(t,t.contains("shastaMotionScope"));
+            assertTrue(t,t.contains("bentoPartial 1\nbentoAliasDamp 1\n"));
+        }finally{
+            java.nio.file.Files.deleteIfExists(file.toPath());
+            stamp.setLong(null,-1);
+        }
+        assertTrue(PreferenceKeys.hybridTuningText().contains("bentoPartial 1\n"));
+    }
+
     @Test public void p68DefaultsOnEveryPhone() {
         // owner, 10 October 2026: XML defaults stored on the first opening, and the same values written to the worker when unset
         String tuning=PreferenceKeys.hybridTuningText();
@@ -644,6 +671,9 @@ public class HybridSettingsTest {
                 &&tuning.lastIndexOf("bentoMotionMax ")==tuning.indexOf("bentoMotionMax 25\n"));
         assertTrue("P358: the reject pass skips the ultrashort donors, the long frames' measured noise and weight",
                 tuning.contains("rejSkipUs 1\n")&&tuning.contains("noiseRoles 1\nshastaNoiseWeight 0.005\n"));
+        assertTrue("P392: partial ultrashort refusal and the long frames' block scope, after the P350 set",
+                tuning.contains("bentoPartial 1\nbentoAliasDamp 1\n")&&tuning.contains("shastaMotionScope 1\n")
+                &&tuning.indexOf("bentoPartial 1\n")>tuning.indexOf("bentoRefuseScope 1\n"));
         assertTrue("P344: the spread floor over the untouched default",tuning.lastIndexOf("dilateFloor ")==tuning.indexOf("dilateFloor 0.35\n"));
         assertEquals(2,PreferenceKeys.getHybridShastaMode());
         assertEquals(20,PreferenceKeys.getHybridZslFrames());

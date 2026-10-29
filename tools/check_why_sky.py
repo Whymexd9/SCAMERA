@@ -6,7 +6,9 @@ the photo before P378).
 The programs are built as GLInterface.readProgram builds them and drawn as GLProg draws them (check_why_pyramid.Gl); whyLow and the
 detail reference come from why/low.glsl on a full-size image, the fusion is WhyFusion's (the pyramid, the guided filter's share above
 white), the highlight landing's mask is why/hlmask.glsl's, the decision is WhySkyMask.java itself (compiled with javac, run on the
-cells the GPU read back). Checks:
+cells the GPU read back). P391: the fusion is the photo's since the pyramid's edge-aware bands (check_why_pyramid_bands.fuse: no
+guided filter, no SKY in lpyr - the sky term is the combine's); the overcast clear sky's modelling is also rendered and gated on the
+shares' path the bands replaced (P349 + P378 SKY 1 in lpyr, scam_dev hybrid_why_fusion_bands 0). Checks:
 - the cells of why/skycells.glsl = WhySkyMask.Cells.of (the CPU twin) within float rounding;
 - overcast (owner's flats in kind: soft grey-white clouds with grey-blue bases and blue gaps over darker textured ground, a roof
   into the sky, a dark wire across it; the ceiling 1.2, no Bento: the flats' own sky levels): the sky found, not backlit; every
@@ -48,6 +50,7 @@ SH = ROOT / 'app/src/main/assets/shaders'
 JAVA = ROOT / 'app/src/main/java/com/particlesdevs/photoncamera/processing/opengl/postpipeline/WhySkyMask.java'
 sys.path.insert(0, str(ROOT / 'tools'))
 import check_why_pyramid as cwp  # noqa: E402  (Gl, read_program, levels_for, guided)
+import check_why_pyramid_bands as cwb  # noqa: E402  (P391: the photo's fusion since the edge-aware bands)
 
 REPORT = '--report' in sys.argv
 LUMA = np.array([0.2126, 0.7152, 0.0722])
@@ -55,6 +58,8 @@ LUMA = np.array([0.2126, 0.7152, 0.0722])
 FUSION = {'expU': (0.125, 1.0, 0.354, 3.03), 'layerU': (0.8, 1.0, 0.1, 1.0), 'centerU': 0.6, 'smoothU': 0.25, 'gammaInvU': 1 / 2.2,
           'toeU': 0.05, 'monoU': 0.04, 'satLightU': (0.0, 0.0, 0.0, 0.0), 'satLevelU': (0.0, 0.0), 'warmU': (0.1, 0.25)}
 GUIDED_MIX = (0.8, 1.6)
+# P393: P341's shape of the light-tone vibrance (WhyTone.VIBRANCE_HL_SHAPE_P341), the baseline C1's chroma targets were set against
+P341_SHAPE = (0.45, 0.75, 0.002, 0.008)
 
 
 def shipped():
@@ -168,10 +173,14 @@ class Java:
 
 
 class Sky:
-    """The photo's WHY passes with and without the sky term (WhyStats' whyLow .. WhyCombine) on the host GPU."""
+    """The photo's WHY passes with and without the sky term (WhyStats' whyLow .. WhyCombine) on the host GPU. P391: the fusion is the
+    photo's - the pyramid's edge-aware bands (mode 'bands': no guided filter, so no SKY in lpyr; the sky term is the combine's) - or,
+    mode 'shares', the shares the bands replaced (P349's guided filter above white with P378's clear-sky exemption, SKY 1 in lpyr),
+    still there for an A/B (scam_dev hybrid_why_fusion_bands 0)."""
 
-    def __init__(self):
-        self.gl = cwp.Gl()
+    def __init__(self, mode='bands'):
+        self.gl = cwb.Gl()
+        self.mode = mode
         self.java = Java()
         self.progs = {}
 
@@ -232,10 +241,14 @@ class Sky:
                          {'cellScaleU': (1.0 / (cell * nx), 1.0 / (cell * ny)), 'boxU': box}, linear=True)
 
     def fusion(self, low, ae, uni, sky=None, coarse=48):
-        """WhyFusion.pyramid: lpyr MODE 0 .. 5 with the guided filter's share above white (P349); SKY 1 with a mask."""
+        """WhyFusion.pyramid: mode 'bands' - lpyr with the edge-aware bands (P391, WhyTone's defaults; the sky mask leaves it alone);
+        mode 'shares' - lpyr MODE 0 .. 5 with the guided filter's share above white (P349), SKY 1 with a mask."""
         u = dict(uni, aeU=ae)
         low_np = self.gl.read(low)
         h, w = low_np.shape[:2]
+        if self.mode == 'bands':
+            f, _ = cwb.fuse(self.gl, low_np, u, coarse, cwb.BANDS)
+            return self.tex(f[..., None].astype(np.float32))
         n = cwp.levels_for(w, h, coarse)
         sizes, L, W, F = [(w, h)], [None], [None], [None]
         for l in range(1, n + 1):
@@ -271,7 +284,7 @@ class Sky:
         return self.draw('why/hlmask', (), w, h, 1, 'f2', [('InputBuffer', b)], {'dirU': (0, 1), 'sigmaU': sigma}, linear=True)
 
     def combine(self, t_full, ones, low, ref, fused, hl, ae, clip, sky=None, keep=1.0, hr=0.0, terms=(1.0, 1.0, 1.0, 1.0), tops=(0.0, 1.0),
-                macro=1.1):
+                macro=1.1, shape=(0.0, 0.0, 0.0, 0.0)):
         h, w = t_full.height, t_full.width
         defines = [('HL_LANDING', '1')]
         if hr > clip:
@@ -281,7 +294,8 @@ class Sky:
         eye = tuple(np.eye(3).flatten())
         u = {'sensorToIntermediate': eye, 'intermediateToSRGB': eye, 'neutralPointU': (1, 1, 1), 'inScaleU': 1.0, 'fU': 2, 'colourFU': 2,
              'signedColourU': 0, 'signedHueU': 1, 'aeU': ae, 'clipU': clip, 'toeU': 0.05, 'gammaInvU': 1 / 2.2, 'macroU': macro,
-             'vibU': (0.0, 0.4, 0.2), 'vibHlU': 1.0, 'chromaDnU': 0.0, 'clarityU': 0.0, 'flatProtectU': 0.0, 'detailGainU': 1.0,
+             'vibU': (0.0, 0.4, 0.2), 'vibHlU': 1.0, 'vibHlShapeU': shape, 'chromaDnU': 0.0, 'clarityU': 0.0, 'flatProtectU': 0.0,
+             'detailGainU': 1.0,
              'detailRefU': 1, 'sharpU': 0, 'fullInputU': 1, 'sharpToneU': 1.0, 'deltaChromaU': 1.0, 'filmToeU': 0.1,
              'agxAU': (2.7, 1.35, 1.6, 1.0), 'agxBU': (-8.5, 3.5, 0.3, 4.0), 'ditherU': 1, 'headroomU': 1, 'hlWhiteU': 0.15, 'hlSoftU': 0.7,
              'hrU': hr, 'hrKneeU': 0.5, 'hrRoomU': 0.4, 'hrDetailU': 0.35,
@@ -302,7 +316,10 @@ class Sky:
         low_np = self.gl.read(low)
         d = self.java.decide(low_np, m0, m1, ev, top, ceiling)
         hl = self.hlmask(low, ceiling)
-        before = self.combine(t_full, ones, low, ref, self.fusion(low, ae, uni), hl, ae, clip, hr=hr, macro=macro)
+        fused0 = self.fusion(low, ae, uni)
+        before = self.combine(t_full, ones, low, ref, fused0, hl, ae, clip, hr=hr, macro=macro)
+        # P393: the photo without the term as P378 measured it (P341's light-tone vibrance shape): the baseline of C1's chroma ratios
+        self.before341 = self.combine(t_full, ones, low, ref, fused0, hl, ae, clip, hr=hr, macro=macro, shape=P341_SHAPE)
         if d['mask'] is None:
             return before, None, d, low_np, None
         mask = self.mask(low, d['mask'], cell)
@@ -334,12 +351,13 @@ class Sky:
         t_curve = self.tex(curve.reshape(1, -1, 1).astype(np.float32))
         ones = self.tex(np.ones((1, 1, 4), np.float32), linear=True)
 
-        def tone(cells=None):
+        def tone(cells=None, shape=(0.0, 0.0, 0.0, 0.0)):
             defines = [('POINT_FUSED', '1')] + ([('SKY', '1')] if cells is not None else [])
             u = {'sensorToIntermediate': tuple(np.eye(3).flatten()), 'intermediateToSRGB': tuple(np.eye(3).flatten()),
                  'neutralPointU': (1.0, 1.0, 1.0), 'inScaleU': 1.0, 'fU': 1, 'colourFU': 1, 'fusedCurveU': (cvf.LOG2_MIN, float(cvf.PER_EV)),
                  'signedColourU': 0, 'signedHueU': 1, 'aeU': ae, 'clipU': clip, 'toeU': 0.05, 'gammaInvU': 1 / 2.2, 'macroU': 1.1,
-                 'vibU': (0.0, 0.4, 0.2), 'vibHlU': 1.0, 'chromaDnU': 0.0, 'clarityU': 0.0, 'flatProtectU': 0.0, 'detailGainU': 0.0,
+                 'vibU': (0.0, 0.4, 0.2), 'vibHlU': 1.0, 'vibHlShapeU': shape, 'chromaDnU': 0.0, 'clarityU': 0.0, 'flatProtectU': 0.0,
+                 'detailGainU': 0.0,
                  'detailRefU': 0, 'sharpU': 0, 'sharpToneU': 1.0, 'deltaChromaU': 1.0, 'filmToeU': 0.1, 'agxAU': (2.7, 1.35, 1.6, 1.0),
                  'agxBU': (-8.5, 3.5, 0.3, 4.0), 'ditherU': 1, 'headroomU': 0, 'hlWhiteU': 0.15}
             textures = [(k, t_lin) for k in ('InputBuffer', 'WhyLow', 'WhyColour', 'WhyFused', 'WhyDetailRef', 'WhyLumaS')]
@@ -350,6 +368,7 @@ class Sky:
             out = self.draw('why/combine', tuple(defines), w, h, 4, 'f4', textures, u)
             return self.gl.read(out)[..., :3]
         before = tone()
+        self.vf_before341 = tone(shape=P341_SHAPE)   # P393: C1's baseline (P341's vibrance shape), as the photo's
         if d['mask'] is None:
             return before, None, d, None
         t_cells = self.tex(d['mask'].astype(np.float32), 'f2', linear=True)
@@ -617,11 +636,18 @@ def scene_part(sky, failures):
     ratio = mid_ratio(before, after, full_sky)
     top = full_sky & (yb >= np.percentile(yb[full_sky], 97))
     top_ratio = float(np.median(ya[top]) / np.median(yb[top]))
-    lab_b, lab_a = oklab(display_to_linear(before)), oklab(display_to_linear(after))
+    # P393: C1's chroma ratios against the photo without the term as P378 measured it (P341's vibrance shape); off the mask the
+    # shipped shape (P393) already leaves a cloud's cast as it is, in the mask the term is P378's (tools/check_vibrance_hl.py)
+    lab_b, lab_a = oklab(display_to_linear(sky.before341)), oklab(display_to_linear(after))
     cb, ca = np.hypot(lab_b[..., 1], lab_b[..., 2]), np.hypot(lab_a[..., 1], lab_a[..., 2])
     clouds = full_sky & (cb < 0.03)
     gaps = reg['gap'] & (up2(mask[..., 0], h, w) > 0.99)
     c_cloud, c_gap = float(ca[clouds].mean() / cb[clouds].mean()), float(ca[gaps].mean() / max(cb[gaps].mean(), 1e-9))
+    # P393 review: in the mask P378's ramp is kept, off it the ground's later one - the term must still never add chroma to the
+    # photo as shipped without it (the step at the mask's edge stays a fall)
+    lab_s = oklab(display_to_linear(before))
+    cs = np.hypot(lab_s[..., 1], lab_s[..., 2])
+    s_cloud, s_gap = float(ca[clouds].mean() / cs[clouds].mean()), float(ca[gaps].mean() / max(cs[gaps].mean(), 1e-9))
     clear = up2(mask[..., 1], h, w) > 0.99
     cv_b, n_b = block_cv(yb, clear & reg['sky'])
     cv_a, _ = block_cv(ya, clear & reg['sky'])
@@ -666,8 +692,35 @@ def scene_part(sky, failures):
         failures.append('overcast: the clouds\' chroma x%.2f (C1: neutral clouds)' % c_cloud)
     if not 0.81 <= c_gap <= 0.93:
         failures.append('overcast: the blue gaps\' chroma x%.2f (the reference\'s x0.87 of ours)' % c_gap)
+    print('  against the photo as shipped without the term (P393\'s vibrance shape off the mask): cloud chroma x%.3f, blue gaps x%.3f'
+          % (s_cloud, s_gap))
+    if s_cloud > 1.0 or s_gap > 1.0:
+        failures.append('overcast: the sky term adds chroma to the shipped photo (clouds x%.3f, gaps x%.3f)' % (s_cloud, s_gap))
+    # M1 (modelled clouds). P391: the photo's fusion is the pyramid's edge-aware bands - no guided filter above white, so the clear
+    # sky keeps the pyramid's modelling on both sides of the sky term and their ratio measures only the combine's part of M1 (P378's
+    # exemption gave back what P349's share took). Besides that ratio, the clear sky's own contrast with the term is held to the
+    # shipped P378 path's (the shares with the exemption, rendered here too), and that path keeps its ratio gate (scam_dev
+    # hybrid_why_fusion_bands 0)
     if not cv_a > 1.03 * cv_b:
         failures.append('overcast: the clear sky\'s local contrast x%.2f (M1: modelled clouds)' % (cv_a / cv_b))
+    mode = sky.mode
+    sky.mode = 'shares'
+    try:
+        sb, sa, sd, _, smask = sky.run(full, ae, clip, ev, 0)
+    finally:
+        sky.mode = mode
+    s_clear = up2(smask[..., 1], h, w) > 0.99
+    ysb, ysa = display_to_linear(sb) @ LUMA, display_to_linear(sa) @ LUMA
+    cv_sb, _ = block_cv(ysb, s_clear & reg['sky'])
+    cv_sa, _ = block_cv(ysa, s_clear & reg['sky'])
+    print('  M1: the clear sky\'s local contrast (16 px cv) with the term %.4f (without %.4f); the shares\' path (P349 + P378) %.4f '
+          '(without %.4f, x%.2f)' % (cv_a, cv_b, cv_sa, cv_sb, cv_sa / cv_sb))
+    if mode != 'shares':
+        if not cv_sa > 1.03 * cv_sb:
+            failures.append('overcast, the shares\' path: the clear sky\'s local contrast x%.2f (M1: modelled clouds)' % (cv_sa / cv_sb))
+        if not cv_a >= 0.97 * cv_sa:
+            failures.append('overcast: the clear sky\'s local contrast %.4f with the bands, under 0.97 x the shipped P378 path\'s %.4f (M1)'
+                            % (cv_a, cv_sa))
     if wire_mask > 0.35:
         failures.append('overcast: the dark wire is in the mask (%.2f)' % wire_mask)
     if roof_in.size and roof_in.max() > 0.05:
@@ -689,10 +742,13 @@ def scene_part(sky, failures):
         sky_low = reg['sky'][::2, ::2][:lh, :lw] & ~reg['gap'][::2, ::2][:lh, :lw]
         vsel = sky_low & (vr > 0.99)
         v_ratio = mid_ratio(vb, va, vsel)
-        lab_vb, lab_va = oklab(display_to_linear(vb)), oklab(display_to_linear(va))
+        lab_vb, lab_va = oklab(display_to_linear(sky.vf_before341)), oklab(display_to_linear(va))   # P393: as the photo's C1
         vcb, vca = np.hypot(lab_vb[..., 1], lab_vb[..., 2]), np.hypot(lab_va[..., 1], lab_va[..., 2])
         vclouds = vsel & (vcb < 0.03)
         v_cloud = float(vca[vclouds].mean() / vcb[vclouds].mean())
+        lab_vs = oklab(display_to_linear(vb))   # P393 review: against the shipped viewfinder without the term
+        vcs = np.hypot(lab_vs[..., 1], lab_vs[..., 2])
+        v_cloud_s = float(vca[vclouds].mean() / vcs[vclouds].mean())
         v_zero = dilate(dilate((vr > 0).astype(np.uint8))) == 0
         v_same = bool(np.all(vb == va, -1)[v_zero].all())
         print('  mid sky linear Y x%.3f (the photo x%.3f), cloud chroma x%.2f (the photo x%.2f); the ground as without the term: %s'
@@ -703,6 +759,9 @@ def scene_part(sky, failures):
             failures.append('viewfinder: the mid sky x%.3f against the photo\'s x%.3f' % (v_ratio, ratio))
         if v_cloud > 0.8:
             failures.append('viewfinder: the clouds\' chroma x%.2f' % v_cloud)
+        print('  viewfinder cloud chroma against the shipped one without the term: x%.3f' % v_cloud_s)
+        if v_cloud_s > 1.0:
+            failures.append('viewfinder: the sky term adds chroma to the clouds of the shipped viewfinder (x%.3f)' % v_cloud_s)
         if not v_same:
             failures.append('viewfinder: the ground changed')
 

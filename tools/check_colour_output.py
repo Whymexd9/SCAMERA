@@ -142,6 +142,18 @@ P341_VIB_BLOCK = ('    if (vibHlU > 0.0) {\n'
                   '        float c0 = length(lab.yz);\n'
                   '        lab.yz *= 1.0 + 1.6 * vibHlU * smoothstep(0.45, 0.75, lab.x) * smoothstep(0.002, 0.008, c0) * max(1.0 - c0 / 0.10, 0.0);\n'
                   '    }\n')
+# P393 (owner, 2026-10-29: our pale walls / ceilings yellower than the reference app's): the vibrance's shape for pale colour
+# (vibHlShapeU, the two functions vibHlShape / vibHlRamp; unset: P393's defaults) - the block now reads it; the token comparison
+# takes the uniform, the functions and the block out with P341's.
+P393_SHAPE_UNIFORM = ('uniform vec4 vibHlShapeU;           // P393: its shape for pale colour - OKLab L from / full, chroma gate from / '
+                      'full; unset: 0.50 / 0.85, 0.010 / 0.025\n')
+P393_FUNCTIONS = re.compile(r'\n// P393 \(owner, 2026-10-29.*?\nvec4 vibHlShape\(\) \{\n.*?\n\}\n\n// P393: the lightness ramp[^\n]*\n'
+                            r'float vibHlRamp\(vec4 s, float lx, float c0\) \{\n.*?\n\}\n', re.S)
+P393_VIB_BLOCK = ('    if (vibHlU > 0.0) {\n'
+                  '        float c0 = length(lab.yz);\n'
+                  '        vec4 hlShape = vibHlShape();\n'
+                  '        lab.yz *= 1.0 + 1.6 * vibHlU * vibHlRamp(hlShape, lab.x, c0) * smoothstep(hlShape.z, hlShape.w, c0) * max(1.0 - c0 / 0.10, 0.0);\n'
+                  '    }\n')
 P341_DELTA_NEW = '        delta *= delta < 0.0 ? compression : compression * compression;\n'
 P341_DELTA_OLD = '        delta *= compression * compression;\n'
 
@@ -149,7 +161,20 @@ P341_DELTA_OLD = '        delta *= compression * compression;\n'
 def without_p341(src: str) -> str:
     """P341: the light-tone vibrance and the darkening delta's compression taken back out for the token comparison (shader_part
     checks that they are there)."""
+    src = without_p393(src)
     return src.replace(P341_VIB_UNIFORM, '', 1).replace(P341_VIB_BLOCK, '', 1).replace(P341_DELTA_NEW, P341_DELTA_OLD, 1)
+
+
+def has_p393(src: str) -> bool:
+    src = src.replace('\r\n', '\n')
+    return P393_SHAPE_UNIFORM in src and P393_FUNCTIONS.search(src) is not None and src.count(P393_VIB_BLOCK) == 1
+
+
+def without_p393(src: str) -> str:
+    """P393: the vibrance's shape taken back out - its uniform and functions, P341's block in place of the one that reads them
+    (the shader of P341 / P378 token for token at SKY 0; check_vf_fused's baseline streams take it out the same way)."""
+    src = src.replace('\r\n', '\n').replace(P393_SHAPE_UNIFORM, '', 1)
+    return P393_FUNCTIONS.sub('\n', src, count=1).replace(P393_VIB_BLOCK, P341_VIB_BLOCK, 1)
 
 
 def with_p310_white(src: str) -> str:
@@ -391,8 +416,9 @@ def shader_part(strict: bool) -> None:
     check('float lightRimDelta(' in n and all(e[0] in n for e in P311_RIM_EDITS),
           'combine.glsl lost the P311 rim rule of the detail delta (the dark / crimson line beside LED rings comes back)')
     check(P315_RAIL_LINE in n, 'combine.glsl lost the P315 rail rule of the detail delta (two lines along LED rings come back)')
-    check(P341_VIB_UNIFORM in n and P341_VIB_BLOCK in n and P341_DELTA_NEW in n,
+    check(P341_VIB_UNIFORM in n and P393_VIB_BLOCK in n and P341_DELTA_NEW in n,
           'combine.glsl lost the P341 light-tone vibrance or the darkening delta rule (a pale sunset sky, a rung lost in the glow)')
+    check(has_p393(n), 'combine.glsl lost the P393 shape of the light-tone vibrance (pale walls and ceilings take the white balance\'s cast x2)')
     check(P349_DEFINE in n and len(P349_BLOCK.findall(n)) == 2 and P349_GAIN_NEW in n and all(line in n for line in P349_FLOOR),
           'combine.glsl lost the P349 sun bloom or the small-delta detail gain (a flat sun disc, dark lines along edges)')
     check(has_signed_hue(n), 'combine.glsl lost the P370 signed hue (a colour outside sRGB takes the clipped hue: LEDs, neon, sky)')

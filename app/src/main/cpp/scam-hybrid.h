@@ -333,7 +333,9 @@ struct HybridTuning {
     float bentoBlendGainFlickerLo=0.2f,bentoBlendGainFlickerHi=0.4f;
     float bentoBlendChroma=1.f;  // the ultrashort colour's chroma smoothed over 5 x 5 px, luma kept (0 = none .. 1)
     float bentoBlendValidSigma=1.f; // the cells' check planes smoothed by a gaussian of this many cells (0 = as checked)
-    int bentoBlendDebug=0;       // diagnostics: 1 = the blend weight as the image, 2 = the gained ultrashort colour alone, 3 = its gain
+    int bentoBlendDebug=0;       // diagnostics: 1 = the blend weight as the image, 2 = the gained ultrashort colour alone, 3 = its gain,
+                                 // 4 (P392 bentoPartial) = the sources: R the valid ultrashort frames, G those that moved, B the fill,
+                                 // 5 (P392) = the fill plane's colour, 6 = the first three frames' validity planes
     int bentoBlendDilate=2;
     // P350 (owner, 2026-10-26: «Займись самой маской коротких кадров, нам нужно улучшить её максимально, сделать её максимально
     // точной»): precision keys of the blend's mask (research/handoff/PLAN.md P350, audit F1-F12). All 0 = off = the merge bit for bit
@@ -395,6 +397,39 @@ struct HybridTuning {
     // item 5 of the P350 harness: the gain against N (stage 2) at least this strength whatever the tile check measured (the PWM
     // LEDs' 7 ms colour: usFlicker 0.06 left the gain off, rings ~45 % darker). 0 = the tile check alone.
     float bentoBlendGainMin=0.f;
+    // P392 (owner, 2026-10-28: «Без отказа целиком. Отсекать только пятна и ячейки, где есть движение ... Замену выбирать по пикселю
+    // ... Без швов ... Без ложного движения»): partial rejection of the ultrashort frames on the blend path (bentoBlend, plain merge).
+    // bentoPartial 1:
+    //  - motion regions per ultrashort frame from the check's z (bentoValidZ): seeds z >= bentoPartialZHi grown over z >=
+    //    bentoPartialZLo (8-connected, hysteresis), closed by bentoPartialClose cells and grown by bentoPartialGrow cells; inside a
+    //    region the validity is 0, outside 1 (no fragments of single noise / alias cells, whole moved objects);
+    //  - the planes smoothed edge-aware (a guided filter of radius bentoPartialGuide cells on the frame's own log level: the
+    //    transition follows the light's contour, not the cell grid) instead of the gaussian of bentoBlendValidSigma;
+    //  - a fill plane for the N clip: log-space pull-push of the valid bright ultrashort cells within bentoFillReach px (12 MP
+    //    scale), its confidence falling off beyond (soft); the blend takes per pixel the valid ultrashort frames, N where N holds
+    //    data, the fill where N is clipped (at least N's clipped colours), the N clip only beyond the fill's reach;
+    //  - an ultrashort colour far below the light the N merge clipped (its brightest colour under bentoPartialPlaus x that level,
+    //    or x the fill's level of that light when lower: a dark hand pasted into a lamp) never counts as the light, coloured
+    //    light included (the PWM / ARGB exemption keeps every plausible frame);
+    //  - the per-component refusal (bentoRefuseScope) at bentoRefuseShare % of a component instead of bentoMotionMax (P392 review:
+    //    100 = none - the owner's bursts measured the same at 25 / 60 / 100 %: the regions take the moved part, not the component).
+    // 0 = off (replays unchanged); the app sends 1.
+    int bentoPartial=0;
+    float bentoPartialZLo=2.f,bentoPartialZHi=4.5f;
+    int bentoPartialClose=1,bentoPartialGrow=1,bentoPartialGuide=2,bentoPartialOpen=1;
+    float bentoPartialPlaus=0.7f,bentoFillReach=96.f,bentoRefuseShare=100.f; // P392 review: plausibility 0.5 -> 0.7 of the fill (the fill now continues the light around a hole: a hand's blurred edge at 0.5 - 0.6 of it passed)
+    int bentoFillRelax=64;        // P392 review: the fill's membrane sweeps (red-black Gauss-Seidel) after the pull-push (0 = the pull-push alone)
+    int bentoPartialLift=1;       // P392 review: the colour never below the N clip well inside it (0 off, 1 the frames that moved and the fill,
+                                  // 2 also any blended colour with no part at the clip, 3 every blended colour)
+    float bentoPartialInner=0.9f; // P392 review: well inside the N clip any frame below this share of the clip is not the light
+    float bentoPartialEdge=0.35f; // P392: at the N clip's own edge a frame that moved is held to this share of the clip only (a thin
+                                  // ring's soft edge is real; an LED dark during the ultrashort exposure is not the light N saw). P392
+                                  // review: 0.15 -> 0.35 with the own colour out of that test (its wide colour alone): an LED strip
+                                  // absent from the ultrashort frames left 5 - 8 x below N inside its clip, dark px 86 -> 42)
+    // P392: the chroma part of the check's z divided by 1 + k q, q = the departure of the ultrashort cell's Gr - Gb step from the
+    // base's in sigma of its noise (CFA alias of a mosquito mesh / moire moves with a sub-pixel shift and read as colour motion;
+    // the luma part stays). 0 = off.
+    float bentoAliasDamp=0.f;
     float bentoUsWeight=1.f;     // A of the ultrashort frame (driver: 1.0)
     float bentoUsSigma=1.f;      // isotropic kernel sigma (px) of the ultrashort frame: inside the mask it is the only frame,
                                  // and one Bayer frame needs >= ~0.7 px not to leave R/B holes (SCAM: base kernel x2.5 under Bento)
@@ -439,6 +474,15 @@ struct HybridTuning {
     int shastaForce=0;           // P68: 1 = bracketed frames skip the sharpness gate and the ratio limit; a frame is dropped only when
                                  // more than shastaMotionMax % of its unclipped 8x8 blocks moved against the base (shastaMotion)
     float shastaMotionMax=4.f;   // P68: motion fallback of the forced Shasta frames, % of the blocks (100 = never)
+    // P392 (owner's second motion burst: all three long frames dropped for a moving hand, 19 - 20 % of the blocks): shastaMotionScope
+    // 1 keeps a forced long frame whose moved share is above shastaMotionMax and at most shastaScopeMax % and takes only its
+    // moved 8 x 8 blocks out of the merge for that frame (dilated by shastaScopeDilate blocks, feathered by a gaussian of
+    // shastaScopeFeather blocks: its weight 1 - that); above shastaScopeMax or without alignment the whole frame is dropped as
+    // before. 0 = off (replays unchanged); the app sends 1.
+    int shastaMotionScope=0,shastaScopeDilate=1;
+    float shastaScopeMax=60.f,shastaScopeFeather=0.75f;
+    float shastaScopeWeak=0.05f;  // P392 review: the scope's map also takes the blocks beside a moved one over 4 sigma + this x the level (0 = off)
+    int shastaScopeAll=0;         // P392 review: 1 = the scope also on a forced long frame at or below shastaMotionMax (0: kept whole as before)
     // misc
     int snrFixed=0;
     float snrScale=0.25f;
@@ -991,6 +1035,10 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             ||set("bentoBlendGainLevel",&t.bentoBlendGainLevel)||set("bentoRefuseScope",nullptr,&t.bentoRefuseScope)||set("bentoBlendScale",nullptr,&t.bentoBlendScale)
             ||set("bentoBlendFillMean",nullptr,&t.bentoBlendFillMean)||set("bentoBlendChromaEdge",&t.bentoBlendChromaEdge)||set("mosaicUsFillTol",&t.mosaicUsFillTol)
             ||set("bentoUsRegister",nullptr,&t.bentoUsRegister)||set("bentoUsRegisterMax",&t.bentoUsRegisterMax)||set("bentoBlendGainMin",&t.bentoBlendGainMin)
+            ||set("bentoPartial",nullptr,&t.bentoPartial)||set("bentoPartialZLo",&t.bentoPartialZLo)||set("bentoPartialZHi",&t.bentoPartialZHi) // P392
+            ||set("bentoPartialClose",nullptr,&t.bentoPartialClose)||set("bentoPartialGrow",nullptr,&t.bentoPartialGrow)||set("bentoPartialGuide",nullptr,&t.bentoPartialGuide)
+            ||set("bentoPartialPlaus",&t.bentoPartialPlaus)||set("bentoFillReach",&t.bentoFillReach)||set("bentoRefuseShare",&t.bentoRefuseShare)||set("bentoAliasDamp",&t.bentoAliasDamp)||set("bentoPartialEdge",&t.bentoPartialEdge)||set("bentoFillRelax",nullptr,&t.bentoFillRelax)||set("bentoPartialInner",&t.bentoPartialInner)||set("bentoPartialLift",nullptr,&t.bentoPartialLift)||set("bentoPartialOpen",nullptr,&t.bentoPartialOpen)
+            ||set("shastaMotionScope",nullptr,&t.shastaMotionScope)||set("shastaScopeDilate",nullptr,&t.shastaScopeDilate)||set("shastaScopeMax",&t.shastaScopeMax)||set("shastaScopeFeather",&t.shastaScopeFeather)||set("shastaScopeWeak",&t.shastaScopeWeak)||set("shastaScopeAll",nullptr,&t.shastaScopeAll)
             ||set("bentoUsWeight",&t.bentoUsWeight)||set("bentoUsSigma",&t.bentoUsSigma)||set("bentoFrames",nullptr,&t.bentoFrames)||set("bentoValidate",nullptr,&t.bentoValidate)||set("bentoMotionMax",&t.bentoMotionMax)
             ||set("bentoChromaSigma",&t.bentoChromaSigma)||set("bentoChroma",&t.bentoChroma)||set("dayKernelScale",&t.dayKernelScale)||set("shastaSharpness",&t.shastaSharpness)||set("shastaSharpLo",&t.shastaSharpLo)||set("shastaSharpHi",&t.shastaSharpHi)||set("shastaSat",&t.shastaSat)||set("shastaMaxRatio",&t.shastaMaxRatio)
             ||set("shastaEnable",nullptr,&t.shastaEnable)||set("shastaForce",nullptr,&t.shastaForce)||set("shastaMotionMax",&t.shastaMotionMax)||set("snr",nullptr,&t.snrFixed)||set("snrScale",&t.snrScale)||set("debugFrame",nullptr,&t.debugFrame)
@@ -2133,6 +2181,11 @@ uniform float rampKU;     // P309: the ramp mask's K (0 = the previous mask)
 #ifdef REJ_OPTS
 uniform vec2 db;          // P344 rejBinLo, rejBinHi: y > x = the map smoothstep(x, y, ..) before the frame weight (near-binary)
 #endif
+#ifdef SHASTA_SCOPE
+// P392 shastaMotionScope (hybridPartialSpec): x the bmask index of the long frames' weight planes (one per long donor in merge
+// order, the strip's cell rows), y their count (0 = none)
+uniform ivec2 scopeU;
+#endif
 #ifdef SHARED_TILES
 // P76 (Adreno: SHARED_TILES): the 12x12 rejection weights around the group's 8x8 cells, read once per group (25 reads a cell
 // before; Adreno 750 dilate 533 -> 234 ms, float rounding differs by <= 2.3e-6). Mali keeps the plain reads: its shared memory is
@@ -2206,6 +2259,13 @@ void main(){
             }
         } else r*=(1.0-m);
     } else if(int(fParam[f].w)==5)r=0.0;
+#ifdef SHASTA_SCOPE
+    // P392: a long frame kept despite its motion share takes its moved blocks out (dilated, feathered: its plane's weight)
+    if(int(fParam[f].w)==3&&scopeU.y>0){
+        int k=0;for(int j=1;j<f;j++)if(int(fParam[j].w)==3)k++;
+        if(k<scopeU.y)r*=bmask[scopeU.x+k*(cy1-cy0)*w2+(cy-cy0)*w2+cx];
+    }
+#endif
     robust[(f-1)*(cy1-cy0)*w2+(cy-cy0)*w2+cx]=r;
 #ifdef SHARED_TILES
     atomicAdd(dilSum,uint(clamp(r,0.0,1.0)*255.0+0.5));
@@ -2921,6 +2981,122 @@ bool usAt(vec2 p,bool inLight,out vec3 U,out float cover,out uint uclip,out bool
     cover=min(sw*sw/max(sww,1.0e-6),7.9);
     return true;
 }
+#ifdef BLEND_PARTIAL
+// P392 bentoPartial (hybridPartialSpec; without it the program is the one before P392). partialU.x: bentoPartialPlaus, y: the radius
+// scale (output px of a 12 MP sensor px), z: bentoPartialEdge, w: bentoPartialInner; fillU: x the bmask index of the fill planes (R, G, B, confidence), y their rows (0 = no
+// fill), z the first row's index, w the level (0: per cell, 1: per 2 x 2 cells)
+uniform vec4 partialU;
+uniform vec4 partial2U;    // P392 review: x bentoPartialLift (the colour never below the N clip well inside it: 0 off, 1 the moved frames
+                           // and the fill, 2 also a blended colour with no part at the clip, 3 every blended colour)
+uniform ivec4 fillU;
+// the fill of the N clip at p (sensor px), bilinear between its cells' centres
+vec4 fillAt(vec2 p){
+    if(fillU.y<=0)return vec4(0.0);
+    int st=1<<fillU.w,fw=(size.x/2+st-1)>>fillU.w,pl=fillU.y*fw;
+    vec2 c=((p-0.5)*0.5-0.5*float(st-1))/float(st),f=floor(c),t=c-f;
+    int x0=clamp(int(f.x),0,fw-1),x1=clamp(int(f.x)+1,0,fw-1);
+    int y0=clamp(int(f.y)-fillU.z,0,fillU.y-1),y1=clamp(int(f.y)+1-fillU.z,0,fillU.y-1);
+    vec4 o=vec4(0.0);
+    for(int k=0;k<4;k++){
+        int b=fillU.x+k*pl;
+        o[k]=mix(mix(bmask[b+y0*fw+x0],bmask[b+y0*fw+x1],t.x),mix(bmask[b+y1*fw+x0],bmask[b+y1*fw+x1],t.x),t.y);
+    }
+    return o;
+}
+// usAt with the P392 choice per frame: a frame whose brightest wide colour is below its threshold (smoothstep from T.x to T.y) is
+// not the light at this pixel (a dark hand pasted into a lamp), its weight goes to 0 whatever its check or colour says (coloured
+// light counts the plausible frames only). The threshold: Tm for a frame that moved here (its validity below 0.5), Tv for a valid
+// one (0 at the N clip's own edge: the dark rim of a lamp is real there), Tv1 for a frame valid without doubt (validity 1: no
+// region, the check passed - the inner test of the clip left out, its darker colour there is within the check's noise); T.zw: the clip's part of the threshold only, for the
+// frame's own colour at the pixel (the wide colour averages a 1 - 3 px dark speck - a finger's edge, a twig - into the light
+// around it; P392 review: in the unclipped glow the single pixel's colour of three x8-gained frames flipped the test pixel by
+// pixel, white / blue dots on a ring's rim - there the wide colour alone decides). P392 review: the shares apart - eV the valid
+// frames' (the best validity, by the share of their weight that passed the own-colour test) with their own colour, and inside the
+// N clip (c: its mark well inside) a frame that moved for the rest (by its plausibility) with its own colour (a frame at a tenth
+// of its validity on a moved hand's blurred edge took the moved frames' whole share with its dark colour: a dark line along the
+// hand's contour); coloured light: any plausible frame, e by the best plausibility. e: the ultrashort share, U its colour. lift: the
+// moved frames' colour at least this (the N clip well inside it: the light N saw reached it in every colour N clipped).
+bool usAtP(vec2 p,bool inLight,vec4 Tv,vec4 Tv1,vec4 Tm,float c,vec3 lift,out vec3 U,out float cover,out uint uclip,out bool coloured,out float eV,out float e,out float lvl){
+    int w2=size.x/2;
+    p.y=clamp(p.y,float(2*cy0),float(2*cy1)-0.5);
+    int cx=clamp(int(floor(p.x*0.5)),0,w2-1),cy=clamp(int(floor(p.y*0.5)),cy0,cy1-1);
+    vec2 cell=vec2(float(2*cx),float(2*cy));
+    int fr[4];float lum[4],av[4],am[4],mxw[4];vec2 ts[4];
+    int n=0,k=0,nc=0,nf=0;
+    float bestV=0.0,bestP=0.0,bestPm=0.0;
+    for(int f=1;f<frameCount;f++){
+        if(int(fParam[f].w)!=5)continue;
+        float v=1.0;
+#ifdef BLEND_OPTS
+        if(k<validPlanesU)v=blendOpt2U.x>0.5?validAt(k,p):bmask[(k+1)*(cy1-cy0)*w2+(cy-cy0)*w2+cx];
+#else
+        if(k<validPlanesU)v=bmask[(k+1)*(cy1-cy0)*w2+(cy-cy0)*w2+cx];
+#endif
+        k++;
+        vec2 O=originM(f,2*cx,2*cy)+(p-cell);
+        vec3 uNum=vec3(0.0),uDen=vec3(0.0),uClip=vec3(0.0);
+        usWide(uNum,uDen,uClip,f,O,1.0,kE.z>0.0?kE.z:0.25);
+        if(uDen.y<=0.0&&uClip.y<=0.0)continue;
+        float l=uDen.y>0.0?uNum.y/uDen.y:fParam[f].x*clipLevel;
+        vec3 wc=vec3(uDen.x>0.0?uNum.x/uDen.x:(uClip.x>0.0?fParam[f].x*clipLevel:l),l,uDen.z>0.0?uNum.z/uDen.z:(uClip.z>0.0?fParam[f].x*clipLevel:l));
+        float wmx=max(wc.r,max(wc.g,wc.b));
+        vec4 Tf=v<0.5?Tm:mix(Tv,Tv1,smoothstep(0.9,1.0,v));
+        float pf=Tf.y>0.0?smoothstep(Tf.x,Tf.y,wmx):1.0;
+        if(pf>0.5){
+#ifdef BLEND_OPTS
+            vec3 wq=wc*blendOpt3U.yzw;float qmx=max(wq.r,max(wq.g,wq.b));
+            nf++;if(qmx>0.0&&(qmx-min(wq.r,min(wq.g,wq.b)))/qmx>=blendSatU)nc++;
+#else
+            nf++;if(wmx>0.0&&(wmx-min(wc.r,min(wc.g,wc.b)))/wmx>=blendSatU)nc++;
+#endif
+        }
+        bestV=max(bestV,v*pf);bestP=max(bestP,pf);bestPm=max(bestPm,(1.0-v)*pf);
+        if(inLight&&nc*2>nf)v=max(v,0.3);
+        float a=v*pf,b=(1.0-v)*c*pf;
+        if(a+b<0.004||n>=4)continue;
+        fr[n]=f;lum[n]=l;av[n]=a;am[n]=b;mxw[n]=wmx;ts[n]=Tf.zw;n++;
+    }
+    U=vec3(0.0);cover=0.0;uclip=0u;lvl=0.0;eV=0.0;e=0.0;
+    coloured=nf>0&&nc*2>nf;
+    if(n==0)return false;
+    float s0=lum[0],s1=n>1?lum[1]:lum[0],s2=n>2?lum[2]:s1,s3=n>3?lum[3]:s2;
+    float lo01=min(s0,s1),hi01=max(s0,s1),lo23=min(s2,s3),hi23=max(s2,s3);
+    float med=n==1?s0:n==2?0.5*(s0+s1):n==3?max(min(s0,s1),min(max(s0,s1),s2)):0.5*(max(lo01,lo23)+min(hi01,hi23));
+    vec3 Uv=vec3(0.0),Um=vec3(0.0);
+    float sv=0.0,sv0=0.0,sm=0.0,sm0=0.0,sww=0.0;uclip=7u;
+    for(int j=0;j<n;j++){
+        float r=lum[j]/max(med,1.0e-6)-1.0;
+        float wr=exp(-(r*r)/max(blendU.x*blendU.x,1.0e-6));
+        float wa=av[j]*wr,wb=am[j]*wr;
+        if(wa+wb<0.004)continue;
+        int f=fr[j];
+        uint cl=0u;
+        vec3 col=usColourAt(f,originM(f,2*cx,2*cy)+(p-cell),cl);
+        sv0+=wa;sm0+=wb;
+        float po=ts[j].y>0.0?smoothstep(ts[j].x,ts[j].y,max(col.r,max(col.g,col.b))):1.0;
+        wa*=po;wb*=po;
+        if(wa+wb<0.004)continue;
+        Uv+=wa*col;Um+=wb*col;sv+=wa;sm+=wb;
+        lvl+=(wa+wb)*mxw[j];sww+=(wa+wb)*(wa+wb);
+        uclip&=cl;
+    }
+    float sw=sv+sm;
+    if(sw<1.0e-4){uclip=0u;lvl=0.0;return false;}
+    lvl/=sw;
+    cover=min(sw*sw/max(sww,1.0e-6),7.9);
+    if(coloured){
+        U=(Uv+Um)/sw;
+        e=bestP*min(sw/max(sv0+sm0,1.0e-6),1.0);eV=e;
+        return true;
+    }
+    eV=sv>1.0e-4?bestV*min(sv/max(sv0,1.0e-6),1.0):0.0;
+    float eM=sm>1.0e-4?c*(1.0-bestV)*bestPm*min(sm/max(sm0,1.0e-6),1.0):0.0;
+    e=eV+eM;
+    if(e<1.0e-4){U=sv>1.0e-4?Uv/sv:Um/sm;return true;}
+    U=((sv>1.0e-4?Uv/sv:vec3(0.0))*eV+(sm>1.0e-4?max(Um/sm,lift):vec3(0.0))*eM)/e;
+    return true;
+}
+#endif
 // Stages 0 and 1 (stage 1 stores the ultrashort colour and the weight of the pixel in bs, alpha < 0 = no ultrashort colour).
 // The N marks of an output pixel beyond the strip's rows (the strip above was merged in another bank, the one below not yet) from
 // the base frame instead: its 2x2 cell's brightest site (its rows are uploaded 3 cells around the strip, clamped beyond). Without
@@ -2950,6 +3126,22 @@ bool baseMarkAny(int qr,int qx){
     }
     return clip||v>=min(blendClipU.x,0.98)-1.0e-3;
 }
+#ifdef BLEND_PARTIAL
+// P392: the smallest N clip mark at 3 px (x the scale) around output pixel (row, ox), from c (its own): 1 well inside the clip, 0
+// at its edge (the N merge's clip is 1 - 2 px wider than the light: a thin LED ring, a lamp's rim); the strip's stage-0 marks (bits
+// 16 - 23, never changed by the later stages) or the base frame's beyond its rows
+float innerMark(int row,int ox,int rows,int ow,float c){
+    float inner=c;
+    int Ri=max(2,int(3.0*partialU.y+0.5));
+    for(int q=0;q<8&&inner>0.0;q++){
+        int dx=q<4?(q<2?(q==0?Ri:-Ri):0):((q&1)!=0?Ri:-Ri)*7/10,dy=q<4?(q>=2?(q==2?Ri:-Ri):0):((q&2)!=0?Ri:-Ri)*7/10;
+        int qr=row+dy,qx=clamp(ox+dx,0,ow-1);float mq,mbq;
+        if(qr>=0&&qr<rows)mq=float((cflags[qr*ow+qx]>>16)&255u)*(1.0/255.0); else mq=baseMarks(qr,qx,mbq);
+        inner=min(inner,mq);
+    }
+    return inner;
+}
+#endif
 // The sensor position of output pixel (row, ox) of the strip (regionStage's pos).
 vec2 blendPos(int row,int ox){
     int g=kG.x;
@@ -3109,7 +3301,45 @@ void regionStage(int i,int row,int ox,int rows,int ow,bool flags){
     }
     vec3 U;float cover,bestV,lvl;uint uclip;bool coloured;
     bool inLight=nClipped||alpha>=0.5||reach>=0.5;
+#ifdef BLEND_PARTIAL
+    // P392: c = the N clip mark (where N holds no data), the fill of the N clip here, and the plausibility thresholds: inside the N
+    // clip an ultrashort colour below bentoPartialPlaus x the light's level (the fill: the valid light around; at most half the clip)
+    // is not that light (Tclip); in the light's unclipped glow one below 0.2 x N (Tglow, by the unclipped share)
+    float cN=flags?own:(nClipped?1.0:0.0);
+    vec4 Fq=fillAt(pos);
+    float refN=max(mxN,0.9);
+    float Fref=Fq.a>0.05?max(Fq.r,max(Fq.g,Fq.b)):refN;
+    float Tclip=cN>0.0?cN*min(0.5*refN,partialU.x*Fref):0.0,Tglow=inLight?0.2*mxN:0.0;
+    // inner: the smallest N clip mark at 3 px (x the scale) around: 1 well inside the clip, 0 at its edge (the N merge's clip is 1 -
+    // 2 px wider than the light: a thin LED ring, a lamp's rim). T2 (a frame that moved, against the light around) only inside
+    float inner=cN>0.0&&flags?innerMark(row,ox,rows,ow,cN):cN;
+    float T2=cN*partialU.x*Fref*smoothstep(0.9,1.0,inner),inS=smoothstep(0.5,1.0,inner);
+    float eS,eVS;
+    // a valid frame is tested inside the N clip only well inside it (its edge is 1 - 2 px wider than the light: the dark rim beside
+    // a lamp's diffuser, the soft edge of a thin LED ring are real data there) and in the glow by its unclipped share; a frame that
+    // moved: well inside the clip against the light around it, at the clip's edge only below partialU.z of the clip (a dark hand
+    // beside its own edge in the base, an LED dark during the ultrashort exposure; not a ring's soft edge that slipped a pixel).
+    // P392 review: well inside the clip N proves the light at its clip - any frame there (valid or moved) below partialU.w of it
+    // (0.9; full from that, none below 0.8 of it) is not the light (the hand's dark edge at 0.3 - 0.57 of the clip passed the half
+    // and drew a dark / pink line along its former contour); the lower edge of the soft step from 0.6 to 0.8 of the threshold inward
+    float Tin=cN*inS*partialU.w*refN,lo=mix(0.6,0.8,inS);
+    float Tv=max(max(Tin,Tclip*inS),Tglow*(1.0-cN)),Tm=max(max(max(Tin,Tclip*inS)+cN*min(partialU.z,0.5)*refN*(1.0-inS),Tglow*(1.0-cN)),T2);
+    // P392 review: a frame that moved stands in for the light only well inside the N clip (cM): at the clip's edge, 1 - 2 px wider
+    // than a thin ring, the frames' dark values are its real soft edge and a moved frame's ring 1 px over put white dots on it
+    float cM=cN*inS;
+    // (the own colour against the clip's inner part only: at the clip's edge the wide colour alone decides - a thin ring 1 px off
+    // keeps its soft edge pixel by pixel, a light absent from the frame is dark in its wide colour too)
+    float Tvc=max(Tin,Tclip*inS),Tmc=max(max(Tin,Tclip*inS),T2);
+    float Tv1=max(Tclip*inS,Tglow*(1.0-cN)),Tv1c=Tclip*inS,lo1=0.6;
+    // P392 review: a frame that moved stands in for the light N clipped - its colour at least N's clip in each colour N clipped,
+    // well inside the clip (the fill alike, below); a valid frame keeps its own colour (the check let it within its noise; on a
+    // thin ring the N merge's clip is wider than the light, its dimmer valid colour is the ring's real edge)
+    vec3 liftN=vec3(0.0);
+    if(partial2U.x>0.5)for(int c=0;c<3;c++)liftN[c]=inS*(((cfl>>uint(c))&1u)!=0u?1.0:smoothstep(0.9,0.98,N[c]))*min(N[c],1.0);
+    bool got=usAtP(pos,inLight,vec4(lo*Tv,Tv,lo*Tvc,Tvc),vec4(lo1*Tv1,Tv1,lo1*Tv1c,Tv1c),vec4(lo*Tm,Tm,lo*Tmc,Tmc),cM,liftN,U,cover,uclip,coloured,eVS,eS,lvl);
+#else
     bool got=usAt(pos,inLight,U,cover,uclip,coloured,bestV,lvl);
+#endif
     // the gate also opens where the ultrashort colour itself is bright: its light 1-3 px beside the N frames' clipped one (the
     // residual of the global alignment on a thin LED line) is taken whole with the clip it replaces, not cut by N's dark side
 #ifdef BLEND_OPTS
@@ -3121,13 +3351,45 @@ void regionStage(int i,int row,int ox,int rows,int ow,bool flags){
 #else
     if(got&&flags)alpha=max(alpha,reach*smoothstep(0.08,0.45,max(gateN,smoothstep(blendGateU.x,blendGateU.y,lvl))));
 #endif
+#ifdef BLEND_PARTIAL
+    // P392: per pixel - e: the ultrashort frames (the valid ones; inside the N clip also a plausible one that moved; coloured
+    // light: any plausible frame), f: the fill of the N clip for the rest, at its confidence; the N merge only where neither (its
+    // own data outside the clip, the clip itself beyond the fill's reach).
+    {
+        float eV=got?clamp(eVS,0.0,1.0):0.0;
+        float e=got?clamp(eS,0.0,1.0):0.0;
+        float f=(1.0-e)*clamp(Fq.a*cN,0.0,1.0);
+        // the fill stands in for what N lost: in a colour N clipped at least N (P392 review: the brightest colour alone, by the soft
+        // clip mark, left a G / B clipped LED 5 - 8 x below N; a scale of the fill's hue to N's clip put x50 dots on a coloured
+        // ring), in a colour N holds N itself
+        vec3 Fb;
+        for(int c=0;c<3;c++)Fb[c]=((cfl>>uint(c))&1u)!=0u||N[c]>=0.98?max(Fq[c],min(N[c],1.0)):N[c];
+        float a0=alpha;
+        if(e+f>1.0e-4){
+            U=got?(U*e+Fb*f)/(e+f):Fb;
+            cover=got?mix(cover,4.0,f/(e+f)):4.0;
+            if(f>e)uclip=0u;
+            got=true;
+        }
+        alpha*=clamp(e+f,0.0,1.0);
+        // bentoBlendDebug 4: the sources - R the valid ultrashort frames, G those that moved (inside the N clip), B the fill
+        if(blendPxU.w>3.5){U=a0*vec3(got?min(eV,e):0.0,got?max(e-eV,0.0):0.0,f);alpha=1.0;got=true;}
+        if(blendPxU.w>4.5)U=Fq.a>0.0?Fq.rgb:vec3(0.0); // bentoBlendDebug 5 (P392 review): the fill plane itself
+#ifdef BLEND_OPTS
+        if(blendPxU.w>5.5)for(int k=0;k<3;k++)U[k]=k<validPlanesU?validAt(k,pos):0.0; // 6: the first three frames' validity planes
+#endif
+    }
+#else
     // The cells' check (the best ultrashort frame's validity: a dark object moved over a clipped window, a hand) scales the
     // weight - the N frames' clip is the right answer there. Not for coloured light (LEDs on PWM / ARGB effects: their colour
     // and level differ between the exposures, the check refused whole edges of a line and left the N clip's steps).
     if(!coloured)alpha*=clamp(bestV,0.0,1.0);
+#endif
     // a pixel inside the light without any usable ultrashort sample (every frame invalid there): the nearest ultrashort colour
     // around it (8 directions, 2 px steps), so no white / lilac clipped spot stays inside a light
-#ifdef BLEND_OPTS
+#ifdef BLEND_PARTIAL
+    // P392: the fill plane above instead
+#elif defined(BLEND_OPTS)
     // P350 bentoBlendFillMean: the mean of the hits on the first ring that has any (off: the first hit, as below); one call site
     if(!got&&nClipped&&blendPxU.z>0.0){
         vec3 sU=vec3(0.0);float sc=0.0,sn=0.0;uint sk=7u;
@@ -3298,6 +3560,9 @@ void main(){
     vec3 Uk=U*k;
     if(blendPxU.w>0.5){
         vec3 d=blendPxU.w<1.5?vec3(max(alpha,0.0)):blendPxU.w<2.5?(got?Uk:vec3(0.0)):(got?k:vec3(0.0));
+#ifdef BLEND_PARTIAL
+        if(blendPxU.w>3.5)d=got?U:vec3(0.0); // P392: the sources (stage 1)
+#endif
         outRgb[i*3]=d.x;outRgb[i*3+1]=d.y;outRgb[i*3+2]=d.z;
         return;
     }
@@ -3336,6 +3601,24 @@ void main(){
         if(lm>1.0e-6&&lu>0.0)Uk=mix(Uk,sc*(lu/lm),blendU.w);
     }
     vec3 N=vec3(outRgb[i*3],outRgb[i*3+1],outRgb[i*3+2]);
+#ifdef BLEND_PARTIAL
+    // P392 review: well inside the N clip (its marks all around: not the clip's 1 - 2 px wider edge, where a thin ring's soft edge
+    // is real) the light reached at least the clip in every colour N clipped: the blended colour (a frame that moved, the fill, the
+    // gain) never below N there (from 0.9 of the clip up for a colour without its flag)
+    // (the clip itself: N above it is the clip-border pass's estimate, not data). partial2U.x: 0 off; 1 the frames that moved and the
+    // fill only (stage 1, before the gain; not here); 2 also here, every colour whose brightest part stays below the clip N reached
+    // (from 0.9 of it down); 3 every colour here
+    if(partial2U.x>1.5){
+        uint cq=flags?cflags[i]:0u;
+        float cm=flags?float((cq>>16)&255u)*(1.0/255.0):(max(N.r,max(N.g,N.b))>=0.98?1.0:0.0);
+        float inS=cm>0.0?smoothstep(0.5,1.0,flags?innerMark(row,ox,rows,ow,cm):cm):0.0;
+        vec3 lift=vec3(0.0);
+        for(int c=0;c<3;c++)lift[c]=(((cq>>uint(c))&1u)!=0u?1.0:smoothstep(0.9,0.98,N[c]))*min(N[c],1.0);
+        float mc=max(lift.r,max(lift.g,lift.b));
+        if(partial2U.x<2.5&&mc>0.0)inS*=1.0-smoothstep(0.9,1.0,max(Uk.r,max(Uk.g,Uk.b))/mc);
+        if(inS>0.0)Uk=max(Uk,inS*lift);
+    }
+#endif
     vec3 o=mix(N,Uk,alpha);
     outRgb[i*3]=o.x;outRgb[i*3+1]=o.y;outRgb[i*3+2]=o.z;
     effB[i]=mix(effB[i],cover,alpha);
@@ -5031,6 +5314,18 @@ inline bool hybridBlendOptions(const HybridTuning& t){
     return t.bentoBlendMarkShare>0.f||t.bentoBlendGateOwnHi>t.bentoBlendGateOwnLo||t.bentoBlendGateMid>0||t.bentoBlendSatWb>0
         ||t.bentoBlendValidBilinear>0||t.bentoBlendGainLevel>0.f||t.bentoBlendScale>0||t.bentoBlendFillMean>0||t.bentoBlendChromaEdge>0.f;
 }
+// P392: the one condition of the partial ultrashort rejection, for the CPU (regions, fill, alias damping) and the shader alike: the
+// blend (bentoBlend) with the noise-normalised check (bentoValidZ, bentoScam) - without the check no region nor fill exists and the
+// shader would choose without them. Plain merges only (the blend pass is not built for the native mosaic: native).
+inline bool hybridPartialOn(const HybridTuning& t,bool native=false){
+    return !native&&t.bentoPartial>0&&t.bentoBlend>0&&t.bentoValidZ>0.f&&t.bentoScam!=0;
+}
+// P392: the defines of the partial ultrashort rejection (kHybUsBlend: BLEND_PARTIAL) and of the long frames' block scope
+// (kHybDilate: SHASTA_SCOPE; not on the native mosaic, whose merge has no scope planes); "" with both keys off (the programs exactly
+// as before). Part of the programs' source: the cache key.
+inline std::string hybridPartialSpec(const HybridTuning& t,bool native=false){
+    return std::string(hybridPartialOn(t,native)?"#define BLEND_PARTIAL 1\n":"")+(!native&&t.shastaMotionScope>0?"#define SHASTA_SCOPE 1\n":"");
+}
 struct HybridDcgSources { std::string helpers,mergeCommon,mosaicFast,guide; };
 inline std::string hybridDcgReplace(const std::string& text,const char* what,const char* from,const char* to){
     std::string s=text;
@@ -5068,6 +5363,11 @@ inline const HybridDcgSources& hybridDcgSources(){
     return sources;
 }
 
+// P392 bentoPartial: the fill of the N clip (hybridPartialFill): 4 planes (R, G, B, confidence) of w x h at level shift (0: per
+// 2 x 2 sensor cell, 1: per 2 x 2 cells). P392 review (a data race): shift, w, h and the size of v are set on the merge's thread
+// before the task that fills v starts (the strips are laid out with them); v's values are read only after the merge's maskReady,
+// which waits for that task. ready: set by the task when v holds the fill (the strips check it before they upload v).
+struct HybridFill { int shift=0,w=0,h=0;std::vector<float> v;std::atomic<int> ready{0}; };
 class HybridGpu {
     EGLDisplay display=EGL_NO_DISPLAY;
     EGLContext context=EGL_NO_CONTEXT;
@@ -5438,6 +5738,8 @@ public:
         std::array<float,3> blendWb{1.f,1.f,1.f};       // P350 bentoBlendSatWb: white balance gains of the blend's coloured test
         float rampK=0.f; // P309: the ramp mask's K (share = m / (m + K (1 - m))); 0 = the previous mask
         std::vector<const std::vector<float>*> maskValid; // bentoValidate: per ultrashort frame in merge order, the validity factor per cell
+        const HybridFill* fill=nullptr;                 // P392 bentoPartial: the fill of the N clip, 4 planes (R, G, B, confidence)
+        std::vector<const std::vector<uint8_t>*> scope; // P392 shastaMotionScope: per long donor in merge order its weight per cell x 255 (null: 1)
         std::function<void(int)> maskReady;             // P353: waits until mask / maskValid hold their data (the blend weight is made meanwhile);
                                                         // P364: their cell rows [0, n) (n >= h / 2: all of it)
         std::vector<int> hotList;                       // normal frames of the fixed-pattern outlier test (base first); empty = off
@@ -5499,12 +5801,15 @@ public:
     const std::string rejSpec;
     // blendOpts (P350): kHybUsBlend / kHybRim with BLEND_OPTS (hybridBlendOptions; only with the blend program); false = as before.
     const bool blendOpts=false;
+    // partialSpec (P392): hybridPartialSpec's defines (BLEND_PARTIAL into the blend programs, SHASTA_SCOPE into kHybDilate); "" = as before
+    const std::string partialSpec;
     // blendPass (P310): compile the ultrashort blend (kHybUsBlend) for bentoBlend > 0 on the plain merge.
     explicit HybridGpu(bool rimPass=true,bool withLocalAlign=false,bool bentoPass=false,bool chromaPass=false,
                        const std::function<void(const std::string&)>& early=nullptr,bool withSumsCarry=false,bool nativeMosaic=false,
-                       bool withOutlierPrograms=true,bool blendPass=false,bool dcgZones=false,const std::string& rejSpecDefs=std::string(),bool blendOptions=false)
+                       bool withOutlierPrograms=true,bool blendPass=false,bool dcgZones=false,const std::string& rejSpecDefs=std::string(),bool blendOptions=false,
+                       const std::string& partialDefs=std::string())
             :localAlign(withLocalAlign),sumsCarry(withSumsCarry),outlierPrograms(withOutlierPrograms),dcg(dcgZones),rejOpts(!rejSpecDefs.empty()),rejSpec(rejSpecDefs),
-             blendOpts(blendOptions&&blendPass){
+             blendOpts(blendOptions&&blendPass),partialSpec(partialDefs){
         if(localAlign)helpersPrefix="#define LOCAL_ALIGN 1\n";
         try{
             display=eglGetDisplay(EGL_DEFAULT_DISPLAY);
@@ -5553,8 +5858,10 @@ public:
             const std::string tiles=std::string(adreno&&!std::getenv("SCAM_HYB_NO_TILES")?"#define SHARED_TILES 1\n":"");
             const std::string rejDefs=tiles+(rejOpts?"#define REJ_OPTS 1\n":""); // P344
             rejectProgram=timed("reject",(rejDefs+rejSpec+kHybReject).c_str()); // P353: the switches of this tuning fixed
+            // P392: SHASTA_SCOPE into the dilate program (the source unchanged without it)
+            const std::string dilDefs=rejDefs+(partialSpec.find("SHASTA_SCOPE")!=std::string::npos?"#define SHASTA_SCOPE 1\n":"");
             if(sumsCarry){ // the same program with a carry word per frame (the source without it stays byte-identical: same cache entry)
-                std::string body=rejDefs+kHybDilate;
+                std::string body=dilDefs+kHybDilate;
                 const std::string plain="atomicAdd(sums[f],uint(clamp(r,0.0,1.0)*255.0+0.5));";
                 const size_t at=body.find(plain);
                 if(at==std::string::npos)throw std::runtime_error("HYBRID GPU: dilate program without its sum");
@@ -5566,7 +5873,7 @@ public:
                 if(gat==std::string::npos)throw std::runtime_error("HYBRID GPU: dilate program without its group sum");
                 body.replace(gat,group.size(),"{uint v=dilSum;uint old=atomicAdd(sums[f],v);if(old>0xFFFFFFFFu-v)atomicAdd(sums[frameCount+3+f],1u);}");
                 dilateProgram=timed("dilate",body.c_str());
-            } else dilateProgram=timed("dilate",(rejDefs+kHybDilate).c_str());
+            } else dilateProgram=timed("dilate",(dilDefs+kHybDilate).c_str());
             { // debugging: SCAM_HYB_DEFS=A,B -> "#define A" / "#define B" before the merge body
                 std::string defs;const char* env=std::getenv("SCAM_HYB_DEFS");
                 if(env){std::stringstream s(env);std::string d;while(std::getline(s,d,','))if(!d.empty())defs+="#define "+d+"\n";}
@@ -5576,7 +5883,8 @@ public:
             const char* blendDefs=blendOpts?"#define BLEND_OPTS 1\n":""; // P350
             if(rimPass){const std::string body=std::string("#define RIM_STATS 1\n")+blendDefs+mergeCommon()+kHybRim;rimProgram=timed("rim",body.c_str());}
             if(bentoPass){const std::string body=std::string("#define RIM_STATS 1\n#define BENTO_PASS 1\n")+mergeCommon()+kHybBento;bentoProgram=timed("bento",body.c_str());}
-            if(blendPass){const std::string body=std::string("#define RIM_STATS 1\n#define BENTO_PASS 1\n")+blendDefs+mergeCommon()+kHybUsBlend; // P310
+            if(blendPass){const std::string body=std::string("#define RIM_STATS 1\n#define BENTO_PASS 1\n")+blendDefs
+                +(partialSpec.find("BLEND_PARTIAL")!=std::string::npos?"#define BLEND_PARTIAL 1\n":"")+mergeCommon()+kHybUsBlend; // P310; P392
                 // P364: one program per stage (stage 1's registers kept out of the others); P377: on every GPU, the stages named apart
                 // (blend0 - blend4: a compiler crash on one takes the single program, «blend» alone is the blend itself)
                 if(!hybridBlendStagesOff()&&!std::getenv("SCAM_BLEND_STAGES_OFF")){
@@ -6176,7 +6484,7 @@ public:
             stage.raw.assign(n,255);stage.robust.assign(n,255);stage.robSum.assign(n,0.f);if(stage.la)stage.flow.assign(n,0); // P344: min-pooled from 255
         }
         std::vector<GLuint> offsets(frames),cellOff(frames);std::vector<GLint> row0(frames),rows(frames),crow0(frames),crows(frames),cellGeom(size_t(frames)*4);
-        std::vector<float> maskStrip;std::vector<GLuint> flagStrip;
+        std::vector<float> maskStrip,scopeStrip;std::vector<GLuint> flagStrip; // P392: scopeStrip
         // Clipped samples per frame and 32-row block (CPU, once): without outlier tests a strip whose frames hold no clipped
         // sample needs no marking (most strips of most shots). The same scan finds the largest RAW word of the burst.
         constexpr int kBlock=32;
@@ -6323,6 +6631,8 @@ public:
             s[10]=s[11]=size_t(ry1-ry0)*w2*16;
             if(usBlend)s[10]=std::max(s[10],(size_t(2)*stripCells*g*ow+size_t(2)*ow)*16); // P310: the blend's scratch and carry rows
             s[13]=size_t(cy1-cy0)*w2*(1+in.maskValid.size())*4;
+            if(usBlend&&in.fill)s[13]+=(size_t(2)*w2+size_t(4)*(((cy1-cy0)>>in.fill->shift)+3)*size_t(in.fill->w))*4; // P392: the edge rows and the fill planes
+            if(!nat)s[13]+=in.scope.size()*size_t(cy1-cy0)*w2*4;                     // P392: the long frames' scope planes
             s[14]=(in.mergeMode&1)?std::max<size_t>(cellTotal,1)*8:16;
             s[16]=la?size_t(donors)*(cy1-cy0)*w2*4:0;
             if(nat){ // P29: the raw mosaic rows (slot 12) and the native site flags / mean of the flag rows (slots 2 / 1, shared)
@@ -6420,8 +6730,15 @@ public:
             reserve(1,(size_t(ry1-ry0)*2+4)*w*4*(capOn?2:1)); // fixed-pattern mean (rows +-2); P214k: then the sites' temporal variance
             // Bento mask rows of this strip (per cell).
             const size_t planeSize=size_t(cy1-cy0)*w2;
+            // P392: behind the blend's planes and edge rows the fill planes (bentoPartial: 4 planes of the cell rows cy0 - 1 .. cy1),
+            // then the long frames' scope planes (shastaMotionScope: per long donor, the strip's cell rows; written before kHybDilate)
+            const bool fillOn=usBlend&&in.fill&&in.fill->w>0&&in.fill->h>0&&in.fill->v.size()==size_t(in.fill->w)*in.fill->h*4;
+            const int fillShift=fillOn?in.fill->shift:0,fillW=fillOn?in.fill->w:0;
+            const int fillRow0=fillOn?std::max(0,(cy0>>fillShift)-1):0,fillRow1=fillOn?std::min(in.fill->h-1,((cy1-1)>>fillShift)+1):-1;
+            const size_t fillRows=fillOn?size_t(fillRow1-fillRow0+1):0,fillAt=planeSize*(1+in.maskValid.size())+(usBlend?size_t(2)*w2:0);
+            const size_t scopeAt=fillAt+4*fillRows*size_t(fillW),scopeN=nat?0:in.scope.size();
             auto fillMask=[&]{
-                maskStrip.assign(planeSize*(1+in.maskValid.size())+(usBlend?size_t(2)*w2:0),0.f);
+                maskStrip.assign(fillAt+4*fillRows*size_t(fillW),0.f);
                 if(bento&&in.mask&&in.mask->size()==size_t(w2)*h2)std::memcpy(maskStrip.data(),in.mask->data()+size_t(cy0)*w2,planeSize*4);
                 for(size_t k=0;k<in.maskValid.size();++k)if(in.maskValid[k]&&in.maskValid[k]->size()==size_t(w2)*h2)std::memcpy(maskStrip.data()+planeSize*(k+1),in.maskValid[k]->data()+size_t(cy0)*w2,planeSize*4);
                 if(usBlend&&in.mask&&in.mask->size()==size_t(w2)*h2){ // P310: the weight rows just above and below the strip (bilinear across)
@@ -6429,9 +6746,24 @@ public:
                     std::memcpy(edge,in.mask->data()+size_t(std::max(cy0-1,0))*w2,size_t(w2)*4);
                     std::memcpy(edge+w2,in.mask->data()+size_t(std::min(cy1,h2-1))*w2,size_t(w2)*4);
                 }
+                if(fillOn){ // P392: the fill's rows around the strip's cell rows (at its level)
+                    // P392 review: never the planes before the task filled them (maskReady waited for it: this cannot happen)
+                    if(in.fill->ready.load(std::memory_order_acquire)==0)throw std::runtime_error("HYBRID GPU: the partial fill read before it was made");
+                    const size_t fn=size_t(fillW)*in.fill->h;
+                    for(size_t k=0;k<4;++k)for(size_t j=0;j<fillRows;++j)
+                        std::memcpy(maskStrip.data()+fillAt+(k*fillRows+j)*size_t(fillW),in.fill->v.data()+k*fn+size_t(fillRow0+int(j))*fillW,size_t(fillW)*4);
+                }
                 putBank(13,bank,0,maskStrip.data(),maskStrip.size()*4);
             };
-            reserveBank(13,(planeSize*(1+in.maskValid.size())+(usBlend?size_t(2)*w2:0))*4,bank);
+            reserveBank(13,(scopeAt+scopeN*planeSize)*4,bank);
+            if(scopeN>0){ // P392 shastaMotionScope: the long frames' weights of this strip (1 for a frame without a scope)
+                scopeStrip.assign(scopeN*planeSize,1.f);
+                for(size_t k=0;k<scopeN;++k)if(in.scope[k]&&in.scope[k]->size()==size_t(w2)*h2){
+                    const uint8_t* sp=in.scope[k]->data()+size_t(cy0)*w2;float* dp=scopeStrip.data()+k*planeSize;
+                    for(size_t i=0;i<planeSize;++i)dp[i]=float(sp[i])*(1.f/255.f);
+                }
+                putBank(13,bank,scopeAt*4,scopeStrip.data(),scopeStrip.size()*4);
+            }
             // P353: with the ultrashort blend only kHybUsBlend reads these rows (the merge runs as without Bento): they go up right
             // before it, so the blend weight (in.maskReady) is computed on the CPU while the GPU merges
             if(!usBlend)fillMask();
@@ -6627,6 +6959,7 @@ public:
                 glUseProgram(dilateProgram);
                 glUniform1i(loc(dilateProgram,"ry0"),ry0);glUniform1i(loc(dilateProgram,"ry1"),ry1);
                 glUniform1i(loc(dilateProgram,"cy0"),cy0);glUniform1i(loc(dilateProgram,"cy1"),cy1);
+                glUniform2i(loc(dilateProgram,"scopeU"),int(scopeAt),int(scopeN)); // P392 (SHASTA_SCOPE only)
                 dispatchRows(dilateProgram,w2,cy1-cy0,frames-1,chunkOf(256),4);
                 check("rejection");
                 if(!stage.raw.empty()){ // lab stage view: the strip's maps before the merge reuses the buffers
@@ -6747,6 +7080,14 @@ public:
                 // the blend's scratch (the guide is used up) and, behind the longest strip's rows, two carry rows of the gain
                 if(in.maskReady)in.maskReady(std::min(h2,cy1+1)); // P364: the rows fillMask reads (the edge row below included)
                 fillMask();
+                for(GLuint bp:blendSet()){ // P392 (BLEND_PARTIAL only): the fill planes' place and rows, the plausibility share
+                    glUseProgram(bp);
+                    glUniform4i(loc(bp,"fillU"),int(fillAt),int(fillRows),fillRow0,fillShift);
+                    // y: the blend's radius scale in output px (bentoBlendScale's x grid x sqrt(MP / 12); 1 without it)
+                    const float ps=tune.bentoBlendScale>0?float(g)*(tune.bentoBlendScale>=2?std::sqrt(std::max(float(w)*float(h)/12.0e6f,0.25f)):1.f):1.f;
+                    glUniform4f(loc(bp,"partialU"),std::clamp(tune.bentoPartialPlaus,0.f,1.f),std::clamp(ps,1.f,8.f),std::clamp(tune.bentoPartialEdge,0.f,0.5f),std::clamp(tune.bentoPartialInner,0.f,1.f));
+                    glUniform4f(loc(bp,"partial2U"),float(std::clamp(tune.bentoPartialLift,0,3)),0.f,0.f,0.f);
+                }
                 const int carryAt=2*stripCells*g*ow;
                 // P364: the clip-mark tiles behind the carry rows (SCAM_BLEND_TILES_OFF: every disc read, as before)
                 const bool tilesOn=!std::getenv("SCAM_BLEND_TILES_OFF");
@@ -6833,7 +7174,7 @@ inline void hybridPrewarmGpu(const HybridTuning& tune,int block,const std::funct
     const bool blendPass=t.bento>0&&t.bentoBlend>0&&!native;
     const bool bentoPass=t.bento>0&&!blendPass&&t.bentoChromaSigma>0.f&&t.bentoChroma>0.f;
     const bool outlierPrograms=t.hotSigma>0||t.hotBaseSigma>0;
-    HybridGpu gpu(rimPass,la,bentoPass,chromaPass,nullptr,false,native,outlierPrograms,blendPass,false,hybridRejSpec(t),hybridBlendOptions(t));
+    HybridGpu gpu(rimPass,la,bentoPass,chromaPass,nullptr,false,native,outlierPrograms,blendPass,false,hybridRejSpec(t),hybridBlendOptions(t),hybridPartialSpec(t,native));
     if(native){
         const bool t2=block==4&&tune.mosaicTetra!=1;
         const int mb=t2?2:block;
@@ -6907,13 +7248,18 @@ inline SharpnessPair hybridSharpnessPair(const Guide& qb,const Guide& qf,float e
 // the aligned frame gained down to base units against the base, per colour mean. A block moved when a colour differs by more than
 // 4 sigma of the two means (noise model of both frames) plus 15 % of the base level (gain mismatch, sub-pixel edges of the block
 // mean). Blocks with a site at or above clip in either frame (the brighter frame clips first) are not counted.
-struct ShastaMotion { long blocks=0,moved=0; double share() const {return blocks>0?100.0*double(moved)/double(blocks):0.0;} };
+struct ShastaMotion { long blocks=0,moved=0; double share() const {return blocks>0?100.0*double(moved)/double(blocks):0.0;}
+    std::vector<uint8_t> map;int bw=0,bh=0; /* P392 shastaMotionScope (withMap): 1 per moved block, bw x bh */ };
+// P392 review (withMap, weak > 0): the map also takes the blocks within 2 blocks of a moved one (8-connected) that differ by more than
+// 4 sigma + weak x the base level (an arm over a wall of about its level passed the 15 % test and left +4 % bands beside it); the
+// moved share (the frame's decision) stays the 15 % test's.
 inline ShastaMotion shastaMotion(const Burst& b,int slot,const BackwardHomography& h,float exposure,float baseSlope,float baseOffset,
-                                 float slope,float offset,float clip){
+                                 float slope,float offset,float clip,bool withMap=false,float weak=0.f){
     ShastaMotion res;
     const int w2=b.w/2,h2=b.h/2,bw=w2/4,bh=h2/4;
     const float e=std::max(exposure,1e-6f);
     std::atomic<long> blocks{0},moved{0};
+    if(withMap){res.map.assign(size_t(std::max(bw,0))*std::max(bh,0),0);res.bw=bw;res.bh=bh;}
     mergeRowBands(bh,[&](int y0,int y1){
         long lb=0,lm=0;
         for(int by=y0;by<y1;++by)for(int bx=0;bx<bw;++bx){
@@ -6932,20 +7278,43 @@ inline ShastaMotion shastaMotion(const Burst& b,int slot,const BackwardHomograph
             if(clipped)continue;
             ++lb;
             static const float count[3]={16.f,32.f,16.f};
+            bool weakHit=false;
             for(int k=0;k<3;++k){
                 const float mb=sb[k]/count[k],mf=sf[k]/count[k];
                 const float var=(baseSlope*mb+baseOffset+(slope*mf+offset)/(e*e))/count[k];
-                if(std::abs(mf/e-mb)>4.f*std::sqrt(std::max(var,0.f))+0.15f*mb){++lm;break;}
+                const float d=std::abs(mf/e-mb),s4=4.f*std::sqrt(std::max(var,0.f));
+                if(d>s4+0.15f*mb){++lm;if(withMap)res.map[size_t(by)*bw+bx]=1;weakHit=false;break;}
+                if(weak>0.f&&d>s4+weak*mb)weakHit=true;
             }
+            if(withMap&&weakHit&&res.map[size_t(by)*bw+bx]==0)res.map[size_t(by)*bw+bx]=2;
         }
         blocks+=lb;moved+=lm;
     });
     res.blocks=blocks;res.moved=moved;
+    if(withMap&&weak>0.f){ // the weak blocks within 2 blocks of a moved one (grown ring by ring) join it; the others leave the map
+        // (2 rings: the arm's bands lay beside it; a frame whose level is off by more than weak everywhere must not flood whole)
+        std::vector<int> ring,next;
+        for(size_t i=0;i<res.map.size();++i)if(res.map[i]==1)ring.push_back(int(i));
+        for(int it=0;it<2&&!ring.empty();++it){
+            next.clear();
+            for(int c:ring){
+                const int cx=c%bw,cy=c/bw;
+                for(int dy=-1;dy<=1;++dy)for(int dx=-1;dx<=1;++dx){
+                    const int xx=cx+dx,yy=cy+dy;if(xx<0||yy<0||xx>=bw||yy>=bh)continue;
+                    const size_t j=size_t(yy)*bw+xx;if(res.map[j]==2){res.map[j]=1;next.push_back(int(j));}
+                }
+            }
+            ring.swap(next);
+        }
+        for(auto& m:res.map)if(m==2)m=0;
+    }
     return res;
 }
 
 struct BentoResult { bool active=false;std::string reason;double clippedFraction=0,usClippedRatio=0;int largestHole=0,inpaintHole=0;long invalidCells=0,maskCells=0;std::vector<float> mask;
-    std::vector<float> smooth,valid; /* the mask before the SCAM check, and the per-cell (1 - error) factor of the checked frame */ };
+    std::vector<float> smooth,valid; /* the mask before the SCAM check, and the per-cell (1 - error) factor of the checked frame */
+    std::vector<uint8_t> zq; /* P392 bentoPartial: the check's z per cell x 16 (0 = not checked or agrees) */
+    long aliasDamped=0;      /* P392 bentoAliasDamp: cells whose chroma part of z was damped by the Gr - Gb departure */ };
 
 // P31 (W1.4): the part of bentoMask that reads the base frame alone (clip scan, dilation, smoothing, near-clip factor). It is the
 // same for every call of a burst (each ultrashort frame, the validation masks with bento 2): built once, during the alignment.
@@ -7160,16 +7529,17 @@ inline BentoResult bentoMask(const Burst& b,int usSlot,const BackwardHomography&
     // than the base (motion, misalignment) it is invalid, the mask loses that place ((1 - error) * mask), and where the base is
     // clipped as well (middle >= 0.98, smallest >= 0.502) nothing can fill it: an inpainting hole. A clipped ultrashort frame is
     // NOT an error (GainUp = 1 >= base): its cells stay in the mask (the best lower bound; the clip flags mark them).
-    std::atomic<long> inMask{0},invalidCells{0};
+    std::atomic<long> inMask{0},invalidCells{0},aliasDamped{0};
     std::vector<uint8_t> inpaint(size_t(w2)*h2,0);
     res.smooth=mask;res.valid.assign(size_t(w2)*h2,1.f);
+    if(t.bentoPartial>0&&t.bentoValidZ>0.f&&noise!=nullptr&&t.bentoScam)res.zq.assign(size_t(w2)*h2,0); // P392
     const float ratio=1.f/std::max(usExposure,1e-6f);
     // P350 bentoValidZ: the graded, noise-normalised check; with the blend (bentoBlend) on every cell bright enough to be blended
     // (base >= 0.25: the reach of the N clip and the cells' weight go beyond the mask's cells, whose validity read 1 there)
     const bool zCheck=t.bentoValidZ>0.f&&noise!=nullptr&&t.bentoScam;
     const bool zWide=zCheck&&t.bentoBlend>0;
     mergeRowBands(h2,[&](int y0,int y1){
-        long lu=0,lm=0,li=0;
+        long lu=0,lm=0,li=0,la=0;
         for(int cy=y0;cy<y1;++cy)for(int cx=0;cx<w2;++cx){
             const size_t i=size_t(cy)*w2+cx;
             // P309: with the ramp the previous mask's cells are checked too (the share takes the larger of the two) and the counts
@@ -7220,7 +7590,7 @@ inline BentoResult bentoMask(const Burst& b,int usSlot,const BackwardHomography&
                     const float c3[3]={b.sample(0,2*nx,2*ny),0.5f*(b.sample(0,2*nx+1,2*ny)+b.sample(0,2*nx,2*ny+1)),b.sample(0,2*nx+1,2*ny+1)};
                     for(int k=0;k<3;++k){lo3[k]=std::min(lo3[k],c3[k]);hi3[k]=std::max(hi3[k],c3[k]);}
                 }
-                float z2=0;
+                float z2=0,ek[3];
                 for(int k=0;k<3;++k){
                     // brighter than the base: an error unless the cell itself clipped (a clipped NEIGHBOUR is no excuse: a light
                     // that moved onto an unclipped cell beside its clip is a ghost there), measured against the range when it
@@ -7233,8 +7603,24 @@ inline BentoResult bentoMask(const Burst& b,int usSlot,const BackwardHomography&
                     const float var=std::max(bs*std::max(ref,0.f)+bo,0.f)*(k==1?0.5f:1.f)
                                    +ratio*(us_*std::max(us3[k],0.f)+ratio*uo)*(k==1?0.5f:1.f)+fe*fe+1e-10f;
                     z2+=d*d/var;
+                    ek[k]=d/std::sqrt(var);
+                }
+                if(t.bentoAliasDamp>0.f&&z2>0.f&&base3[1]<0.98f&&std::max(us[1],us[2])<t.bentoHighlight){
+                    // P392 bentoAliasDamp: CFA alias (a mesh, moire) shifts with the sub-pixel position and shows as a colour
+                    // difference and a Gr - Gb step that differs from the base's; real motion moves the level (the luma part,
+                    // kept). q: the departure of the ultrashort Gr - Gb from the base's in sigma of the two differences' noise.
+                    const float gb=b.sample(0,2*cx+1,2*cy)-b.sample(0,2*cx,2*cy+1),gu=(us[1]-us[2])*ratio;
+                    const float vq=2.f*std::max(bs*std::max(base3[1],0.f)+bo,0.f)+2.f*ratio*(us_*std::max(us3[1],0.f)+ratio*uo)+1e-10f;
+                    const float q=std::max(0.f,std::abs(gu-gb)/std::sqrt(vq)-1.f);
+                    if(q>0.f){
+                        const float m=(ek[0]+ek[1]+ek[2])/3.f,damp=1.f/(1.f+t.bentoAliasDamp*q);
+                        float c2=0;for(int k=0;k<3;++k)c2+=(ek[k]-m)*(ek[k]-m);
+                        const float z2d=3.f*m*m+c2*damp*damp;
+                        if(z2d<z2){if(std::sqrt(z2/3.f)>t.bentoValidZ&&std::sqrt(z2d/3.f)<=t.bentoValidZ)++la;z2=z2d;}
+                    }
                 }
                 const float z=std::sqrt(z2/3.f),e=std::max(0.f,z-t.bentoValidZ),v=std::exp(-e*e);
+                if(!res.zq.empty())res.zq[i]=uint8_t(std::min(255.f,z*16.f+0.5f)); // P392
                 if(v>=0.999f)continue;
                 res.valid[i]=v;
                 if(!inMask)continue;
@@ -7264,10 +7650,10 @@ inline BentoResult bentoMask(const Burst& b,int usSlot,const BackwardHomography&
             const float middle=base3[0]+base3[1]+base3[2]-lo-hi;
             if(lo>=t.bentoInpaintMin&&middle>=t.bentoInpaintMiddle)inpaint[i]=1;
         }
-        usClippedInMask+=lu;inMask+=lm;invalidCells+=li;
+        usClippedInMask+=lu;inMask+=lm;invalidCells+=li;aliasDamped+=la;
     });
     res.usClippedRatio=inMask>0?double(usClippedInMask)/double(inMask):0.0;
-    res.invalidCells=invalidCells;res.maskCells=inMask;
+    res.invalidCells=invalidCells;res.maskCells=inMask;res.aliasDamped=aliasDamped;
     // largest connected component (SCAM HasLargeHoleNeedingInpainting: cv::connectedComponentsWithStats, 8-connected)
     auto largestComponent=[&](const std::vector<uint8_t>& on,bool eight){
         std::vector<int> stack;int largest=0;
@@ -9608,9 +9994,394 @@ struct HybridBlendProgress {
     // true: rows [0, r) are made; false: the task ended before them (or failed)
     bool wait(int r){std::unique_lock<std::mutex> l(lock);cv.wait(l,[&]{return rows>=r||done;});return rows>=r;}
 };
+// P392 review (bentoPartial off the merge's path): the progress of the task that makes the ultrashort frames' motion regions (stage
+// 1: the blend weight's bands read them) and then the fill of the N clip (stage 2: the strips' blend reads it); done: the task
+// ended (failed before a stage: that stage never comes, its waiter gets false and the task's future its exception)
+struct HybridPartialPrep {
+    std::mutex lock;std::condition_variable cv;int stage=0;bool done=false;
+    std::string regionsLine,fillLine;double regionsMs=0,fillMs=0;
+    double weightWaitMs=0,guidedMs=0; // the blend weight's task: waited for the regions, the region planes' bands (read after it ended)
+    void set(int s){{std::lock_guard<std::mutex> l(lock);stage=std::max(stage,s);}cv.notify_all();}
+    void finish(){{std::lock_guard<std::mutex> l(lock);done=true;}cv.notify_all();}
+    bool wait(int s){std::unique_lock<std::mutex> l(lock);cv.wait(l,[&]{return stage>=s||done;});return stage>=s;}
+};
 // element loops of hybridBlendWeight on all cores (each element on its own: the same values)
 template<class F> inline void hybridCellsParallel(size_t cells,const F& f){
     mergeRowBands(int((cells+4095)/4096),[&](int k0,int k1){for(size_t i=size_t(k0)*4096;i<std::min(cells,size_t(k1)*4096);++i)f(i);});
+}
+// P392 bentoPartial: the motion regions of one ultrashort frame's check (zq: z x 16 per cell, bentoMask) as a plane of their own
+// (reg: 1 inside): seeds z >= bentoPartialZHi grown over z >= bentoPartialZLo (8-connected: hysteresis), closed by
+// bentoPartialClose cells (dilated, then eroded: the gaps of a moved object's texture that passed by chance), grown by
+// bentoPartialGrow cells (its blurred edge). The frame's graded check plane stays as it is: the blend takes the smaller of the two
+// smoothed planes (a region takes a whole moved object out; outside the regions every cell keeps the graded validity it had
+// before P392, so a burst whose check found no region blends as before).
+struct HybridPartialRegions { int regions=0;long seeds=0,cells=0,marked=0; };
+// a square max (dilate) or min (erode) filter of radius r on a 0 / 1 cell plane, its rows [ya, yb) (all: yb < 0)
+inline void hybridCellMaxFilter(std::vector<uint8_t>& m,int w,int h,int r,bool erode,int ya=0,int yb=-1){
+    if(r<=0||w<=0||h<=0)return;
+    if(yb<0)yb=h;
+    ya=std::clamp(ya,0,h);yb=std::clamp(yb,ya,h);
+    const int ta=std::max(0,ya-r),tb=std::min(h,yb+r);
+    std::vector<uint8_t> tmp(m.size());
+    mergeRowBands(tb-ta,[&](int r0,int r1){
+        for(int y=ta+r0;y<ta+r1;++y){
+            const uint8_t* row=m.data()+size_t(y)*w;uint8_t* out=tmp.data()+size_t(y)*w;
+            for(int x=0;x<w;++x){
+                uint8_t v=erode?1:0;
+                for(int i=std::max(0,x-r);i<=std::min(w-1,x+r);++i)v=erode?uint8_t(v&row[i]):uint8_t(v|row[i]);
+                out[x]=v;
+            }
+        }
+    });
+    mergeRowBands(yb-ya,[&](int r0,int r1){
+        for(int y=ya+r0;y<ya+r1;++y){
+            uint8_t* out=m.data()+size_t(y)*w;
+            for(int x=0;x<w;++x){
+                uint8_t v=erode?1:0;
+                for(int j=std::max(0,y-r);j<=std::min(h-1,y+r);++j)v=erode?uint8_t(v&tmp[size_t(j)*w+x]):uint8_t(v|tmp[size_t(j)*w+x]);
+                out[x]=v;
+            }
+        }
+    });
+}
+inline HybridPartialRegions hybridPartialRegions(int w2,int h2,const std::vector<uint8_t>& zq,std::vector<uint8_t>& reg,const HybridTuning& t){
+    HybridPartialRegions st;
+    const size_t cells=size_t(w2)*h2;
+    reg.assign(cells,0);
+    if(zq.size()!=cells)return st;
+    const int hiQ=std::clamp(int(std::ceil(t.bentoPartialZHi*16.f)),1,255);
+    const int loQ=std::clamp(int(std::ceil(std::min(t.bentoPartialZLo,t.bentoPartialZHi)*16.f)),1,hiQ);
+    std::vector<int> stack;
+    static const int nb[8][2]={{1,0},{-1,0},{0,1},{0,-1},{1,1},{-1,1},{1,-1},{-1,-1}};
+    int ya=h2,yb=-1; // the rows the regions touch
+    for(size_t i0=0;i0<cells;++i0){
+        if(zq[i0]<hiQ||reg[i0])continue;
+        ++st.regions;stack.assign(1,int(i0));reg[i0]=1;
+        while(!stack.empty()){
+            const int c=stack.back();stack.pop_back();++st.cells;
+            if(zq[size_t(c)]>=hiQ)++st.seeds;
+            const int cx=c%w2,cy=c/w2;
+            ya=std::min(ya,cy);yb=std::max(yb,cy);
+            for(const auto& d:nb){const int xx=cx+d[0],yy=cy+d[1];if(xx<0||yy<0||xx>=w2||yy>=h2)continue;
+                const size_t j=size_t(yy)*w2+xx;if(!reg[j]&&zq[j]>=loQ){reg[j]=1;stack.push_back(int(j));}}
+        }
+    }
+    const int cl=std::clamp(t.bentoPartialClose,0,8),gr=std::clamp(t.bentoPartialGrow,0,8),op=std::clamp(t.bentoPartialOpen,0,8);
+    if(st.regions>0){ // only the rows the opening, the closing and the growth can reach (the others stay 0)
+        const int fa=ya-op-cl-gr-1,fb=yb+op+cl+gr+2;
+        // P392 review: opened first (eroded, then dilated by bentoPartialOpen cells): a sliver 1 - 2 cells wide along a thin light's
+        // edge is the global alignment's sub-pixel residual or PWM, not an object that moved (the frames' choice switched along a
+        // ring's rim pixel by pixel: dots); a moved hand, a branch over a window stay whole
+        if(op>0){hybridCellMaxFilter(reg,w2,h2,op,true,fa,fb);hybridCellMaxFilter(reg,w2,h2,op,false,fa,fb);}
+        hybridCellMaxFilter(reg,w2,h2,cl,false,fa,fb);hybridCellMaxFilter(reg,w2,h2,cl,true,fa,fb); // closing
+        hybridCellMaxFilter(reg,w2,h2,gr,false,fa,fb);
+    }
+    std::atomic<long> marked{0};
+    mergeRowBands(h2,[&](int y0,int y1){
+        long m=0;
+        for(size_t i=size_t(y0)*w2;i<size_t(y1)*w2;++i)m+=reg[i];
+        marked+=m;
+    });
+    st.marked=marked;
+    return st;
+}
+// Box mean of a cell plane (radius r, the window clipped at the borders) into dst's rows [y0, y1) (src rows within r beyond them
+// are read).
+inline void hybridBoxMean(const std::vector<float>& src,std::vector<float>& dst,int w,int h,int r,int y0,int y1){
+    if(y1<=y0)return;
+    std::vector<float> tmp(src.size());
+    const int a=std::max(0,y0-r),b=std::min(h,y1+r);
+    mergeRowBands(b-a,[&](int r0,int r1){
+        for(int y=a+r0;y<a+r1;++y){
+            const float* row=src.data()+size_t(y)*w;float* out=tmp.data()+size_t(y)*w;
+            double s=0;int n=0;
+            for(int x=0;x<std::min(r,w);++x){s+=row[x];++n;}
+            for(int x=0;x<w;++x){
+                if(x+r<w){s+=row[x+r];++n;}
+                if(x-r-1>=0){s-=row[x-r-1];--n;}
+                out[x]=float(s/std::max(n,1));
+            }
+        }
+    });
+    mergeRowBands(y1-y0,[&](int r0,int r1){
+        for(int y=y0+r0;y<y0+r1;++y){
+            const int j0=std::max(0,y-r),j1=std::min(h-1,y+r);
+            float* out=dst.data()+size_t(y)*w;
+            for(int x=0;x<w;++x){double s=0;for(int j=j0;j<=j1;++j)s+=tmp[size_t(j)*w+x];out[x]=float(s/(j1-j0+1));}
+        }
+    });
+}
+// P392: rows [y0, y1) of the region plane p (1 outside the frame's motion regions, 0 inside: reg) smoothed by a guided filter (He
+// et al.) of radius r cells on the guide I (the frame's own log level, guide(ya, yb, out) writes its rows [ya, yb)): a box blur
+// where the guide is flat (a soft transition), the guide's edge where it has one (the transition on the moved object's contour, not
+// across the cells). P392 review: in bands (the blend weight's, beside the merge), each band from the rows within 2 r around it -
+// the same values as over the whole plane (the windows of the band's rows lie inside those rows or end at the image's border as
+// there); a band with no region within 2 r is 1 (the filter of a constant 1), nothing computed, and so is every column farther than
+// 2 r from the band's region cells (the columns between computed from the columns within 4 r of them: the same values). rowSpan:
+// per row the first and the last column of a region cell (first > last: none). guide(ya, yb, xa, xb, out): the guide's rows
+// [ya, yb) and columns [xa, xb) (out's rows xb - xa long). r <= 0: the gaussian of the kernel k instead (no guide; the band's rows
+// within its radius read).
+inline void hybridGuidedRegionRows(const std::vector<uint8_t>& reg,const std::vector<int>& rowSpan,
+                                   const std::function<void(int,int,int,int,float*)>& guide,int w,int h,int r,float eps,int y0,int y1,float* q,
+                                   const std::vector<float>& k={}){
+    if(y1<=y0)return;
+    const int kr=int(k.size()/2),reach=r>0?2*r:kr;
+    const int ga=std::max(0,y0-reach),gb=std::min(h,y1+reach);
+    int xa=w,xb=-1;for(int y=ga;y<gb;++y){xa=std::min(xa,rowSpan[size_t(2*y)]);xb=std::max(xb,rowSpan[size_t(2*y+1)]);}
+    std::fill(q,q+size_t(y1-y0)*w,1.f);
+    if(xb<xa)return;
+    if(r<=0){ // separable gaussian of p over the band's rows (the image's border clamped as hybridGaussPlaneRows)
+        if(k.empty()){for(int y=y0;y<y1;++y)for(int x=xa;x<=xb;++x)q[size_t(y-y0)*w+x]=reg[size_t(y)*w+x]?0.f:1.f;return;}
+        const int ox0=std::max(0,xa-kr),ox1=std::min(w,xb+1+kr),ww=ox1-ox0;
+        std::vector<float> tmp(size_t(gb-ga)*ww);
+        for(int y=ga;y<gb;++y){
+            const uint8_t* row=reg.data()+size_t(y)*w;float* o=tmp.data()+size_t(y-ga)*ww;
+            for(int x=ox0;x<ox1;++x){float a=0;for(int i=-kr;i<=kr;++i)a+=k[size_t(i+kr)]*(row[std::clamp(x+i,0,w-1)]?0.f:1.f);o[x-ox0]=a;}
+        }
+        for(int y=y0;y<y1;++y){
+            float* o=q+size_t(y-y0)*w+ox0;std::fill(o,o+ww,0.f);
+            for(int i=-kr;i<=kr;++i){const float kk=k[size_t(i+kr)];const float* sp=tmp.data()+size_t(std::clamp(y+i,0,h-1)-ga)*ww;for(int x=0;x<ww;++x)o[x]+=kk*sp[x];}
+        }
+        return;
+    }
+    // the columns: computed [cx0, cx1) (within 2 r of a region cell), read [dx0, dx1) (4 r)
+    const int cx0=std::max(0,xa-2*r),cx1=std::min(w,xb+1+2*r),dx0=std::max(0,xa-4*r),dx1=std::min(w,xb+1+4*r),ww=dx1-dx0;
+    const int bh=gb-ga;const size_t n=size_t(ww)*bh;
+    std::vector<float> I(n),p(n),II(n),Ip(n),mI(n),mp(n),mII(n),mIp(n);
+    guide(ga,gb,dx0,dx1,I.data());
+    for(int y=0;y<bh;++y){const uint8_t* rg=reg.data()+size_t(ga+y)*w+dx0;for(int x=0;x<ww;++x){const size_t i=size_t(y)*ww+x;p[i]=rg[x]?0.f:1.f;}}
+    for(size_t i=0;i<n;++i){II[i]=I[i]*I[i];Ip[i]=I[i]*p[i];}
+    // the box means of the band's rows (its own rows only: the rows that matter are exact)
+    hybridBoxMean(I,mI,ww,bh,r,0,bh);hybridBoxMean(p,mp,ww,bh,r,0,bh);hybridBoxMean(II,mII,ww,bh,r,0,bh);hybridBoxMean(Ip,mIp,ww,bh,r,0,bh);
+    for(size_t i=0;i<n;++i){
+        const float v=std::max(mII[i]-mI[i]*mI[i],0.f),c=mIp[i]-mI[i]*mp[i];
+        const float a=c/(v+eps);
+        II[i]=a;Ip[i]=mp[i]-a*mI[i];
+    }
+    const int s0=y0-ga,s1=y1-ga;
+    hybridBoxMean(II,mII,ww,bh,r,s0,s1);hybridBoxMean(Ip,mIp,ww,bh,r,s0,s1);
+    for(int y=s0;y<s1;++y)for(int x=cx0;x<cx1;++x){const size_t i=size_t(y)*ww+(x-dx0);q[size_t(y-s0)*w+x]=std::clamp(mII[i]*I[i]+mIp[i],0.f,1.f);}
+}
+// P392: the fill of the N clip (bentoPartial; the HybridFill is sized by the caller before any thread reads it: its planes' size is
+// read when the strips are laid out, their values only after the merge's maskReady). Sources: every cell of every checked
+// ultrashort frame (the nearest cell at its homography, as bentoMask reads it), its colour gained to base units, where the base
+// lost data (smoothstep(0.85, 0.98) of the base cell's brightest site: never the glow around the clip, never the dark). A valid
+// cell (outside its frame's motion regions, at its graded check) weighs by smoothstep(0.8, 1.0) of its brightest colour (the base
+// lost data there: a valid colour below it is a moved object's blurred edge, its dark seeds dimmed the whole fill); a cell
+// that moved feeds at half that only when it reaches the clip itself (smoothstep(0.95, 1.2): the light that moved, not a dark
+// hand's edge). Log-space pull-push over `levels` levels of 2 x 2 cells (up: each level's weighted mean log colour and weight A;
+// down: a level's own mean at confidence min(A / 0.1, 1), the coarser level's fill bilinear for the rest), then (P392 review: the
+// fill continued the valid core around a hole only as a wide mean - a step from the valid light at 3 - 5 x the clip to the fill
+// at 1 - 1.5 x) `relax` red-black Gauss-Seidel sweeps of the membrane on the finest level where the base is clipped: each cell
+// the mean of its 4 neighbours, a seed held at its own colour by its confidence - the fill is the harmonic continuation of the
+// light around the hole. Out: 4 planes R, G, B (linear, base units) and the confidence C (1 next to valid light, falling to 0
+// beyond the reach) at level fill.shift (per 2^shift x 2^shift cells).
+struct HybridFillStats { long seeds=0,domain=0,confident=0; };
+inline HybridFillStats hybridPartialFill(const Burst& b,const std::vector<const uint16_t*>& raws,const std::vector<float>& exposure,
+                                         const std::vector<BackwardHomography>& hs,const std::vector<const std::vector<float>*>& valid,
+                                         const std::vector<const std::vector<uint8_t>*>& regions,int levels,int relax,HybridFill& fill){
+    HybridFillStats st;
+    const int w2=b.w/2,h2=b.h/2;const size_t cells=size_t(w2)*h2;
+    const int shift=fill.shift,step=1<<shift,fw=fill.w,fh=fill.h;const size_t fn=size_t(fw)*fh;
+    if(fw!=(w2+step-1)>>shift||fh!=(h2+step-1)>>shift||fill.v.size()!=fn*4)throw std::runtime_error("HYBRID BENTO PARTIAL: the fill planes not sized");
+    std::vector<uint8_t> clip(fn,0); // a base cell of the fill cell lost data (the membrane's domain)
+    std::atomic<long> seeds{0};
+    mergeRowBands(fh,[&](int y0,int y1){
+        long ls=0;
+        for(int fy=y0;fy<y1;++fy)for(int fx=0;fx<fw;++fx){
+            float sM[3]={0,0,0},sA=0;int cnt=0;bool anyClip=false;
+            for(int cy=fy*step;cy<std::min(h2,(fy+1)*step);++cy)for(int cx=fx*step;cx<std::min(w2,(fx+1)*step);++cx){
+                const size_t i=size_t(cy)*w2+cx;
+                float s[3]={0,0,0},wsum=0;++cnt;
+                float bl=0.f;for(int q=0;q<4;++q)bl=std::max(bl,b.sample(0,2*cx+(q&1),2*cy+(q>>1)));
+                const float ub=std::clamp((bl-0.85f)/0.13f,0.f,1.f),bw=ub*ub*(3.f-2.f*ub);
+                if(bw<=0.f)continue;
+                anyClip=true;
+                for(size_t k=0;k<raws.size();++k){
+                    const DonorPoint o=hs[k].bayerOrigin(2*cx,2*cy);
+                    const int ux=std::clamp(int(std::lround(o.x*0.5f)),0,w2-1),uy=std::clamp(int(std::lround(o.y*0.5f)),0,h2-1);
+                    const float ratio=1.f/std::max(exposure[k],1e-6f);
+                    const float c3[3]={b.sampleRaw(raws[k],2*ux,2*uy)*ratio,
+                                       0.5f*(b.sampleRaw(raws[k],2*ux+1,2*uy)+b.sampleRaw(raws[k],2*ux,2*uy+1))*ratio,
+                                       b.sampleRaw(raws[k],2*ux+1,2*uy+1)*ratio};
+                    const bool moved=k<regions.size()&&regions[k]&&regions[k]->size()==cells&&(*regions[k])[i];
+                    const float g=k<valid.size()&&valid[k]&&valid[k]->size()==cells?std::clamp((*valid[k])[i],0.f,1.f):1.f;
+                    const float v=moved?0.f:g;
+                    const float lv=std::max({c3[0],c3[1],c3[2]});
+                    const float u=std::clamp((lv-0.8f)/0.2f,0.f,1.f),um=std::clamp((lv-0.95f)/0.25f,0.f,1.f);
+                    const float wk=bw*(v*u*u*(3.f-2.f*u)+(1.f-v)*0.5f*um*um*(3.f-2.f*um));
+                    if(wk<=0.f)continue;
+                    for(int c=0;c<3;++c)s[c]+=wk*std::log(std::max(c3[c],1e-4f));
+                    wsum+=wk;
+                }
+                if(wsum<=0.f)continue;
+                const float a=std::min(wsum,1.f); // the cell's mean log colour at its weight (the pull's first level)
+                for(int c=0;c<3;++c)sM[c]+=a*s[c]/wsum;
+                sA+=a;
+            }
+            const size_t j=size_t(fy)*fw+fx;
+            for(int c=0;c<3;++c)fill.v[size_t(c)*fn+j]=sA>0.f?sM[c]/sA:0.f;
+            fill.v[3*fn+j]=cnt>0?sA/float(cnt):0.f;
+            clip[j]=anyClip?1:0;
+            ls+=sA>0.f;
+        }
+        seeds+=ls;
+    });
+    st.seeds=seeds;
+    // the finest level's own means and seed confidence (the membrane holds them)
+    const float a0=0.1f;
+    std::vector<float> own(fill.v.begin(),fill.v.begin()+std::ptrdiff_t(3*fn)),c0(fn);
+    for(size_t i=0;i<fn;++i)c0[i]=std::min(fill.v[3*fn+i]/a0,1.f);
+    // the pyramid: level L holds 4 planes (mean log R, G, B, weight) of ceil(w / 2^L) x ceil(h / 2^L); its first level is the
+    // output itself
+    struct Level { int w=0,h=0;std::vector<float> v; };
+    std::vector<Level> pyr(size_t(std::max(std::clamp(levels,0,10)-shift,0))+1);
+    pyr[0].w=fw;pyr[0].h=fh;
+    for(size_t L=1;L<pyr.size();++L){
+        const Level& f=pyr[L-1];Level& c=pyr[L];
+        c.w=(f.w+1)/2;c.h=(f.h+1)/2;const size_t cn=size_t(c.w)*c.h,pn=size_t(f.w)*f.h;
+        c.v.assign(cn*4,0.f);
+        const float* fv=L==1?fill.v.data():f.v.data();
+        mergeRowBands(c.h,[&](int y0,int y1){
+            for(int y=y0;y<y1;++y)for(int x=0;x<c.w;++x){
+                float s[3]={0,0,0},a=0;int cnt=0;
+                for(int q=0;q<4;++q){
+                    const int px=2*x+(q&1),py=2*y+(q>>1);
+                    if(px>=f.w||py>=f.h)continue;
+                    const size_t j=size_t(py)*f.w+px;++cnt;
+                    const float wa=fv[3*pn+j];
+                    if(wa<=0.f)continue;
+                    for(int k=0;k<3;++k)s[k]+=wa*fv[size_t(k)*pn+j];
+                    a+=wa;
+                }
+                const size_t i=size_t(y)*c.w+x;
+                for(int k=0;k<3;++k)c.v[size_t(k)*cn+i]=a>0.f?s[k]/a:0.f;
+                c.v[3*cn+i]=cnt>0?a/float(cnt):0.f;
+            }
+        });
+    }
+    // down: the coarsest level's fill is its own mean at its confidence; each finer level mixes its own mean (confidence c) with
+    // the coarser level's fill (bilinear between the coarser cells' centres), the confidence alike
+    for(int L=int(pyr.size())-1;L>=0;--L){
+        Level& lv=pyr[size_t(L)];const size_t n=size_t(lv.w)*lv.h;
+        float* v=L==0?fill.v.data():lv.v.data();
+        if(L==int(pyr.size())-1){
+            hybridCellsParallel(n,[&](size_t i){v[3*n+i]=std::min(v[3*n+i]/a0,1.f);});
+            continue;
+        }
+        const Level& up=pyr[size_t(L)+1];const size_t un=size_t(up.w)*up.h;const float* uv=up.v.data();
+        mergeRowBands(lv.h,[&](int y0,int y1){
+            for(int y=y0;y<y1;++y)for(int x=0;x<lv.w;++x){
+                const float fx=std::clamp((float(x)+0.5f)*0.5f-0.5f,0.f,float(up.w-1)),fy=std::clamp((float(y)+0.5f)*0.5f-0.5f,0.f,float(up.h-1));
+                const int x0=std::min(int(fx),up.w-1),yy0=std::min(int(fy),up.h-1),x1=std::min(x0+1,up.w-1),yy1=std::min(yy0+1,up.h-1);
+                const float tx=fx-float(x0),ty=fy-float(yy0);
+                auto at=[&](int k){
+                    const float* q=uv+size_t(k)*un;
+                    const float a=q[size_t(yy0)*up.w+x0]+(q[size_t(yy0)*up.w+x1]-q[size_t(yy0)*up.w+x0])*tx;
+                    const float c=q[size_t(yy1)*up.w+x0]+(q[size_t(yy1)*up.w+x1]-q[size_t(yy1)*up.w+x0])*tx;
+                    return a+(c-a)*ty;
+                };
+                const size_t i=size_t(y)*lv.w+x;
+                const float c=std::min(v[3*n+i]/a0,1.f);
+                for(int k=0;k<3;++k)v[size_t(k)*n+i]=c*v[size_t(k)*n+i]+(1.f-c)*at(k);
+                v[3*n+i]=c+(1.f-c)*at(3);
+            }
+        });
+        std::vector<float>().swap(pyr[size_t(L)+1].v); // the coarser level is used up
+    }
+    // the membrane on the finest level (log colour): the cells where the base lost data and no full seed holds the colour, within
+    // the fill's reach; each sweep updates one parity of (x + y), the other's neighbours fixed (independent: in parallel)
+    std::vector<int> domain;
+    for(size_t i=0;i<fn;++i)if(clip[i]&&c0[i]<0.999f&&fill.v[3*fn+i]>0.01f)domain.push_back(int(i));
+    st.domain=long(domain.size());
+    if(relax>0&&!domain.empty()){
+        // the membrane's border: each full seed beside the domain held at the brighter half of the full seeds within 2 cells (P392 review: the
+        // cells around a moved object's hole hold its blurred edge - half the light - and the fill continued that, a step below the
+        // light around it; the light the object covered is the light beyond its edge)
+        std::vector<uint8_t> inDom(fn,0);for(int i:domain)inDom[size_t(i)]=1;
+        std::vector<std::pair<int,std::array<float,3>>> pins;
+        for(size_t i=0;i<fn;++i){
+            if(c0[i]<0.999f)continue;
+            const int x=int(i%size_t(fw)),y=int(i/size_t(fw));
+            if(!((x>0&&inDom[i-1])||(x+1<fw&&inDom[i+1])||(y>0&&inDom[i-size_t(fw)])||(y+1<fh&&inDom[i+size_t(fw)])))continue;
+            // the full seeds within 2 cells, the brighter half's mean (log colour; the blurred edge's half-light cells left out)
+            float ls[25];int js[25],m=0;
+            for(int dy=-2;dy<=2;++dy)for(int dx=-2;dx<=2;++dx){
+                const int xx=x+dx,yy=y+dy;if(xx<0||yy<0||xx>=fw||yy>=fh)continue;
+                const size_t j=size_t(yy)*fw+xx;if(c0[j]<0.999f)continue;
+                ls[m]=own[j]+2.f*own[fn+j]+own[2*fn+j];js[m]=int(j);++m;
+            }
+            for(int a=1;a<m;++a)for(int b=a;b>0&&ls[b]>ls[b-1];--b){std::swap(ls[b],ls[b-1]);std::swap(js[b],js[b-1]);}
+            const int half=std::max(1,(m+1)/2);
+            float mc[3]={0,0,0};for(int q=0;q<half;++q)for(int c=0;c<3;++c)mc[c]+=own[size_t(c)*fn+size_t(js[q])];
+            pins.push_back({int(i),{mc[0]/float(half),mc[1]/float(half),mc[2]/float(half)}});
+        }
+        for(const auto& pj:pins)for(int c=0;c<3;++c)fill.v[size_t(c)*fn+size_t(pj.first)]=pj.second[c];
+        std::vector<int> par[2];
+        for(int i:domain)par[((i%fw)+(i/fw))&1].push_back(i);
+        float* F=fill.v.data();const float* C=fill.v.data()+3*fn;
+        for(int it=0;it<2*relax;++it){
+            const std::vector<int>& set=par[it&1];
+            mergeRowBands(int((set.size()+1023)/1024),[&](int k0,int k1){
+                for(size_t s=size_t(k0)*1024;s<std::min(set.size(),size_t(k1)*1024);++s){
+                    const int i=set[s],x=i%fw,y=i/fw;
+                    float m[3]={0,0,0};int nn=0;
+                    const int nbs[4]={x>0?i-1:-1,x+1<fw?i+1:-1,y>0?i-fw:-1,y+1<fh?i+fw:-1};
+                    for(int j:nbs){if(j<0||C[j]<=0.01f)continue;for(int c=0;c<3;++c)m[c]+=F[size_t(c)*fn+size_t(j)];++nn;}
+                    if(nn==0)continue;
+                    const float sc=c0[size_t(i)];
+                    for(int c=0;c<3;++c)F[size_t(c)*fn+size_t(i)]=sc*own[size_t(c)*fn+size_t(i)]+(1.f-sc)*m[c]/float(nn);
+                }
+            });
+        }
+    }
+    std::atomic<long> conf{0};
+    mergeRowBands(fh,[&](int y0,int y1){
+        long lc=0;
+        for(size_t i=size_t(y0)*fw;i<size_t(y1)*fw;++i){
+            for(int k=0;k<3;++k)fill.v[size_t(k)*fn+i]=std::exp(fill.v[size_t(k)*fn+i]);
+            lc+=fill.v[3*fn+i]>0.5f;
+        }
+        conf+=lc;
+    });
+    st.confident=conf;
+    return st;
+}
+// P392 shastaMotionScope: a long frame's moved 8 x 8 blocks (shastaMotion's map, bw x bh) as its merge weight per cell (w2 x h2,
+// x 255 in a byte: P392 review, a quarter of the float plane's memory): the blocks dilated by `dilate` blocks, feathered outward by
+// a gaussian of `feather` blocks on the block grid (bilinear between the blocks' centres on the cells; a cell of a moved block itself
+// stays out whole); the weight is 1 - that.
+inline std::vector<uint8_t> hybridScopeWeight(const std::vector<uint8_t>& moved,int bw,int bh,int w2,int h2,int dilate,float feather){
+    std::vector<uint8_t> out(size_t(w2)*h2,255);
+    if(bw<=0||bh<=0||moved.size()!=size_t(bw)*bh)return out;
+    std::vector<uint8_t> m=moved;
+    hybridCellMaxFilter(m,bw,bh,std::clamp(dilate,0,8),false);
+    std::vector<float> f(m.size());
+    for(size_t i=0;i<m.size();++i)f[i]=m[i]?1.f:0.f;
+    const float sg=std::max(0.f,feather);
+    if(sg>0.05f){
+        const int r=std::max(1,int(std::ceil(3.f*sg)));
+        std::vector<float> k(size_t(2*r+1));float sum=0;
+        for(int i=-r;i<=r;++i){k[size_t(i+r)]=std::exp(-0.5f*float(i*i)/(sg*sg));sum+=k[size_t(i+r)];}
+        for(float& x:k)x/=sum;
+        hybridGaussRows(f,bw,bh,k);
+    }
+    mergeRowBands(h2,[&](int y0,int y1){
+        for(int cy=y0;cy<y1;++cy){
+            const float fy=std::clamp((float(cy)+0.5f)/4.f-0.5f,0.f,float(bh-1));
+            const int by0=std::min(int(fy),bh-1),by1=std::min(by0+1,bh-1);const float ty=fy-float(by0);
+            const int bc=std::min(cy/4,bh-1);
+            for(int cx=0;cx<w2;++cx){
+                const float fx=std::clamp((float(cx)+0.5f)/4.f-0.5f,0.f,float(bw-1));
+                const int bx0=std::min(int(fx),bw-1),bx1=std::min(bx0+1,bw-1);const float tx=fx-float(bx0);
+                const float a=f[size_t(by0)*bw+bx0]+(f[size_t(by0)*bw+bx1]-f[size_t(by0)*bw+bx0])*tx;
+                const float c=f[size_t(by1)*bw+bx0]+(f[size_t(by1)*bw+bx1]-f[size_t(by1)*bw+bx0])*tx;
+                const float v=m[size_t(bc)*bw+std::min(cx/4,bw-1)]?1.f:a+(c-a)*ty;
+                out[size_t(cy)*w2+cx]=uint8_t(std::lround(std::clamp(1.f-v,0.f,1.f)*255.f));
+            }
+        }
+    });
+    return out;
 }
 // P364: kHybridBlendHalo rows above and below a band of the weight: more than the 13 rows its steps reach (the level's gaussian 3,
 // the diamond 2, the gaussian of bentoBlendSigma 1.5: 5, the last one 3; tuned sigmas up to 2 / 4 dilation steps stay within it):
@@ -10138,8 +10909,9 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         const bool outlierPrograms=tune.hotSigma>0||tune.hotBaseSigma>0,dcgZones=hybridDcgZones(input); // P320
         const std::string rejOpts=hybridRejSpec(tune); // P344; P353: with its switches
         const bool blendOpts=hybridBlendOptions(tune); // P350
+        const std::string partialOpts=hybridPartialSpec(tune,nat); // P392
         // a thread the system refuses (std::system_error) leaves earlyGpu empty: the merge builds its context, as before P31
-        try{earlyGpu=std::async(std::launch::async,[earlyLog,rimPass,la,bentoPass,chromaPass,nat,outlierPrograms,blendPass,dcgZones,rejOpts,blendOpts]{
+        try{earlyGpu=std::async(std::launch::async,[earlyLog,rimPass,la,bentoPass,chromaPass,nat,outlierPrograms,blendPass,dcgZones,rejOpts,blendOpts,partialOpts]{
             const auto t0=Clock::now();
             // The constructor's report: on Adreno one context line, printed where the merge reports the GPU. Off Adreno it reports
             // program by program (P26: a driver that dies while compiling): those lines go out at once, one write each on stderr
@@ -10153,7 +10925,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
                 }
                 earlyLog->lines.push_back(line);
             };
-            auto gpu=std::make_unique<HybridGpu>(rimPass,la,bentoPass,chromaPass,early,false,nat,outlierPrograms,blendPass,dcgZones,rejOpts,blendOpts);
+            auto gpu=std::make_unique<HybridGpu>(rimPass,la,bentoPass,chromaPass,early,false,nat,outlierPrograms,blendPass,dcgZones,rejOpts,blendOpts,partialOpts);
             gpu->release();
             earlyLog->ms=std::chrono::duration<double,std::milli>(Clock::now()-t0).count();
             return gpu;
@@ -10417,6 +11189,9 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     auto bentoTuneOf=[&]{ // the Bento block's maskTune (bentoRefuseScope)
         HybridTuning mt=tune;
         if(tune.bentoRefuseScope>0&&tune.bentoBlend>0&&native==nullptr){mt.bentoMaxHole=1<<30;mt.bentoMaxUsClipped=2.f;}
+        // P392: the check's z planes and the alias damping only for the partial path (the native mosaic and a tuning without the
+        // blend's check keep the check as before P392: no z plane is held, no z damped)
+        if(!hybridPartialOn(tune,native!=nullptr)){mt.bentoPartial=0;mt.bentoAliasDamp=0.f;}
         return mt;
     };
     auto sameH=[](const BackwardHomography& a,const BackwardHomography& c){return a.h==c.h&&a.upRatio==c.upRatio;};
@@ -10531,10 +11306,10 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             // a bracketed frame: its forced-Shasta motion check (the base's noise as the Shasta block takes it)
             if(role==kRoleBracketed&&tune.shastaForce&&tune.shastaMotionMax<100.f&&tune.shastaEnable){
                 const float bs=std::max(input.frames[0].slope,1e-9f),bo=std::max(input.frames[0].offset,0.f);
-                try{earlyMotion[size_t(f)].f=std::async(std::launch::async,[&b,&input,f,h=H[f],bs,bo]{
+                try{earlyMotion[size_t(f)].f=std::async(std::launch::async,[&b,&input,f,h=H[f],bs,bo,scopeMap=tune.shastaMotionScope>0&&native==nullptr,weak=tune.shastaScopeWeak]{
                     const auto& fr=input.frames[f];
                     Burst one=b;one.raw[1]=fr.raw;one.exposure[1]=fr.exposure;
-                    return shastaMotion(one,1,h,fr.exposure,bs,bo,fr.slope,fr.offset,0.95f);
+                    return shastaMotion(one,1,h,fr.exposure,bs,bo,fr.slope,fr.offset,0.95f,scopeMap,scopeMap?weak:0.f);
                 }).share();earlyMotion[size_t(f)].h=H[f];}catch(const std::exception&){}
             }
             // the ultrashort frames' Bento masks on the pool once the last of them (they come first) is in, all with final homographies
@@ -10843,6 +11618,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
                 +std::to_string(alignedNormals)+" aligned normal donors)");
         }
     }
+    std::vector<std::vector<uint8_t>> scopeWeights(static_cast<size_t>(n)); // P392 shastaMotionScope: a kept long frame's weight per cell (x 255)
     {
         float maxRatio=1;
         // P30: the base guide once, the frames' sharpness in parallel; decisions and report in frame order as before.
@@ -10873,9 +11649,9 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
                 const auto& fr=input.frames[f];
                 if(fr.role!=kRoleBracketed||!aligned[f])continue;
                 if(earlyMotion[size_t(f)].f.valid()&&sameH(earlyMotion[size_t(f)].h,H[f]))continue; // P364: running since the alignment
-                try{motions[size_t(f)]=std::async(std::launch::async,[&b,&fr,h=H[f],baseSlope,baseOffset]{
+                try{motions[size_t(f)]=std::async(std::launch::async,[&b,&fr,h=H[f],baseSlope,baseOffset,scopeMap=tune.shastaMotionScope>0&&native==nullptr,weak=tune.shastaScopeWeak]{
                     Burst one=b;one.raw[1]=fr.raw;one.exposure[1]=fr.exposure;
-                    return shastaMotion(one,1,h,fr.exposure,baseSlope,baseOffset,fr.slope,fr.offset,0.95f);
+                    return shastaMotion(one,1,h,fr.exposure,baseSlope,baseOffset,fr.slope,fr.offset,0.95f,scopeMap,scopeMap?weak:0.f);
                 });}catch(const std::exception&){} // no thread: in the loop below
             }
         for(int f=1;f<n;++f){
@@ -10893,10 +11669,26 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
                     Burst one=b;one.raw[1]=fr.raw;one.exposure[1]=fr.exposure;
                     const ShastaMotion m=motions[size_t(f)].valid()?motions[size_t(f)].get()
                         :earlyMotion[size_t(f)].f.valid()&&sameH(earlyMotion[size_t(f)].h,H[f])?earlyMotion[size_t(f)].f.get()
-                        :shastaMotion(one,1,H[f],fr.exposure,baseSlope,baseOffset,fr.slope,fr.offset,0.95f);
+                        :shastaMotion(one,1,H[f],fr.exposure,baseSlope,baseOffset,fr.slope,fr.offset,0.95f,tune.shastaMotionScope>0&&native==nullptr,
+                                       tune.shastaMotionScope>0&&native==nullptr?tune.shastaScopeWeak:0.f);
                     const bool drop=m.share()>tune.shastaMotionMax;
+                    // P392 shastaMotionScope: above shastaMotionMax and up to shastaScopeMax the frame stays, its moved blocks out
+                    // (P392 review: plain merges only - the native mosaic merge has no scope planes, a kept frame would merge whole there)
+                    const bool scope=(drop||(tune.shastaScopeAll>0&&m.moved>0))&&tune.shastaMotionScope>0&&native==nullptr&&m.share()<=tune.shastaScopeMax&&m.bw>0&&m.bh>0&&m.map.size()==size_t(m.bw)*m.bh;
                     report("HYBRID SHASTA motion frame="+std::to_string(f)+" moved="+std::to_string(m.moved)+" of "+std::to_string(m.blocks)
-                        +" blocks ("+std::to_string(m.share())+" %"+(drop?" > "+std::to_string(tune.shastaMotionMax)+" %: dropped)":", forced)"));
+                        +" blocks ("+std::to_string(m.share())+" %"+(scope?(drop?" > ":" <= ")+std::to_string(tune.shastaMotionMax)+" %: kept, moved blocks out)"
+                        :drop?" > "+std::to_string(tune.shastaMotionMax)+" %: dropped)":", forced)"));
+                    if(scope){
+                        const auto t0=Clock::now();
+                        scopeWeights[size_t(f)]=hybridScopeWeight(m.map,m.bw,m.bh,w/2,h/2,tune.shastaScopeDilate,tune.shastaScopeFeather);
+                        long out=0;for(uint8_t v:scopeWeights[size_t(f)])out+=v<128;
+                        char line[260];
+                        std::snprintf(line,sizeof(line),"HYBRID SHASTA SCOPE: frame %d kept (%.2f %% of the blocks moved, limit %.0f %%): its moved blocks out, dilated %d, feathered %.2f blocks: weight < 0.5 on %.2f %% of the cells, %.0f ms",
+                            f,m.share(),tune.shastaScopeMax,tune.shastaScopeDilate,tune.shastaScopeFeather,
+                            100.0*double(out)/double(std::max<size_t>(scopeWeights[size_t(f)].size(),1)),millis(Clock::now()-t0));
+                        report(line);
+                        continue;
+                    }
                     if(drop){keep[f]=false;++stats.droppedBracketed;continue;}
                 }
                 continue;
@@ -10922,6 +11714,13 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         if(same&&int(usFrames.size())<std::clamp(tune.bentoFrames,1,4))usFrames.push_back(f); else keep[f]=false;
     }
     BentoResult bento;std::vector<std::vector<float>> bentoValids;
+    std::vector<std::vector<uint8_t>> bentoZ; // P392 bentoPartial: the check's z per frame (bentoValids' order)
+    std::vector<std::vector<uint8_t>> bentoRegions; // P392: per frame its motion regions (1 inside)
+    std::vector<std::vector<int>> bentoRegionRows;  // P392: per frame and row the first and the last column of a region cell
+    HybridFill partialFill;                   // P392 bentoPartial: the fill planes (R, G, B, confidence)
+    auto partialPrep=std::make_shared<HybridPartialPrep>();
+    std::shared_future<void> partialPrepTask; // P392 review: the regions and the fill beside the merge (joined before the planes go)
+    struct PrepJoin { std::shared_future<void>& f; ~PrepJoin(){if(f.valid())f.wait();} } prepJoin{partialPrepTask};
     std::vector<float> bentoShare; // P309: the ramp mask's share of the ultrashort frames before the check (bentoRamp > 0)
     std::vector<float> bentoPrev,bentoBest; // P309: the previous mask (the ramp never gives less), the cells' best validity
     std::vector<uint8_t> bentoPrevOn; // P309: the previous mask's cells: the clip flags' bit 4 (inside the Bento mask) stays on them
@@ -10942,6 +11741,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         const bool scoped=tune.bentoRefuseScope>0&&tune.bentoBlend>0&&native==nullptr;
         HybridTuning maskTune=tune;
         if(scoped){maskTune.bentoMaxHole=1<<30;maskTune.bentoMaxUsClipped=2.f;}
+        if(!hybridPartialOn(tune,native!=nullptr)){maskTune.bentoPartial=0;maskTune.bentoAliasDamp=0.f;} // P392 (bentoTuneOf alike)
         auto noiseOf=[&input](int f){return std::array<float,4>{input.frames[0].slope,input.frames[0].offset,input.frames[f].slope,input.frames[f].offset};};
         auto poolMask=[&b,&maskTune,&bentoAhead](const HybridFrame& fr,const BackwardHomography& h,int mode,std::array<float,4> nz){
             // the task holds the base itself (a validation mask still running when an exception leaves this block outlives it)
@@ -10982,6 +11782,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             return bentoMask(one,1,H[f],input.frames[f].exposure,t2,shared,&nz);
         };
         std::vector<long> usInvalid{bento.invalidCells}; // per ultrashort frame (merge order of usFrames), for the motion share
+        long aliasCells=bento.aliasDamped; // P392 bentoAliasDamp: cells the alias damping took below the check's threshold
         auto frameLine=[&](int f,const BentoResult& r){
             report("HYBRID BENTO frame="+std::to_string(f)+" invalid="+std::to_string(r.invalidCells)+" hole="+std::to_string(r.inpaintHole)
                 +" largestHole="+std::to_string(r.largestHole)+" usClipped="+std::to_string(r.usClippedRatio));
@@ -10991,6 +11792,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             // every ultrashort frame checked; mask = smooth x max_k valid_k; per-frame factors for the GPU (dilate pass)
             // P31: the validity planes are moved, not copied (bento.valid is freed below anyway)
             std::vector<std::vector<float>> valids;valids.push_back(std::move(bento.valid));
+            bentoZ.push_back(std::move(bento.zq)); // P392
             std::string line="HYBRID BENTO VALIDATE: per-frame invalid cells";
             line+=" "+std::to_string(us)+":"+std::to_string(bento.invalidCells);
             for(size_t k=1;k<usFrames.size();++k){
@@ -10998,6 +11800,8 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
                 BentoResult r=otherMask(k);
                 frameLine(f,r);usInvalid.push_back(r.invalidCells);
                 valids.push_back(std::move(r.valid));line+=" "+std::to_string(f)+":"+std::to_string(r.invalidCells);
+                bentoZ.push_back(std::move(r.zq)); // P392
+                aliasCells+=r.aliasDamped;
             }
             // P31: blocks of cells on all cores (integer counts, every cell's value as before)
             if(tune.bentoRamp>0.f)bentoBest.assign(bento.mask.size(),1.f); // P309: the ramp's conversion scales by it
@@ -11042,9 +11846,13 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         }
         // P310: one checked ultrashort frame (the planes above come from two or more): its own check is the blend's validity plane
         // (the merge's Bento mask held it; the blend weighs by the planes only)
-        if(tune.bentoBlend>0&&native==nullptr&&bentoValids.empty()&&!bento.valid.empty()&&bento.valid.size()==bento.mask.size())
+        if(tune.bentoBlend>0&&native==nullptr&&bentoValids.empty()&&!bento.valid.empty()&&bento.valid.size()==bento.mask.size()){
             bentoValids.push_back(std::move(bento.valid));
-        if(scoped&&bento.active&&!bentoValids.empty()&&tune.bentoMotionMax<100.f&&bento.smooth.size()==bento.mask.size()){
+            bentoZ.assign(1,std::move(bento.zq)); // P392
+        }
+        const bool partial=hybridPartialOn(tune,native!=nullptr); // P392
+        const float refuseShare=partial?tune.bentoRefuseShare:tune.bentoMotionMax; // P392: the component refusal's share
+        if(scoped&&bento.active&&!bentoValids.empty()&&refuseShare<100.f&&tune.bentoMotionMax<100.f&&bento.smooth.size()==bento.mask.size()){
             // P350 bentoRefuseScope 1: the motion refusal per 8-connected component of the mask (before the check): a component
             // with more than bentoMotionMax % of its cells invalid (<= 0.1) in the best ultrashort frame gets validity 0 in every
             // frame (the N frames there: a hand over one lamp no longer takes the ultrashort frames off every other light)
@@ -11065,16 +11873,91 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
                             const size_t j=size_t(yy)*w2+xx;if(bento.smooth[j]>0.f&&label[j]<0){label[j]=comps;stack.push_back(int(j));}}
                     }
                     ++comps;
-                    if(100.0*double(bad)/double(members.size())>tune.bentoMotionMax){
+                    if(100.0*double(bad)/double(members.size())>refuseShare){
                         ++refused;refusedCells+=long(members.size());
                         for(int c:members)for(auto& v:bentoValids)v[size_t(c)]=0.f;
                     }
                 }
                 report("HYBRID BENTO SCOPE (P350): motion refusal per mask component: "+std::to_string(refused)+" of "+std::to_string(comps)
-                    +" components ("+std::to_string(refusedCells)+" cells) above "+std::to_string(tune.bentoMotionMax)+" % -> validity 0 there");
+                    +" components ("+std::to_string(refusedCells)+" cells) above "+std::to_string(refuseShare)+" % -> validity 0 there");
             }
         }
-        std::vector<float>().swap(bento.smooth);std::vector<float>().swap(bento.valid);
+        // P392 bentoPartial (P392 review: off the merge's path) - the frames' motion regions (hysteresis on the check's z, closed,
+        // grown: a plane of their own beside the graded check), then the fill of the N clip, on a thread of their own from here on
+        // (the local alignment, the frame weights and the merge's first strip run meanwhile; the blend weight's bands wait for the
+        // regions, the strips' blend for the fill). The fill's geometry is set here, before any thread reads it.
+        if(partial&&bento.active&&!bentoValids.empty()){
+            const int w2=b.w/2,h2=b.h/2;
+            bool all=bentoZ.size()==bentoValids.size()&&usFrames.size()>=bentoValids.size();
+            for(size_t k=0;k<bentoValids.size()&&all;++k)all=bentoZ[k].size()==bentoValids[k].size()&&bentoValids[k].size()==size_t(w2)*h2;
+            if(all){
+                const int64_t px=int64_t(w)*h;
+                // P392 review (memory above 16 MP): the fill per 4 x 4 cells above kHybridClassicPixels, per 8 x 8 above 4 x that
+                partialFill.shift=px>4*kHybridClassicPixels?3:px>kHybridClassicPixels?2:1;
+                const int st=1<<partialFill.shift;
+                partialFill.w=(w2+st-1)>>partialFill.shift;partialFill.h=(h2+st-1)>>partialFill.shift;
+                partialFill.v.assign(size_t(partialFill.w)*partialFill.h*4,0.f);
+                bentoRegions.resize(bentoValids.size());bentoRegionRows.resize(bentoValids.size());
+                std::vector<const uint16_t*> raws;std::vector<float> exps;std::vector<BackwardHomography> hs;std::vector<int> ids;
+                for(size_t k=0;k<bentoValids.size();++k){const int f=usFrames[k];raws.push_back(input.frames[f].raw);exps.push_back(input.frames[f].exposure);hs.push_back(H[f]);ids.push_back(f);}
+                // the reach (px at 12 MP, x sqrt(MP / 12) as the blend's radii) in levels of 2 x 2 cells
+                const float sc=std::sqrt(std::max(float(w)*float(h)/12.0e6f,0.25f));
+                const int levels=std::clamp(int(std::lround(std::log2(std::max(2.f,0.5f*tune.bentoFillReach*sc)))),1,9);
+                const float reachPx=tune.bentoFillReach*sc;
+                auto work=[&b,&tune,&bentoZ,&bentoValids,&bentoRegions,&bentoRegionRows,&partialFill,prep=partialPrep,raws,exps,hs,ids,levels,reachPx,
+                           aliasCells,w2,h2,millis]{
+                    struct Fin { std::shared_ptr<HybridPartialPrep> p; ~Fin(){p->finish();} } fin{prep};
+                    const auto t0=Clock::now();
+                    const size_t K=bentoValids.size();
+                    std::vector<HybridPartialRegions> rs(K);
+                    // each frame's regions (its own flood fill) on the pool and this thread
+                    ScamPool::get().rows(int(K),1,[&](int k0,int k1){for(int k=k0;k<k1;++k)rs[size_t(k)]=hybridPartialRegions(w2,h2,bentoZ[size_t(k)],bentoRegions[size_t(k)],tune);});
+                    std::vector<std::vector<uint8_t>>().swap(bentoZ); // P392 review: the z planes are used up
+                    std::string per;long seeds=0;int regions=0;
+                    for(size_t k=0;k<K;++k){
+                        regions+=rs[k].regions;seeds+=rs[k].seeds;
+                        per+=(k?"/":"")+std::to_string(ids[k])+":"+std::to_string(rs[k].marked);
+                        auto& rows=bentoRegionRows[k];rows.assign(size_t(2*h2),0);
+                        const auto& rg=bentoRegions[k];
+                        for(int y=0;y<h2;++y){
+                            int a=w2,e=-1;
+                            if(rs[k].marked>0){const uint8_t* r=rg.data()+size_t(y)*w2;for(int x=0;x<w2;++x)if(r[x]){a=std::min(a,x);e=x;}}
+                            rows[size_t(2*y)]=a;rows[size_t(2*y+1)]=e;
+                        }
+                    }
+                    long none=0;
+                    for(size_t i=0;i<size_t(w2)*h2;++i){bool any=false;for(const auto& r:bentoRegions)if(!r[i]){any=true;break;}if(!any)++none;}
+                    prep->regionsMs=millis(Clock::now()-t0);
+                    char line[420];
+                    std::snprintf(line,sizeof(line),"HYBRID BENTO PARTIAL: frames %s motion region cells (%d regions, %ld seeds z >= %.1f grown over z >= %.1f, closed %d, grown %d), in every frame %ld; alias-damped %ld cells; %.0f ms beside the merge",
+                        per.c_str(),regions,seeds,tune.bentoPartialZHi,tune.bentoPartialZLo,tune.bentoPartialClose,tune.bentoPartialGrow,none,aliasCells,prep->regionsMs);
+                    prep->regionsLine=line;
+                    prep->set(1);
+                    // P392 review, a test hook (the strips must wait for the fill): SCAM_TEST_FILL_DELAY_MS holds the fill back
+                    if(const char* d=std::getenv("SCAM_TEST_FILL_DELAY_MS"))std::this_thread::sleep_for(std::chrono::milliseconds(std::clamp(std::atoi(d),0,600000)));
+                    const auto t1=Clock::now();
+                    std::vector<const std::vector<float>*> valid;std::vector<const std::vector<uint8_t>*> regs;
+                    for(size_t k=0;k<K;++k){valid.push_back(&bentoValids[k]);regs.push_back(&bentoRegions[k]);}
+                    const HybridFillStats fs=hybridPartialFill(b,raws,exps,hs,valid,regs,levels,std::clamp(tune.bentoFillRelax,0,512),partialFill);
+                    partialFill.ready.store(1,std::memory_order_release);
+                    prep->fillMs=millis(Clock::now()-t1);
+                    std::snprintf(line,sizeof(line),"HYBRID BENTO PARTIAL FILL: pull-push over %d levels (reach %.0f px) per %dx%d cells, %ld seed cells, membrane on %ld cells (%d sweeps), %ld cells with confidence > 0.5, %.0f ms beside the merge",
+                        levels,reachPx,1<<partialFill.shift,1<<partialFill.shift,fs.seeds,fs.domain,std::clamp(tune.bentoFillRelax,0,512),fs.confident,prep->fillMs);
+                    prep->fillLine=line;
+                    prep->set(2);
+                };
+                try{partialPrepTask=std::async(std::launch::async,work).share();}
+                catch(const std::system_error&){ // no thread: made here
+                    std::promise<void> done;
+                    try{work();done.set_value();}catch(...){done.set_exception(std::current_exception());}
+                    partialPrepTask=done.get_future().share();
+                }
+            } else {
+                report("HYBRID BENTO PARTIAL: no z planes (the check without bentoValidZ): the check's validity kept");
+                std::vector<std::vector<uint8_t>>().swap(bentoZ);
+            }
+        } else std::vector<std::vector<uint8_t>>().swap(bentoZ); // P392 review: never held without the partial path
+        std::vector<float>().swap(bento.smooth);std::vector<float>().swap(bento.valid);std::vector<uint8_t>().swap(bento.zq);
         // P31: a validation mask nobody took (the first mask was not applied) ends here, as the std::async futures made it end
         // before: it does not run on into the local alignment and the merge (all cores, ~50 MB at 12 MP while it is built).
         for(auto& m:otherMasks)if(m.valid())m.wait();
@@ -11402,9 +12285,17 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         std::vector<float>().swap(bentoShare);
     }
     if(bento.active)in.mask=&bento.mask;
+    if(native==nullptr){ // P392 shastaMotionScope: the kept long frames' weights in merge order (null: no scope)
+        bool any=false;for(const auto& v:scopeWeights)any=any||!v.empty();
+        if(any)for(int f=1;f<n;++f){if(!keep[f]||input.frames[f].role!=kRoleBracketed)continue;
+            in.scope.push_back(scopeWeights[size_t(f)].size()==size_t(w/2)*(h/2)?&scopeWeights[size_t(f)]:nullptr);}
+    }
+    std::vector<int> validFrames,validRegion; // P392: the frame of each validity plane, its motion regions (bentoRegions' index, -1: none)
     if(bento.active&&!bentoValids.empty()){ // validity planes in merge order of the ultrashort frames
         for(int f=1;f<n;++f){if(!keep[f]||input.frames[f].role!=kRoleUltrashort)continue;
+            validFrames.push_back(f);
             size_t k=0;for(;k<usFrames.size();++k)if(usFrames[k]==f)break;
+            validRegion.push_back(k<bentoValids.size()&&k<bentoRegions.size()?int(k):-1);
             in.maskValid.push_back(k<bentoValids.size()?&bentoValids[k]
                                    :(tune.bentoBlend>0&&native==nullptr&&bentoValids.size()==1?&bentoValids[0]:nullptr));}
     }
@@ -11432,9 +12323,39 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         blendWeight.assign(size_t(w2)*h2,0.f);
         const int bandRows=hybridBlendBanded(tune)&&!std::getenv("SCAM_BLEND_WHOLE")?64:h2;
         auto progress=blendProgress;
-        auto make=[&input,&tune,&blendValids,&blendWeight,sources,planes,w2,h2,bandRows,progress]{
+        // P392 bentoPartial: the frames' motion regions (made beside the merge since the Bento check, partialPrep stage 1) smoothed
+        // by a guided filter on each frame's own log level, band by band beside the weight (P392 review: no longer all of it before
+        // the first band); the plane the blend reads is the smaller of the graded check's gaussian and that. The fill of the N clip
+        // (stage 2) goes to the strips through in.fill.
+        const bool partialOn=hybridPartialOn(tune,native!=nullptr)&&validFrames.size()==sources.size()&&partialPrepTask.valid()
+            &&bentoRegions.size()==bentoValids.size()&&!bentoRegions.empty();
+        if(partialOn&&partialFill.w>0)in.fill=&partialFill;
+        std::vector<std::function<void(int,int,int,int,float*)>> guides(sources.size());
+        if(partialOn)for(size_t k=0;k<sources.size();++k){
+            const int f=validFrames[k];
+            guides[k]=[&b,raw=input.frames[f].raw,ratio=1.f/std::max(input.frames[f].exposure,1e-6f),hk=H[f],w2,h2](int ya,int yb,int xa,int xb,float* out){
+                for(int cy=ya;cy<yb;++cy)for(int cx=xa;cx<xb;++cx){
+                    const DonorPoint o=hk.bayerOrigin(2*cx,2*cy);
+                    const int ux=std::clamp(int(std::lround(o.x*0.5f)),0,w2-1),uy=std::clamp(int(std::lround(o.y*0.5f)),0,h2-1);
+                    const float l=(0.25f*b.sampleRaw(raw,2*ux,2*uy)+0.25f*(b.sampleRaw(raw,2*ux+1,2*uy)+b.sampleRaw(raw,2*ux,2*uy+1))
+                                   +0.25f*b.sampleRaw(raw,2*ux+1,2*uy+1))*ratio;
+                    out[size_t(cy-ya)*(xb-xa)+(cx-xa)]=std::log(std::max(l,1e-4f));
+                }
+            };
+        }
+        auto make=[&input,&tune,&blendValids,&blendWeight,sources,planes,w2,h2,bandRows,progress,
+                   partialOn,prep=partialPrep,validRegion,&bentoRegions,&bentoRegionRows,guides]{
             const auto t0=Clock::now();
             struct Publish { const std::shared_ptr<HybridBlendProgress>& p; ~Publish(){p->finish();mergeRowBandsSerial()=false;} } publish{progress};
+            int planesDone=0;
+            // the regions first (made beside the merge since the Bento check; a failed task: the graded planes alone, its error
+            // reaches the merge through maskReady)
+            const auto tw=Clock::now();
+            const bool regionsOn=partialOn&&prep->wait(1);
+            if(partialOn)prep->weightWaitMs=std::chrono::duration<double,std::milli>(Clock::now()-tw).count();
+            double guidedMs=0;
+            const int gr=std::clamp(tune.bentoPartialGuide,0,16);
+            std::vector<float> gq;
             mergeRowBandsSerial()=bandRows<h2; // the bands on this thread alone (the other cores merge and take the chroma median)
             const float sg=std::max(0.f,tune.bentoBlendValidSigma);
             std::vector<float> kk;
@@ -11444,20 +12365,30 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
                 for(int i=-r;i<=r;++i){kk[size_t(i+r)]=std::exp(-0.5f*float(i*i)/(sg*sg));ks+=kk[size_t(i+r)];}
                 for(float& q:kk)q/=ks;
             }
-            int planesDone=0;
             for(int y0=0;y0<h2;y0+=bandRows){
                 const int y1=std::min(h2,y0+bandRows),need=bandRows>=h2?h2:std::min(h2,y1+kHybridBlendHalo);
-                for(size_t k=0;k<sources.size();++k){
+                for(size_t k=0;k<sources.size()&&need>planesDone;++k){
                     const auto* v=sources[k];
                     if(!v||v->size()!=size_t(w2)*h2)continue;
                     if(!kk.empty())hybridGaussPlaneRows(*v,blendValids[k],w2,h2,kk,planesDone,need);
                     else std::copy(v->begin()+std::ptrdiff_t(size_t(planesDone)*w2),v->begin()+std::ptrdiff_t(size_t(need)*w2),blendValids[k].begin()+std::ptrdiff_t(size_t(planesDone)*w2));
+                    // P392: the smaller of that and the frame's guided region plane (1 far from its regions: the plane as before)
+                    const int ri=regionsOn&&k<validRegion.size()?validRegion[k]:-1;
+                    if(ri>=0&&bentoRegions[size_t(ri)].size()==size_t(w2)*h2){
+                        const auto tg=Clock::now();
+                        gq.resize(size_t(need-planesDone)*w2);
+                        hybridGuidedRegionRows(bentoRegions[size_t(ri)],bentoRegionRows[size_t(ri)],guides[k],w2,h2,gr,0.04f,planesDone,need,gq.data(),kk);
+                        float* d=blendValids[k].data()+size_t(planesDone)*w2;
+                        for(size_t i=0;i<gq.size();++i)d[i]=std::min(d[i],gq[i]);
+                        guidedMs+=std::chrono::duration<double,std::milli>(Clock::now()-tg).count();
+                    }
                 }
-                planesDone=need;
+                planesDone=std::max(planesDone,need);
                 // P310: the ultrashort frames' blend weight per cell (see HybridTuning::bentoBlend); the merge itself runs without them
                 hybridBlendWeightRows(input,tune,planes,y0,y1,bandRows>=h2?h2:kHybridBlendHalo,blendWeight);
                 progress->publish(y1);
             }
+            if(partialOn)prep->guidedMs=guidedMs;
             double on=0,full=0;for(float v:blendWeight){on+=v>0.01f;full+=v>0.99f;}
             return std::array<double,3>{on,full,std::chrono::duration<double,std::milli>(Clock::now()-t0).count()};
         };
@@ -11480,7 +12411,20 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         }
         if(tune.bentoBlendGainMin>0.f)in.blendGain=std::max(in.blendGain,std::min(tune.bentoBlendGainMin,1.f)); // P350
         // the line once, when the merge first needs the weight (ms: the task's own time, beside the merge)
-        in.maskReady=[blendMade,blendProgress,&report,&tune,&in,usFlicker,h2=h/2,reported=std::make_shared<bool>(false)](int rows){
+        // P392: the strips' blend also waits for the fill (partialPrep stage 2; a failed task: its exception); the first wait reported
+        in.maskReady=[blendMade,blendProgress,&report,&tune,&in,usFlicker,h2=h/2,reported=std::make_shared<bool>(false),
+                      prep=in.fill?partialPrep:nullptr,prepTask=partialPrepTask,waited=std::make_shared<bool>(false),millis](int rows){
+            if(prep&&!*waited){
+                *waited=true;
+                const auto q0=Clock::now();
+                const bool rowsMade=rows>=h2||blendProgress->wait(rows);
+                const double rowsMs=millis(Clock::now()-q0);
+                if(!prep->wait(2))prepTask.get(); // the task's exception
+                char line[300];
+                std::snprintf(line,sizeof(line),"HYBRID BENTO PARTIAL WAIT: the first strip's blend waited %.0f ms for the weight's rows (%s) and %.0f ms more for the fill (regions %.0f ms, fill %.0f ms beside the merge)",
+                    rowsMs,rowsMade?"made":"the task ended",millis(Clock::now()-q0)-rowsMs,prep->regionsMs,prep->fillMs);
+                report(prep->regionsLine);report(prep->fillLine);report(line);
+            }
             if(rows<h2&&blendProgress->wait(rows))return; // P364: those rows made (a failed task: get() below throws)
             const std::array<double,3> r=blendMade.get();
             if(*reported)return;
@@ -11490,6 +12434,11 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
                 " at least the base cells' weight: %.0f cells > 0.01, %.0f full), gain against N x%.2f (tile check %.2f) (%.0f ms beside the merge)",
                 tune.bentoBlendNear,tune.bentoBlendFar,r[0],r[1],in.blendGain,usFlicker,r[2]);
             report(line);
+            if(prep){ // P392 review: the weight's task's part of it
+                std::snprintf(line,sizeof(line),"HYBRID BENTO PARTIAL WEIGHT: of those %.0f ms, %.0f waiting for the motion regions, %.0f smoothing their planes",
+                    r[2],prep->weightWaitMs,prep->guidedMs);
+                report(line);
+            }
         };
     }
     // F6 field in merge order (0 = base and frames without a field: zeros)
@@ -11645,13 +12594,13 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             {std::lock_guard<std::mutex> l(earlyLog->lock);for(const auto& line:earlyLog->lines)report(line);earlyLog->lines.clear();}
             if(held&&(held->localAlign!=withLocalAlign||(bentoPass&&!held->hasBentoPass())||(blendPass&&!held->hasBlendPass())
                       ||held->dcg!=hybridDcgZones(input)||held->rejSpec!=hybridRejSpec(tune)
-                      ||(blendPass&&held->blendOpts!=hybridBlendOptions(tune))))held.reset(); // P320: the DCG two-zone programs or not; P344 REJ_OPTS; P350 BLEND_OPTS
+                      ||(blendPass&&held->blendOpts!=hybridBlendOptions(tune))||held->partialSpec!=hybridPartialSpec(tune,native!=nullptr)))held.reset(); // P320: the DCG two-zone programs or not; P344 REJ_OPTS; P350 BLEND_OPTS; P392
             if(held){
                 try{held->acquire();built=" built ahead in "+std::to_string(int(earlyLog->ms))+" ms";}catch(const std::exception&){held.reset();}
             }
         }
         if(!held)held=std::make_unique<HybridGpu>(tune.rimRatio!=0,withLocalAlign,bentoPass,tune.chromaDiff>0.f,report,large,native!=nullptr,
-                tune.hotSigma>0||tune.hotBaseSigma>0,blendPass,hybridDcgZones(input),hybridRejSpec(tune),hybridBlendOptions(tune));
+                tune.hotSigma>0||tune.hotBaseSigma>0,blendPass,hybridDcgZones(input),hybridRejSpec(tune),hybridBlendOptions(tune),hybridPartialSpec(tune,native!=nullptr));
         HybridGpu& gpu=*held;gpu.trace=report;gpu.profile=tune.profile!=0;gpu.profilePasses=tune.profile>=2;
         report("HYBRID GPU: "+gpu.renderer+" frames="+std::to_string(in.frames.size())+" limits "+gpu.limits
             +" init ms="+std::to_string(int(millis(Clock::now()-gpuStarted)))+" (compile"+gpu.compileMs+")"+built);

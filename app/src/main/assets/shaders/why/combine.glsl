@@ -99,6 +99,13 @@ precision highp int;
 // why/skymask.glsl is taken here (utils/import_skygate.glsl). SKY 0: every block below drops out (the shader before P378, token
 // for token; a pixel outside the mask takes the same operations bit for bit).
 #define SKY 0
+// P393 LIGHT_CHROMA 1 (WhyCombine and the viewfinder set it with AgX; scam_dev hybrid_why_light_chroma 0 takes it off; owner, 2026-10-29:
+// sunlit yellow birches pale peach-white beside ArkCam's saturated yellow): a saturated orange-yellow in the light tones keeps the
+// chroma the AgX tone gives it at the mid-tones (its rendition at a grey's luminance - the same colour at another exposure) where the
+// per-channel shoulder took more of it, its hue turned towards the AgX rendition's only as far as sRGB cannot hold that chroma at its
+// own; skin, pale colours, other hues, lights at the AgX white and the sky as before (see main). 0: the shader before P393, token for
+// token.
+#define LIGHT_CHROMA 0
 #import interpolation
 uniform sampler2D InputBuffer;      // full-size white-balanced linear camera RGB (the merge after denoising)
 uniform sampler2D GainMap;          // lens shading gains
@@ -122,6 +129,7 @@ uniform float gammaInvU;            // 1 / ef_gamma; <= 0 -> 1 / 2.2
 uniform float macroU;               // OKLab macro contrast; <= 0 -> 1.1
 uniform vec3 vibU;                  // vibrance: overall, sky, green (0 = off)
 uniform float vibHlU;               // P341: vibrance of the light tones (OKLab L 0.45 .. 0.75 up), lightness kept (0 = off)
+uniform vec4 vibHlShapeU;           // P393: its shape for pale colour - OKLab L from / full, chroma gate from / full; unset: 0.50 / 0.85, 0.010 / 0.025
 uniform float chromaDnU;            // chroma denoise of strongly lifted pixels (0 = off)
 uniform float clarityU;             // delta * (1 + clarity)
 uniform float flatProtectU;         // flat-area protection of the delta (0 = off)
@@ -147,6 +155,13 @@ uniform float hrRoomU;              // shoulder headroom x the top; <= 0 -> 0.4 
 uniform float hrDetailU;            // highlight detail: share of the full-size log contrast kept in OKLab L (0 = off)
 #endif
 uniform float hlWhiteU;             // path to white of saturated light entering the shoulder (0 = off)
+#if LIGHT_CHROMA == 1
+uniform float lightChromaU;         // P393: the share of the mid-tone saturation a light tone keeps (0 = off, 1 = all of it)
+const vec2 LC_HUE_IN = vec2(56.0, 64.0);    // P393 review: the scene's OKLab hue (deg) where the term fades in
+const vec2 LC_HUE_OUT = vec2(100.0, 120.0); // and where it fades out
+const vec2 LC_SAT = vec2(0.14, 0.17);       // the mid rendition's OKLab C / L: unchanged below, saturated above
+const float LC_TURN = 2.0;                  // the hue turn per share of the chroma the locked hue loses to the gamut
+#endif
 #if SUN_BLOOM == 1
 uniform sampler2D SunBloom;         // P349: the glow share of the fully clipped cores (scamhdr/suncore.glsl), linear filter
 uniform vec2 sunGridU;              // output uv -> SunBloom uv (its blocks cover a little more than the image)
@@ -238,6 +253,43 @@ vec3 sceneLinear(ivec2 xy, ivec2 size) {
 }
 
 float max3(vec3 v) { return max(v.r, max(v.g, v.b)); }
+
+// P393 (owner, 2026-10-29: «У нас что-то с желтыми цветом ... В последней паре более жёлтое фото наше», pairs against the reference
+// app on the X200 Ultra): P341's light-tone vibrance ramped in over OKLab L 0.45 .. 0.75 with its neutral gate open from chroma
+// 0.002 .. 0.008. The tone gives a pale colour x1.5 of the scene's chroma in the mid-tones (L 0.40 - 0.50) and the AgX shoulder
+// takes it from L ~0.6 (x1.0 at 0.60, x0.6 at 0.75, x0.4 at 0.90: host ramp through this shader, chroma 0.01 - 0.03); P341's
+// vibrance on top took a cream wall, a ceiling or a sunlit facade in the mid-light tones to x1.9 - 2.0 of the scene and doubled the
+// white balance's residual cast on near-whites (the owner's OPPO stage dump: a white beam a* -3.1 -> -6.3, sunlit panels b* +3.3 ->
+// +7.6; the V2405A room burst: cream walls b* 5.5 -> 12.2 at L* 65 - 80, the app's own JPEG 11.9). For pale colour (chroma under
+// 0.020) the ramp is now 0.50 .. 0.85, so the light tones keep the mid-tones' x1.4 - 1.5 up to L 0.75 and the shoulder's loss is
+// made up only above, and the gate 0.010 .. 0.025: a near-white's cast (chroma under 0.010) is not raised and goes white with the
+// shoulder, and the gate is about as steep as P341's (the largest display-chroma slope x4.7, P341's x4.3, 0.010 .. 0.020 x5.4:
+// chroma noise on the room burst's white walls x1.12 of P341's, with 0.010 .. 0.020 x1.41). The owner's bedroom pair re-rendered
+// (our photo read as its Display P3): the cream walls b* 11.2 / 7.5 / 16.0 -> 6.6 / 3.2 / 11.0, the reference app's 6.2 / 3.6 /
+// 10.2. From chroma 0.020 .. 0.035 up P341's ramp: a clearly coloured surface (skin, a yellow leaf, a facade, a sunset's glow off
+// the sky mask) as before - the pale class reaching to 0.04 .. 0.07 took a skin tone or a yellow at L* 55 - 76 to x0.74 - 0.88
+// of P341's chroma (the owner's trees pair: ours already paler than the reference app's). Under the sky mask P378's ramp and gate.
+// vibHlShapeU (0.45, 0.75, 0.002, 0.008) (scam_dev vibrance_hl_shape 0) is P341's shape (bit for bit on the host's GL, within
+// rounding on a phone GPU).
+vec4 vibHlShape() {
+    return vibHlShapeU.y > vibHlShapeU.x && vibHlShapeU.w > vibHlShapeU.z ? vibHlShapeU : vec4(0.50, 0.85, 0.010, 0.025);
+}
+
+// P393: the lightness ramp of a colour of chroma c0 (P341's 0.45 .. 0.75 from chroma 0.035 up; nothing added at P341's shape)
+float vibHlRamp(vec4 s, float lx, float c0) {
+    float t = smoothstep(0.020, 0.035, c0);
+    // the ends without arithmetic (a pixel off the sky mask the same in every variant)
+    if (t <= 0.0) return smoothstep(s.x, s.y, lx);
+    if (t >= 1.0) return smoothstep(0.45, 0.75, lx);
+    return smoothstep(s.x + (0.45 - s.x) * t, s.y + (0.75 - s.y) * t, lx);
+}
+#if SKY == 1
+// P393: under the sky mask (its share w) P378's ramp, 0.45 .. 0.75 (nothing added at P341's shape)
+float vibHlRampSky(vec4 s, float lx, float c0, float w) {
+    float r = vibHlRamp(s, lx, c0);
+    return r + (smoothstep(0.45, 0.75, lx) - r) * w;
+}
+#endif
 #if SKY == 1
 // P378 (C1): the share of the sky vibrance a sky pixel takes - a clearly coloured blue only (OKLab chroma from 0.015 .. 0.03 up,
 // a hue on the blue side, a / C under 0 .. 0.3): the grey-blue cloud bases (chroma ~0.01 with the white balance's slightly magenta
@@ -588,6 +640,34 @@ float agxTonescale(float x, float slope, float sp, float tp, float px) {
     return py - ts * ft;
 }
 
+#if LIGHT_CHROMA == 1
+// P393: the AgX rendition (display-linear, before the gamut cut) of a scene colour, as main() renders a pixel: inset, the tone scale per
+// channel, the look, pow 2.4, outset and the AgX saturation sat
+vec3 agxGraded(vec3 scene, vec4 agxA, vec4 agxB, int look, float sat) {
+    vec3 ins = max(vec3(0.842479062253094 * scene.r + 0.0784335999999992 * scene.g + 0.0792237451477643 * scene.b,
+                        0.0423282422610123 * scene.r + 0.8784686364697720 * scene.g + 0.0791661274605434 * scene.b,
+                        0.0423756549057051 * scene.r + 0.0784336000000000 * scene.g + 0.8791429737931040 * scene.b), vec3(0.0));
+    float range = max(agxB.y + max(agxB.z, 0.0) - agxB.x, 1.0);
+    float px = clamp(-agxB.x / range, 0.05, 0.95);
+    vec3 lg = clamp((log2(max(ins, vec3(0.0000001)) / 0.18) + agxB.z - agxB.x) / range, 0.0, 1.0);
+    vec3 cur = vec3(agxTonescale(lg.r, agxA.x, agxA.y, agxA.z, px), agxTonescale(lg.g, agxA.x, agxA.y, agxA.z, px),
+                    agxTonescale(lg.b, agxA.x, agxA.y, agxA.z, px));
+    if (look == 3) {
+        cur.r = pow(max(cur.r, 0.0), 0.96);
+        cur.b = pow(max(cur.b, 0.0), 1.04);
+    }
+    vec3 d = pow(max(cur, vec3(0.0)), vec3(2.4));
+    vec3 g = vec3(1.19687902425835 * d.r - 0.09802088114013 * d.g - 0.09902975707567 * d.b,
+                  -0.05289685400450 * d.r + 1.15190312998791 * d.g - 0.09896117934484 * d.b,
+                  -0.05297163539640 * d.r - 0.09804337634422 * d.g + 1.15107253721836 * d.b);
+    if (abs(sat - 1.0) > 0.001) {
+        float ol = dot(g, LUMA);
+        g = vec3(ol) + (g - vec3(ol)) * sat;
+    }
+    return g;
+}
+#endif
+
 #if COLOUR_LOOK == 1
 // OKLab hue centres of the mixer bands: red, orange, yellow, green, aqua, blue, purple, magenta.
 const float BAND_HUE[8] = float[8](29.0, 53.0, 110.0, 143.0, 195.0, 264.0, 294.0, 344.0);
@@ -851,6 +931,9 @@ void main() {
         linScale *= skyGain;
     }
 #endif
+#if LIGHT_CHROMA == 1
+    vec3 linK = lin;            // P393: the exposed light before the shoulders (its level against the AgX white decides a light)
+#endif
     // Saturation of the light (0 neutral .. 1 one channel): the shoulders below act on the max channel for low-saturation
     // colours (as the kernel) and on the luminance for saturated ones, so a saturated light keeps its tonal separation
     // instead of being pinned at its max channel (P11: the LED wall band of the X9 Ultra collapsed to one flat colour).
@@ -1023,6 +1106,9 @@ void main() {
 #endif
     if (abs(vibU.z) > 0.001 && lab.y < 0.0) satMult += vibU.z * clamp(-lab.y / sat, 0.0, 1.0) * protect;
     lab.yz *= satMult;
+#if LIGHT_CHROMA == 1
+    float cPreK = length(lab.yz);   // P393: the chroma before the light tones' vibrance (its gain is divided out of the mid rendition)
+#endif
     // P341 (owner, 2026-10-26: «нам нужно получить цвет у неба как у стока, при этом чтобы небо не темнило», «сделай чтобы было
     // лучше чем в стоке»): the AgX shoulder and the path to white take most of a pale bright sky's chroma (the 17:57 sunset at
     // OKLab-L 0.85: Lab chroma 8 / 22 against the stock camera's 25 / 42 at the same hue and a lower L). The light tones get
@@ -1033,20 +1119,32 @@ void main() {
 #if SKY == 1
     // P378 (C1): in the sky the neutral gate is 0.015 .. 0.03 - a cloud tinted at chroma 0.004 - 0.012 (the white balance's cast)
     // took x2.1 - 2.4 of it and read cream / lavender (cloud C* 4.55 against the reference's 2.65); a blue gap is far above it
+    // P393: off the mask the ground's shape (vibHlShape: the pale colour's later ramp and the cast gate) in the statement of SKY 0
+    // (a pixel off the mask the same as SKY 0's: bit for bit on the host's GL), its share at the mask's edge going over to P378's
     if (vibHlU > 0.0) {
         float c0 = length(lab.yz);
-        float neutralGate = skyNeutral > 0.0 ? mix(smoothstep(0.002, 0.008, c0), smoothstep(0.015, 0.03, c0), skyNeutral)
-                                             : smoothstep(0.002, 0.008, c0);
-        lab.yz *= 1.0 + 1.6 * vibHlU * smoothstep(0.45, 0.75, lab.x) * neutralGate * max(1.0 - c0 / 0.10, 0.0);
+        vec4 hlShape = vibHlShape();
+        if (skyNeutral > 0.0) {
+            float lightRamp = vibHlRampSky(hlShape, lab.x, c0, skyNeutral);
+            float neutralGate = mix(smoothstep(hlShape.z, hlShape.w, c0), smoothstep(0.015, 0.03, c0), skyNeutral);
+            lab.yz *= 1.0 + 1.6 * vibHlU * lightRamp * neutralGate * max(1.0 - c0 / 0.10, 0.0);
+        } else {
+            lab.yz *= 1.0 + 1.6 * vibHlU * vibHlRamp(hlShape, lab.x, c0) * smoothstep(hlShape.z, hlShape.w, c0) * max(1.0 - c0 / 0.10, 0.0);
+        }
     }
 #else
+    // P393: the shape of vibHlShape (the pale colour's later ramp and the cast gate)
     if (vibHlU > 0.0) {
         float c0 = length(lab.yz);
-        lab.yz *= 1.0 + 1.6 * vibHlU * smoothstep(0.45, 0.75, lab.x) * smoothstep(0.002, 0.008, c0) * max(1.0 - c0 / 0.10, 0.0);
+        vec4 hlShape = vibHlShape();
+        lab.yz *= 1.0 + 1.6 * vibHlU * vibHlRamp(hlShape, lab.x, c0) * smoothstep(hlShape.z, hlShape.w, c0) * max(1.0 - c0 / 0.10, 0.0);
     }
 #endif
 #if COLOUR_LOOK == 1
     float skinW = 0.0;
+#if LIGHT_CHROMA == 1
+    float hlGainK = cPreK > 0.000001 ? length(lab.yz) / cPreK : 1.0;   // P393: the light tones' vibrance, before the look's changes
+#endif
     if (length(lab.yz) > 0.000001) {
         skinW = skinWeight(lab);
         float keep = 1.0 - skinU.x * skinW;
@@ -1089,12 +1187,20 @@ void main() {
         }
     }
 #endif
+#if LIGHT_CHROMA == 1
+#if COLOUR_LOOK == 0
+    float hlGainK = cPreK > 0.000001 ? length(lab.yz) / cPreK : 1.0;   // P393: the light tones' vibrance
+#endif
+#endif
     if (chromaDnU > 0.001) {
         float lift = targetLin / max(origLuma * ae, 0.0001);
         if (lift > 4.0) lab.yz *= max(1.0 - chromaDnU * clamp((lift - 4.0) * 0.1, 0.0, 1.0), 0.0);
     }
     float inChroma = length(lab.yz);
     vec2 hueDir = inChroma > 0.000001 ? lab.yz / inChroma : vec2(0.0);
+#if LIGHT_CHROMA == 1
+    vec3 labK = vec3(lab.x, lab.yz / hlGainK);  // P393: the colour the tone renders, without the light tones' vibrance
+#endif
 #if P3_OUT == 1
     vec3 scene = clampP3(fromOklab(lab));
 #else
@@ -1243,6 +1349,100 @@ void main() {
 
     // === hue lock and post-tone detail [:1763-1802] ===
     vec3 post = toOklab(graded);
+#if LIGHT_CHROMA == 1
+#if TONE_OP == 0
+    // P393 (owner, 2026-10-29, ArkCam beside us: sunlit yellow birch leaves pale peach-white). The OPPO X8U birch shot 15:41:26
+    // (diagnostics zip): the leaves are unclipped (N frame p99 0.34 of the RAW white, Bento k 8, no clip flag) and ScamRgb / WhyLow
+    // hold their colour at every brightness (linear sRGB 1 : 0.53 - 0.59 : 0.18 - 0.23); the loss is this tone: the per-channel AgX
+    // shoulder takes the saturation of every colour whose brightest channel enters it (the leaves' OKLab chroma x1.6 of the scene's
+    // at the mid-tones, x1.04 at L* 78, x0.48 at L* 89, x0.33 at L* 92: C* 53 -> 34 -> 25 -> 21) and the hue lock then holds the
+    // bright leaves at the scene's orange hue (67 - 71 deg where the AgX rendition's is 79 - 83), where sRGB has the least chroma near
+    // white (C* 33 at L* 85): R 253 G 218 B 185, peach-white. ArkCam keeps C* ~60 at L* 65 - 84, hue 78 - 84.
+    // A saturated orange-yellow whose exposed light (before the shoulders) lies in the light tones keeps the OKLab chroma of its own
+    // AgX rendition at a grey's luminance (the colour at a mid-tone exposure, the light-tone vibrance's gain on it; scaled with L below
+    // that rendition's L), lightChromaU of it, only ever raised; its hue goes the AgX rendition's own way (never past it) as far as the
+    // locked hue cannot hold that chroma (the gamut at the lightness the detail may lift it to); the gamut cut below takes what sRGB
+    // cannot hold. Left as before (bit for bit off the gates' edges): hues outside the orange-yellow band (skin, red-orange glows,
+    // oranges, greens, blues; LC_HUE_IN / LC_HUE_OUT), the less saturated colours (the mid rendition's C / L under LC_SAT: walls,
+    // clouds, greys, skin of the leaves' hue, warm interiors), the shadows and mid-tones (exposed luminance under the grey .. +1 EV),
+    // lights (the brightest channel before the shoulders from 2^1.5 x the AgX white, faded in from 0.5 x: a lamp or LED keeps its
+    // path to white; a blown core is neutral already, ScamRgb P368 / P376), the sky under the P378 mask, a film at full strength (its
+    // print alone reaches the photo).
+    {
+        float agxWhiteK = 0.18 * exp2(agxB.y + max(-agxB.z, 0.0));
+        // the brightest channel of the exposed light against the AgX white, EV (0: where the AgX curve ends)
+        float evK = log2(max(max3(linK), 0.000001) / agxWhiteK);
+        float baseK = clamp(lightChromaU, 0.0, 1.0) * smoothstep(0.18, 0.36, dot(linK, LUMA));
+#if SKY == 1
+        baseK *= 1.0 - smoothstep(0.0, 0.5, skyNeutral);
+#endif
+        // lights: the chroma fades from 1 EV under the AgX white to 1 EV over it (none from 2 x the white, where hl_white's path to white
+        // is full), the hue from 0.5 EV under to 1.5 EV over it - the hue goes back once the chroma is about AgX's own, so the gamut at the
+        // locked hue does not cut the fading chroma a second time (an orange's chroma steps 3.9 C* per 0.1 EV at most, AgX's own 3.3;
+        // both fades ending at the white: 7.4)
+        float keepK = baseK * (1.0 - smoothstep(-1.0, 1.0, evK));
+        float turnK = baseK * (1.0 - smoothstep(-0.5, 1.5, evK));
+        // P393 review (M3 / M4 / M5): the orange-yellow scene hues only - the owner's pair 2 is deficient there alone (its
+        // yellow-greens, greens and blues as saturated as ArkCam's or more); the birch shot's light-tone leaves lie at OKLab 53 - 75 deg
+        // (p10 - p90 at L* 80 - 90, median 62). Below 56 deg as before: skin (ColorChecker, Fitzpatrick III - V, a medium or tan face:
+        // 44 - 54; Fitzpatrick II 57 and a warm-lit face 58 take 7 / 16 % of the term), red-orange sunset glows (P341's), maple red;
+        // from 120 deg: the greens (a lawn), cyans and blues (an undetected sky: its chroma and the lock as before). An olive or light
+        // brown skin (66 - 78 deg) has the leaves' own hue and C / L: it takes the term as they do.
+        float hueK = degrees(atan(hueDir.y, hueDir.x));
+        float bandK = smoothstep(LC_HUE_IN.x, LC_HUE_IN.y, hueK) * (1.0 - smoothstep(LC_HUE_OUT.x, LC_HUE_OUT.y, hueK));
+        keepK *= bandK;
+        turnK *= bandK;
+#if FILM_SIM == 1
+        if (lutU.x >= 1.0) turnK = 0.0;   // the film's print alone reaches the photo (P369): nothing to compute
+#endif
+        float cNowK = length(post.yz);
+        if (turnK > 0.0 && cNowK > 0.000001 && post.x > 0.0 && inChroma > 0.000001) {
+#if P3_OUT == 1
+            float backK;
+            vec3 cK = intoSrgbPositive(clampP3(fromOklab(labK)), backK);
+#else
+            float backK = 1.0;
+            vec3 cK = max(fromOklab(labK), vec3(0.0));
+#endif
+            cK *= 0.18 / max(dot(cK, LUMA), 0.000001);
+            float satK = agxA.w;
+#if COLOUR_LOOK == 1
+            if (agxA.w > 1.0) satK = 1.0 + (agxA.w - 1.0) * (1.0 - skinU.x * skinW);
+#endif
+            vec3 midK = toOklab(max(agxGraded(cK, agxA, agxB, look, satK), vec3(0.0)));
+            float cMidK = length(midK.yz) * backK;
+            // P393 review (M3 / M4): saturated from LC_SAT - the birch shot's leaves (the trees alone, 02-WhyLow) C / L p5 / p10 / p50
+            // 0.139 / 0.149 / 0.176; under it an olive or light brown skin of the leaves' own hue (0.139; Monk 6 0.145), a lit
+            // lampshade (0.124), a yellow wallpaper (0.111), Monk 5 (0.098) - with the gate at 0.08 .. 0.14 they took the term as the
+            // leaves did (+14 C* at L* 83 - 88)
+            float saturatedK = smoothstep(LC_SAT.x, LC_SAT.y, cMidK / max(midK.x, 0.0001));
+            keepK *= saturatedK;
+            turnK *= saturatedK;
+            float targetK = cMidK * hlGainK * min(post.x / max(midK.x, 0.0001), 1.0);
+            // P393 review (B1: the hue snapped to AgX's where the target first passed the chroma, 30 dE76 in 0.01 EV on an amber): the
+            // chroma rises from AgX's own continuously (cOutK = cNowK where the target meets it) and the hue turns by how much of that
+            // chroma the locked hue loses to the gamut (none where the locked hue holds it, all from half of it lost) - both continuous
+            // in the pixel, whether the chroma is raised or not
+            float cOutK = cNowK * mix(1.0, max(targetK / cNowK, 1.0), keepK);
+            if (turnK > 0.0) {
+                // at the lightness the detail below can lift the pixel to (its delta before the compression's scaling: an upper bound) -
+                // a textured leaf's lighter half otherwise lost the raised chroma to the final gamut cut at the locked hue (the birch
+                // shot at L* 85 - 90: 69 % of the leaves at R 255, x1.15 of the chroma for the x1.40 raised)
+                float lK = min(post.x + max(delta, 0.0), 1.0);
+#if P3_OUT == 1
+                float holdK = length(toOklab(fromOklabInGamutP3(vec3(lK, hueDir * cOutK))).yz);
+#else
+                float holdK = length(toOklab(fromOklabInGamut(vec3(lK, hueDir * cOutK))).yz);
+#endif
+                turnK *= clamp(LC_TURN * (1.0 - holdK / cOutK), 0.0, 1.0);
+                vec2 dirK = mix(hueDir, post.yz / cNowK, turnK);
+                if (length(dirK) > 0.000001) hueDir = normalize(dirK);
+            }
+            if (keepK > 0.0) post.yz *= cOutK / cNowK;   // (a pale colour's x / x is not 1 on every GPU: not touched)
+        }
+    }
+#endif
+#endif
 #if COLOUR_LOOK == 1
     if (look != 3 && inChroma > 0.000001 && hueLockU != 2) {
         vec2 locked = length(post.yz) * hueDir;

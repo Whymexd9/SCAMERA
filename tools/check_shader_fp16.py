@@ -123,6 +123,33 @@ def units() -> list[tuple[str, str, str]]:
         out.append(('why/combine.glsl (' + ' + '.join(d + ' 1' for d in defines) + ')', 'frag', '#version 310 es\n#line 1\n' + expand_imports(src)))
     sun = '\n'.join('#define MODE 2' if l.startswith('#define MODE ') else l for l in read(SH / 'scamhdr/suncore.glsl').split('\n'))
     out.append(('scamhdr/suncore.glsl (MODE 2)', 'frag', '#version 310 es\n#line 1\n' + expand_imports(sun)))
+    # P391: the WHY pyramid in every pass WhyFusion draws (MODE 0 - 10) without and with the edge-aware bands (EDGE_BANDS 1: its
+    # edge measure, the cone max and carried shares, the noise cap of the excess, the fractional lowest band), MODE 5 also with P378's
+    # SKY 1; the guided
+    # filter's passes (why/gf MODE 0 - 3) with the noise-bound deep floor of import why_fusion
+    lpyr = read(SH / 'why/lpyr.glsl')
+
+    def defined(src: str, values: dict) -> str:
+        lines = []
+        for line in src.split('\n'):
+            for k, v in values.items():
+                if line.startswith('#define %s ' % k):
+                    line = '#define %s %s' % (k, v)
+                    break
+            lines.append(line)
+        return '\n'.join(lines)
+
+    for mode in range(11):
+        for bands in (0, 1):
+            for sky in ((0, 1) if mode == 5 else (0,)):
+                if mode == 0 and bands == 0 and sky == 0:
+                    continue  # the file's own defines: compiled above
+                src = defined(lpyr, {'MODE': mode, 'EDGE_BANDS': bands, 'SKY': sky})
+                out.append(('why/lpyr.glsl (MODE %d, EDGE_BANDS %d%s)' % (mode, bands, ', SKY 1' if sky else ''), 'frag',
+                            '#version 310 es\n#line 1\n' + expand_imports(src)))
+    gf = read(SH / 'why/gf.glsl')
+    for mode in (1, 2, 3):
+        out.append(('why/gf.glsl (MODE %d)' % mode, 'frag', '#version 310 es\n#line 1\n' + expand_imports(defined(gf, {'MODE': mode}))))
     return out
 
 

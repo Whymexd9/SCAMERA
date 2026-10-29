@@ -12,6 +12,11 @@ package com.particlesdevs.photoncamera.processing.opengl.postpipeline;
 final class FusedCurve {
     /** The deep-shadow floor of the fusion's bright layer (WhyTone.deepFloor), set by the caller before fill. */
     static final float[] DEEP_FLOOR = {0f};
+    /**
+     * P391: import why_fusion deepNoiseU - {tau, S_I, O_I}: the floor only as far as a lifted deep shadow's fused-luma noise stays
+     * under tau (variance S_I I + O_I of the guide I); tau 0: the floor as before. Set by the caller before fill.
+     */
+    static final float[] DEEP_NOISE = {0f, 0f, 0f};
     private FusedCurve() {}
 
     /** log2 I of the first and the last entry: below the first the curve is the toe's ~0, above the last the shoulder's 1. */
@@ -34,16 +39,32 @@ final class FusedCurve {
         final double c = center > 0f ? center : 0.6, s = smooth > 0f ? smooth : 0.25;
         final double gi = gammaInv > 0f ? gammaInv : 1.0 / 2.2, t = toe > 0f ? toe : 0.05;
         final double var = Math.max(s * s, 0.001);
+        final double[] l = new double[4], w = new double[4];
+        for (int k = 0; k < 4; k++) {
+            l[k] = Math.pow(Math.max(acescg(I * em[k], t), 1e-6), gi);
+            w[k] = Math.exp(-0.5 * (l[k] - c) * (l[k] - c) / var) * lw[k] + 1e-6;
+        }
+        // import why_fusion deepFloorU (the viewfinder's curve = the photo's): the brightest layer (k = 3) floors in deep shadows,
+        // P391: as far as the frame's noise allows (deepFloorOf)
+        if (DEEP_FLOOR[0] > 0f && l[3] < c) w[3] = Math.max(w[3], deepFloorOf(I, w, l, gi, lw[3]));
         double sw = 0, swl = 0;
         for (int k = 0; k < 4; k++) {
-            final double l = Math.pow(Math.max(acescg(I * em[k], t), 1e-6), gi);
-            double w = Math.exp(-0.5 * (l - c) * (l - c) / var) * lw[k] + 1e-6;
-            // import why_fusion deepFloorU (the viewfinder's curve = the photo's): the brightest layer (k = 3) floors in deep shadows
-            if (k == 3 && DEEP_FLOOR[0] > 0f && l < c) w = Math.max(w, Math.exp(-0.5 * DEEP_FLOOR[0] * DEEP_FLOOR[0]) * lw[k] + 1e-6);
-            sw += w;
-            swl += w * l;
+            sw += w[k];
+            swl += w[k] * l[k];
         }
         return swl / sw;
+    }
+
+    /** import why_fusion deepFloorOf: the bright layer's floor weight at guide I, the other layers' weights w and lumas l. */
+    static double deepFloorOf(double I, double[] w, double[] l, double gammaInv, float lwBright) {
+        double wf = Math.exp(-0.5 * DEEP_FLOOR[0] * DEEP_FLOOR[0]) * lwBright + 1e-6;
+        if (DEEP_NOISE[0] > 0f) {
+            final double snr = I / Math.sqrt(Math.max(DEEP_NOISE[1] * I + DEEP_NOISE[2], 1e-30));
+            final double fcap = DEEP_NOISE[0] * snr / gammaInv;
+            final double s0 = w[0] + w[1] + w[2], n0 = w[0] * l[0] + w[1] * l[1] + w[2] * l[2];
+            if (l[3] > fcap) wf = Math.min(wf, Math.max((fcap * s0 - n0) / (l[3] - fcap), 0.0));
+        }
+        return wf;
     }
 
     /**

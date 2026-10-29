@@ -44,6 +44,31 @@ public class FusedCurveTest {
         return swl / sw;
     }
 
+    /**
+     * P391: import why_fusion fusedAt with deepFloorU and the noise cap deepNoiseU (tau, S, O) - the bright layer's floor weight only
+     * up to the one that brings the fused luma to tau x SNR(I) / gammaInv (float, as the GPU).
+     */
+    private static float shaderFusedAtCapped(float I, float[] em, float[] lw, float center, float smooth, float gammaInv, float toe, float floor,
+                                             float tau, float S, float O) {
+        float[] l = new float[4], w = new float[4];
+        for (int k = 0; k < 4; k++) {
+            l[k] = (float) Math.pow(Math.max(acescg(I * em[k], toe), 0.000001f), gammaInv);
+            float d = l[k] - center;
+            w[k] = (float) Math.exp(-0.5f * (d * d) / Math.max(smooth * smooth, 0.001f)) * lw[k] + 0.000001f;
+        }
+        if (floor > 0f && l[3] < center) {
+            float wf = (float) Math.exp(-0.5f * floor * floor) * lw[3] + 0.000001f;
+            if (tau > 0f) {
+                float snr = I / (float) Math.sqrt(Math.max(S * I + O, 1.0e-30f));
+                float fcap = tau * snr / gammaInv;
+                float s0 = w[0] + w[1] + w[2], n0 = w[0] * l[0] + w[1] * l[1] + w[2] * l[2];
+                if (l[3] > fcap) wf = Math.min(wf, Math.max((fcap * s0 - n0) / (l[3] - fcap), 0f));
+            }
+            w[3] = Math.max(w[3], wf);
+        }
+        return (w[0] * l[0] + w[1] * l[1] + w[2] * l[2] + w[3] * l[3]) / (w[0] + w[1] + w[2] + w[3]);
+    }
+
     /** why/gf.glsl MODE 3's envelope of a neutral flat area: the guided filter's value there (float). */
     private static float shaderEnvelope(float I, float[] em, float[] lw, float center, float smooth, float gammaInv, float toe, float mono) {
         float f = shaderFusedAt(I, em, lw, center, smooth, gammaInv, toe), env = f;
@@ -184,6 +209,63 @@ public class FusedCurveTest {
             assertTrue("the room lifted: " + before + " -> " + after, after > 1.2f * before);
         } finally {
             FusedCurve.DEEP_FLOOR[0] = 0f;
+        }
+    }
+
+    /**
+     * P391 (owner, 2026-10-28: the shadow lift bounded by the frame's noise): with deepNoiseU the viewfinder's curve is the shader's
+     * capped floor; it rises with the light, stays between the curve without the floor and the floor's own, lifts a deep shadow only
+     * while its fused-luma noise gammaInv F / SNR(I) stays under tau, keeps the whole floor in daylight noise, and tau 0 is the floor
+     * before P391 exactly (the photo and the viewfinder both).
+     */
+    @Test
+    public void theNoiseCapIsTheShadersAndBoundsTheLift() {
+        final float[] em = {0.0626f, 1f, 0.2502f, 2.6148f}, lw = {0.4f, 1f, 0.1f, 1f};
+        final float center = 0.75f, smooth = 0.25f, gammaInv = 1f / 2.2f, toe = 0.05f, floor = 2f, tau = 0.008f;
+        try {
+            FusedCurve.DEEP_FLOOR[0] = floor;
+            // a night shot (SNR 7 at I 0.01: the floor goes wherever it would lift) and an evening one (the floor capped part way)
+            for (float[] model : new float[][]{{2e-4f, 1e-7f}, {5e-5f, 2e-8f}}) {
+                final float S = model[0], O = model[1];
+                float last = -1f;
+                int acts = 0, partly = 0;
+                for (int i = 0; i <= 2000; i++) {
+                    final float I = (float) Math.pow(2.0, -16 + 18 * i / 2000.0);
+                    FusedCurve.DEEP_NOISE[0] = 0f;
+                    final double plain = FusedCurve.fusedAt(I, em, lw, center, smooth, gammaInv, toe);
+                    assertEquals("tau 0 is the floor before P391 at I " + I, shaderFusedAt(I, em, lw, center, smooth, gammaInv, toe, floor), plain, 2e-5);
+                    FusedCurve.DEEP_NOISE[0] = tau;
+                    FusedCurve.DEEP_NOISE[1] = S;
+                    FusedCurve.DEEP_NOISE[2] = O;
+                    final float got = (float) FusedCurve.fusedAt(I, em, lw, center, smooth, gammaInv, toe);
+                    assertEquals("the shader's at I " + I, shaderFusedAtCapped(I, em, lw, center, smooth, gammaInv, toe, floor, tau, S, O), got, 2e-5);
+                    assertTrue("rises at I " + I, got >= last - 1e-6f);
+                    last = got;
+                    final float none = shaderFusedAt(I, em, lw, center, smooth, gammaInv, toe, 0f);
+                    assertTrue("never under the curve without the floor at I " + I, got >= none - 3e-5f);   // float shader, double table
+                    assertTrue("never over the floor's curve at I " + I, got <= plain + 1e-6f);
+                    if (got < plain - 1e-5f) acts++;
+                    if (got > none + 5e-5f && got < plain - 1e-5f) {
+                        partly++;
+                        final double snr = I / Math.sqrt(S * I + O);
+                        assertTrue("the lifted shadow's noise at most tau at I " + I, gammaInv * got / snr <= tau + 1e-5);
+                    }
+                }
+                assertTrue("the cap takes some of the floor (S " + S + "): " + acts, acts > 0);
+                if (S < 1e-4f) assertTrue("the cap lifts part way (S " + S + "): " + partly, partly > 0);
+            }
+            // daylight noise (SNR 300 at I 0.01): the whole floor
+            FusedCurve.DEEP_NOISE[1] = 1e-7f;
+            FusedCurve.DEEP_NOISE[2] = 1e-10f;
+            for (float I : new float[]{0.0005f, 0.002f, 0.005f}) {
+                FusedCurve.DEEP_NOISE[0] = 0f;
+                final double plain = FusedCurve.fusedAt(I, em, lw, center, smooth, gammaInv, toe);
+                FusedCurve.DEEP_NOISE[0] = tau;
+                assertEquals("daylight keeps the floor at I " + I, plain, FusedCurve.fusedAt(I, em, lw, center, smooth, gammaInv, toe), 1e-6);
+            }
+        } finally {
+            FusedCurve.DEEP_FLOOR[0] = 0f;
+            FusedCurve.DEEP_NOISE[0] = FusedCurve.DEEP_NOISE[1] = FusedCurve.DEEP_NOISE[2] = 0f;
         }
     }
 }

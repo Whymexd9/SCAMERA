@@ -992,6 +992,9 @@ public final class ScamRgb extends Node {
                 float defringe=PreferenceKeys.hybridValue("highlight_defringe",0.85f);
                 glProg.setVar("defringeU",defringe>0f?defringe:-1f);
                 glProg.setVar("oppU",opposed?1:0);
+                // P393: a clipped channel of a coloured surface (sunlit leaves) also takes the local light's colour (Chroma8 / 32 / 128);
+                // scam_dev.txt "hybrid_highlight_opposed_local 0" = RawTherapee's reference alone, as before
+                glProg.setVar("oppLocalU",opposed&&PreferenceKeys.hybridSwitch("highlight_opposed_local",true)?1:0);
                 // a failed measurement: chrominance 0 (RawTherapee's own result: its sum is always 0, see hlrecovery/opposed)
                 final float[] oc=oppChroma!=null?oppChroma:new float[3];
                 glProg.setVar("oppChromaU",oc[0],oc[1],oc[2]);

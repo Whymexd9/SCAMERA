@@ -52,6 +52,12 @@ public final class WhyTone {
          */
         GLTexture sky;
         WhySkyMask.Mask skyMask;
+        /**
+         * P391: the shot's one-frame noise model (PostPipeline.noiseS / noiseO: variance S x + O of the normalised raw) and what the
+         * merge leaves of it (the worker's measured correction over N_eff^0.8 of its frame map; NaN: no model) - the fusion's noise
+         * (WhyFusion.guideNoise).
+         */
+        float noiseS, noiseO, noiseMerged = Float.NaN;
 
         void closeTextures() {
             if (low != null) low.close();
@@ -185,7 +191,132 @@ public final class WhyTone {
      * (why/lpyr guidedMixU): light above white, where the pyramid draws halos round dark objects; hi <= lo: the pyramid alone.
      */
     static float[] guidedLights() {
+        // P391: the edge-aware bands do this share's job (host: the rungs in a glow p95 0.0032 of fused luma against its 0.0076) - off
+        // with them unless a scam_dev line sets it (the A/B)
+        if (bands() != null && !PreferenceKeys.scamDevOverrides("hybrid_why_fusion_guided_lo")
+                && !PreferenceKeys.scamDevOverrides("hybrid_why_fusion_guided_hi")) return new float[]{0f, 0f};
         return new float[]{value("fusion_guided_lo", 0.8f), value("fusion_guided_hi", 1.6f)};
+    }
+
+    /**
+     * P391 (owner, 2026-10-28, approved: an edge-aware pyramid without the halos at window frames, twigs, lamps, the horizon):
+     * the edge-aware bands of why/lpyr (EDGE_BANDS 1) - {lo, hi} the light step (EV) from which an edge starts to take the
+     * per-pixel fusion's bands / takes them fully, z the guide's light floor (x AE) of its log, the strength, the reach round an
+     * edge (level px, every level), the fall of its edge measure per level px (a share of the level's hi) - or null: off, the
+     * pyramid as before. The edge measure of a level is the guide's log light against its Gaussian 3 levels down (a step of S EV
+     * reads S / 2 x EDGE_STEP, a +-0.5 EV texture 0.5: the ramp from 1.2 EV keeps a texture's local contrast, a 2 EV window frame
+     * takes the per-pixel bands); review of P391 (host): the band's own contrast as the measure, 0.15 .. 0.5 EV, flattened +-0.5 EV
+     * textures to x0.34 - 0.57 of the pyramid and, cut on the fine levels only, drew a dark fringe of -0.008 beside thin dark
+     * twigs; here a coarse level's share is at least the finer one's round the same place (no fringe) and texture keeps >= 0.9.
+     * The literal form of the owner's idea - every level's weights smoothed by a guided filter instead of the binomial - was
+     * measured on the host and left the frame and horizon halos as they were (their height is made at the finest level by the
+     * edge's own band); on top of these bands it changed nothing measurable (+-0.0003), so it is not in the shader.
+     */
+    static float[] bands() {
+        if (value("fusion_bands", 1f) < 0.5f) return null;
+        final float lo = Math.max(0f, value("fusion_bands_lo", 1.2f));
+        return new float[]{lo, Math.max(value("fusion_bands_hi", 1.8f), lo + 0.01f), BAND_FLOOR,
+                Math.max(0f, Math.min(1f, value("fusion_bands_strength", 1f))), Math.max(0, Math.min(4, Math.round(value("fusion_bands_reach", 3f)))),
+                Math.max(0f, value("fusion_bands_fall", 0.25f))};
+    }
+
+    /**
+     * P391: the guide's light floor (x AE) of the bands' log light, 2^-9 (review: at 2^-7 a 0.004 -> 0.016 step in a deep shadow read
+     * as 1 EV, inside the ramp, and its dark side glowed 0.0138 against the pyramid's 0.0119).
+     */
+    static final float BAND_FLOOR = 0.001953125f;
+
+    /**
+     * P391: the edge measure's response to a step per level (its largest |G_l - G_l+3| over half the step's EV, the mean over the
+     * step's phase on the grid; host numpy, tools/check_why_pyramid_bands.py re-measures it); the last for the coarser levels.
+     */
+    static final float[] EDGE_STEP = {0.95f, 0.83f, 0.81f, 0.82f, 0.82f};
+
+    /** P391: the white-noise factor of the edge measure of levels 0 .. 4 (sigma of D per sigma of the guide's log light; host numpy). */
+    static final float[] EDGE_BETA = {0.997f, 0.271f, 0.122f, 0.059f, 0.029f};
+
+    /**
+     * P391: level {@code l}'s ramp of the edge measure and its fall per level px - {lo, hi, fall}: {@code band}'s step EV through
+     * the level's step response, the fall a share of hi.
+     */
+    static float[] edgeRamp(float[] band, int l) {
+        final float s = EDGE_STEP[Math.max(0, Math.min(l, EDGE_STEP.length - 1))];
+        final float lo = 0.5f * band[0] * s, hi = 0.5f * band[1] * s;
+        return new float[]{lo, hi, band[5] * hi};
+    }
+
+    /** P391: the white-noise factor of the edge measure of level {@code l} (halving per level below the table). */
+    static float edgeBeta(int l) {
+        return l < EDGE_BETA.length ? EDGE_BETA[Math.max(0, l)] : EDGE_BETA[EDGE_BETA.length - 1] / (float) (1 << Math.min(20, l - EDGE_BETA.length + 1));
+    }
+
+    /**
+     * P391 (item 2): the pyramid's depth without jumps across resolutions - the lowest band's excess weighted by the fractional
+     * depth (WhyFusion.depth); only with the bands (their per-pixel coarsest level makes it exact); false: whole levels as before.
+     */
+    static boolean depthSmooth() {
+        return value("fusion_depth_smooth", 1f) >= 0.5f;
+    }
+
+    /**
+     * P391 (item 3): the cap of the deep shadows' fused-luma noise the bright layer's floor may lift them to (import why_fusion
+     * deepNoiseU.x; 0: the floor as before).
+     */
+    static float deepNoise() {
+        return Math.max(0f, value("deep_noise", DEEP_NOISE));
+    }
+
+    /** P391: the default of {@link #deepNoise}: the fused luma's noise at most 0.008 (two 8-bit steps of the curve) in a lifted shadow. */
+    static final float DEEP_NOISE = 0.008f;
+
+    /**
+     * P391 (items 3, 4): the correction c of the fusion's noise model (the one-frame camera model over N_eff^0.8 of the merge, a
+     * 2 x 2 sensor box, the worker's measured correction k of the camera model) to the noise whyLow keeps after the denoise.
+     * tools/check_why_noise.py --calibrate (the 10th percentile of 8 x 8 blocks' plane residual, its bias measured on simulated noise
+     * of the same correlation; it recovers a known c within 8 % on white and correlated synthetic noise) with each dump's k: the X200
+     * Ultra's 02-WhyLow (ISO 597, k 0.625, N_eff 16.4) 1.09 (its flat dark bins 0.63 - 1.13), a camera 2 dump (ISO 150, no merge
+     * report: N_eff 1) 1.25; a facade dump has no flat area to measure. Review of P391: the first estimate left out k and leant on an
+     * assumed N_eff, and the review's 0.4 came from two estimators that read 27 % and 38 % under a known c on white noise (more on
+     * correlated noise), so 1 stays, now measured.
+     */
+    static float noiseScale() {
+        return Math.max(0f, value("noise_scale", NOISE_SCALE));
+    }
+
+    static final float NOISE_SCALE = 1.0f;
+
+    /**
+     * P391: what the merge leaves of the one-frame noise where its frame map is not known (the RAW viewfinder's curve, a lab
+     * fragment of a frame recorded before P391): N_eff ~ 0.55 x the ZSL frames (LiveWhyTone's merged noise), ^-0.8 as the photo's.
+     */
+    static float expectedMerged() {
+        return (float) WhyNoiseClamp.modelScale(Math.max(1f, WhyNoiseClamp.EXPECTED_SHARE * PreferenceKeys.hybridValue("zsl_frames", 20f)));
+    }
+
+    /**
+     * P391 (item 4): the pyramid's excess over the per-pixel band on the fine levels passes only where the guide's band stands
+     * {lo .. hi} noise sigmas out (hi <= lo: off), on the {levels} finest levels (at most 4).
+     */
+    static float[] fusionNoise() {
+        return new float[]{Math.max(0f, value("fusion_noise_lo", 2f)), Math.max(0f, value("fusion_noise_hi", 4f)),
+                Math.max(0, Math.min(4, Math.round(value("fusion_noise_levels", 3f))))};
+    }
+
+    /** P391: the white-noise factor of the band of levels 0 .. 3 (5-tap binomial reduce, linear expand; host numpy). */
+    static final float[] BAND_BETA = {0.9279f, 0.2203f, 0.0933f, 0.0462f};
+
+    /** P391: the white-noise factor of the band of level {@code l} (halving per level below level 3). */
+    static float bandBeta(int l) {
+        return l < BAND_BETA.length ? BAND_BETA[Math.max(0, l)] : BAND_BETA[BAND_BETA.length - 1] / (float) (1 << Math.min(20, l - BAND_BETA.length + 1));
+    }
+
+    /**
+     * P391: an edge of the bands counts only beyond this many noise sigmas of its edge measure, taken out in quadrature (why/lpyr
+     * bandNoiseU; 0: none) - noise alone is no edge (a deep shadow's random «edges» took the per-pixel band, more fine noise than the
+     * pyramid's; review: subtracted as a shift it moved a deep shadow's 2 EV step into the ramp's middle, +10 - 30 % glow).
+     */
+    static float bandsNoise() {
+        return Math.max(0f, value("fusion_bands_noise", 2f));
     }
 
     /**
@@ -234,12 +365,37 @@ public final class WhyTone {
      * as one level (z: no share on their noise); hi <= lo: off, the pyramid as before.
      */
     static float[] edgeShare() {
+        // P391: the edge-aware bands remove this halo inside the pyramid (host: the window zones within 0.0006 of fused luma of the guided
+        // filter against 0.0098 with this share, the horizon 0.0008 against 0.0051) - off with them unless a scam_dev line sets it (the A/B)
+        if (bands() != null && !PreferenceKeys.scamDevOverrides("hybrid_why_fusion_edge_lo")
+                && !PreferenceKeys.scamDevOverrides("hybrid_why_fusion_edge_hi"))
+            return new float[]{0f, 0f, Math.max(1e-4f, value("fusion_edge_floor", 0.0078125f))};
         return new float[]{value("fusion_edge_lo", 0.3f), value("fusion_edge_hi", 1.0f), Math.max(1e-4f, value("fusion_edge_floor", 0.0078125f))};
     }
 
     /** P341: the vibrance of the light tones (why/combine.glsl vibHlU; 0 = off). */
     static float vibranceHl() {
         return Math.max(0f, value("vibrance_hl", 1.0f));
+    }
+
+    /**
+     * P393 (owner, 2026-10-29: «У нас что-то с желтыми цветом ... В последней паре более жёлтое фото наше», pairs against the
+     * reference app on the X200 Ultra): the light-tone vibrance's shape for pale colour (why/combine.glsl vibHlShapeU: the OKLab
+     * lightness where it starts / is full, the chroma where its gate starts / is open). P341's ramp 0.45 .. 0.75 and gate 0.002 ..
+     * 0.008 took pale walls, ceilings and facades in the mid-light tones to x1.9 - 2.0 of the scene's chroma and doubled the white
+     * balance's cast on near-whites (cream walls of the V2405A room burst b* 5.5 -> 12.2); now, for pale colour (chroma under
+     * 0.020), 0.50 .. 0.85 (the light tones keep the mid-tones' x1.4 - 1.5, the shoulder's loss made up above) and 0.010 .. 0.025
+     * (a near-white's cast not raised; the gate about as steep as P341's: chroma noise on a white wall x1.12 of P341's, not x1.41):
+     * the owner's bedroom walls b* 11.2 / 7.5 / 16.0 -> 6.6 / 3.2 / 11.0, the reference app's 6.2 / 3.6 / 10.2. A colour from
+     * chroma 0.020 .. 0.035 up (skin, yellow leaves, facades) and the sky keep P341's / P378's.
+     */
+    static final float[] VIBRANCE_HL_SHAPE = {0.50f, 0.85f, 0.010f, 0.025f};
+    /** P341's shape (scam_dev.txt "vibrance_hl_shape 0"): the shader before P393 (bit for bit on the host's GL, within rounding on a phone GPU). */
+    static final float[] VIBRANCE_HL_SHAPE_P341 = {0.45f, 0.75f, 0.002f, 0.008f};
+
+    /** P393: {@link #VIBRANCE_HL_SHAPE}, or P341's with scam_dev.txt "vibrance_hl_shape 0" (the photo and the RAW viewfinder). */
+    static float[] vibranceHlShape() {
+        return (PreferenceKeys.scamDevSwitch("vibrance_hl_shape", true) ? VIBRANCE_HL_SHAPE : VIBRANCE_HL_SHAPE_P341).clone();
     }
 
     /** P291: the rise of the fusion's monotonic envelope per ln of the light (why/gf.glsl monoU; 0 = the kernel's fusion). */
@@ -259,6 +415,16 @@ public final class WhyTone {
     /** Window burst: why/combine MACRO_TOE - the macro contrast below its pivot as a power, no black offset (scam_dev macro_toe 0: off). */
     static boolean macroToe() {
         return value("macro_toe", 1f) >= 0.5f;
+    }
+
+    /**
+     * P393 (owner, 2026-10-29: sunlit yellow birches pale peach-white beside ArkCam's saturated yellow): why/combine LIGHT_CHROMA - the
+     * share of its mid-tone chroma a saturated orange-yellow keeps in the light tones under the AgX white, its hue turned towards the AgX
+     * rendition's only as far as the locked hue cannot hold that chroma (AgX only; skin, greens and blues as before). 0 = off, the AgX
+     * shoulder's chroma and the hue lock as before (scam_dev hybrid_why_light_chroma 0).
+     */
+    static float lightChroma() {
+        return Math.max(0f, Math.min(1f, value("light_chroma", 1f)));
     }
 
     static float[] headroomTone() {

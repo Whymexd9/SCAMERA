@@ -29,6 +29,7 @@ public class LabFrameTest {
             f.stats[m] = s;
         }
         f.noiseScale = .75f;
+        f.fusionNoise = .1125f;
         f.lowWidth = 2048;
         f.ccLo = new float[]{1f, .99f, .98f};
         f.ccHi = new float[]{0f, 0f, 0f};
@@ -52,6 +53,10 @@ public class LabFrameTest {
             assertEquals(f.stats[m].sumLog, g.stats[m].sumLog, 0);
         }
         assertEquals(.75f, g.noiseScale, 0);
+        // P391: the fusion's merged-noise factor of the whole frame (a fragment's noise-bound floor and band cap)
+        assertEquals(.1125f, g.fusionNoise, 0);
+        assertTrue(Float.isNaN(new LabFrame().fusionNoise));
+        assertTrue(Float.isNaN(LabFrame.fromJson(new JSONObject(new LabFrame().toJson().toString())).fusionNoise));
         assertEquals(2048, g.lowWidth);
         assertArrayEquals(f.ccLo, g.ccLo, 0);
         assertTrue(g.nearClip);

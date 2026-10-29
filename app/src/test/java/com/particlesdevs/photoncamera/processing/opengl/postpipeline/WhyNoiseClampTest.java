@@ -40,6 +40,24 @@ public class WhyNoiseClampTest {
         assertEquals(1.0, WhyNoiseClamp.modelScale(0.5f), 0.0);
     }
 
+    /**
+     * P391 (review): the WHY fusion's N_eff - the map's where the map is the output's size and the worker reported its median, else
+     * (200 MP: no map above 100 MP) 0.55 of the merged N as the RAW viewfinder expects, not 1; a one-N shot 1.
+     */
+    @Test
+    public void theFusionsNEffFallsBackToTheViewfindersExpectationWithoutAMap() {
+        final int w = 640, h = 480;
+        assertEquals(8f, WhyNoiseClamp.fusionFrames(map(w, h, 64), w, h, 22.05f, 8), 1e-6f);
+        assertEquals("the map at one frame stays one", 1f, WhyNoiseClamp.fusionFrames(map(w, h, 1), w, h, 22.05f, 8), 1e-6f);
+        assertEquals("no map: 0.55 x 22 N", 0.55f * 22, WhyNoiseClamp.fusionFrames(null, w, h, 16.4f, 22), 1e-5f);
+        assertEquals("a map of another size", 0.55f * 22, WhyNoiseClamp.fusionFrames(map(w / 2, h, 64), w, h, 16.4f, 22), 1e-5f);
+        assertEquals("no median in the report", 0.55f * 22, WhyNoiseClamp.fusionFrames(map(w, h, 64), w, h, Float.NaN, 22), 1e-5f);
+        assertEquals("two N: at least 1", 1.1f, WhyNoiseClamp.fusionFrames(null, w, h, Float.NaN, 2), 1e-6f);
+        assertEquals("one N", 1f, WhyNoiseClamp.fusionFrames(null, w, h, Float.NaN, 1), 0f);
+        // the clamp's own N_eff keeps 1 without a map (P212h)
+        assertEquals(1f, WhyNoiseClamp.effectiveFrames(null, w, h, 16.4f, 22), 0f);
+    }
+
     @Test
     public void nEffIsTheLowQuartileOfTheMapClampedToTheMergedN() {
         final int w = 640, h = 480;

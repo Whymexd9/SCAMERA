@@ -61,4 +61,28 @@ public class ScamRgbOpposedTest {
         final int[] v = group(Float.NaN, 2f, Float.POSITIVE_INFINITY, 0, 4, 0);
         assertArrayEquals(new float[]{0f, 0.5f, 0f}, ScamRgb.opposedMeans(v, 1), 1e-6f);
     }
+
+    private static String read(String path) throws java.io.IOException {
+        java.io.File f = new java.io.File(path);
+        if (!f.isFile()) f = new java.io.File("app/" + path);
+        return new String(java.nio.file.Files.readAllBytes(f.toPath()), java.nio.charset.StandardCharsets.UTF_8).replace("\r\n", "\n");
+    }
+
+    @Test
+    public void theLocalLightGoesWithTheOpposedBranchOnly() throws java.io.IOException {
+        // P393: a clipped channel of a coloured surface takes the local light's colour (oppLocalU) only where «Inpaint opposed» runs
+        // (the chroma blocks are made whenever it can: perChannel && nearClip), scam_dev hybrid_highlight_opposed_local 0 = before;
+        // unset in the shader = 0 = RawTherapee's reference alone (the checks that do not set it render the shader before P393)
+        final String rgb = read("src/main/java/com/particlesdevs/photoncamera/processing/opengl/postpipeline/ScamRgb.java");
+        assertEquals(true, rgb.contains("glProg.setVar(\"oppLocalU\",opposed&&PreferenceKeys.hybridSwitch(\"highlight_opposed_local\",true)?1:0);"));
+        final String shader = read("src/main/assets/shaders/scamhdr/scamrgb.glsl");
+        assertEquals(true, shader.contains("uniform int oppLocalU;"));
+        assertEquals(true, shader.contains("if (oppLocalU != 0 && chromaU != 0) {"));
+        // P393 review: two channels clipped - the light at the measured channel's scale, only where that scale meets both clipped bounds
+        // (a blue sky round yellow leaves made them lime green; the neutral prior set G = R)
+        assertEquals(true, shader.contains("estK = qK * measK;"));
+        assertEquals(true, shader.contains("wK = 1.0 - smoothstep(0.05, 0.20, log(max(boundK, 1.0e-6) / max(measK, 1.0e-6)));"));
+        final String keys = read("src/main/java/com/particlesdevs/photoncamera/settings/DevKeys.java");
+        assertEquals(true, keys.contains("\"hybrid_highlight_opposed_local\", true"));
+    }
 }

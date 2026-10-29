@@ -29,6 +29,8 @@ public final class LabFrame {
     public static final int MODES = 3;
     final WhyAe.Stats[] stats = new WhyAe.Stats[MODES];
     float noiseScale = Float.NaN;
+    /** P391: what the merge left of the one-frame noise for the fusion (WhyTone.State.noiseMerged); NaN: not recorded. */
+    float fusionNoise = Float.NaN;
     /** WhyStats' input scale (2^«Масштаб входа, EV») the statistics were measured at; NaN: not recorded (a frame before it). */
     float inScale = Float.NaN;
     int lowWidth;
@@ -72,6 +74,7 @@ public final class LabFrame {
         for (WhyAe.Stats s : stats) modes.put(s == null ? JSONObject.NULL : stats(s));
         o.put("stats", modes);
         put(o, "noiseScale", noiseScale);
+        put(o, "fusionNoise", fusionNoise);
         put(o, "inScale", inScale);
         o.put("lowWidth", lowWidth);
         o.put("lowHeight", lowHeight);
@@ -98,6 +101,7 @@ public final class LabFrame {
         for (int m = 0; m < Math.min(MODES, modes.length()); m++)
             if (!modes.isNull(m)) f.stats[m] = stats(modes.getJSONObject(m));
         f.noiseScale = get(o, "noiseScale");
+        f.fusionNoise = get(o, "fusionNoise");
         f.inScale = get(o, "inScale");
         f.lowWidth = o.optInt("lowWidth", 0);
         f.lowHeight = o.optInt("lowHeight", 0);

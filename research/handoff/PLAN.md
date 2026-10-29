@@ -8734,3 +8734,229 @@ Owner, same day: «сделай гпу выравнивание и дай воз
   then physical pairs only where the bare id does not open; probed once per camera service; the sheet marks a hidden camera
   («скрытая: телефон не показывает её в списке, но открывает») and a physical one («физическая у 0»); the typed check uses the
   same list. Test: CameraIdCheckTest.theSheetOffersEveryCameraThePhoneOpens.
+
+### P391 - the WHY pyramid: no halos at edges, continuous depth, shadow lift and fine-band gain bounded by noise (owner, 2026-10-28: «Веса с учётом краёв на каждом уровне ... Глубина пирамиды ... Подъём теней по шуму ... Детали ... делаем»; «Мы будем использовать пирамиду Лапласа, у Арк в последних версиях она как раз и используется, также у него синтетические экспозиции распределены так же как у нас»): DONE in code (host), not tried on a phone
+- Measured first (scratch hdr_understand/report_B.md): the literal item 1 (a guided filter on each level's weight map, 30+
+  configs) does NOT remove frame / horizon halos (0.033-0.046 against 0.033): their height is made at the finest level by the
+  edge's own band, the coarse levels only widen it. Depth sets the width (15 / 29 / 58 / 116 / 232 rows for 3-7 levels), not the
+  height. Nothing about ArkCam's pyramid levels is on record; the pyramid and our synthetic exposures stay.
+- DONE (item 1, edge-aware bands, lpyr EDGE_BANDS, MODEs 7-10): per level, where the guide's log light differs from its Gaussian 3
+  levels down (a step of S EV reads ~S/2; ramp 1.2-1.8 EV, the level's noise taken out in quadrature at 2 sigma), the band is the
+  per-pixel fusion's instead of the pyramid's excess; the share spreads up to 3 px (fall 0.25), a coarser level never takes less
+  than the finer one around the same place, the coarsest level moves toward the per-pixel fusion by it. Keys hybrid_why_fusion_bands
+  (1; 0 = the pyramid as before, bit for bit), _lo / _hi / _reach / _fall / _strength. P349's guided share and P389's edge share
+  are off by default with the bands (explicit scam_dev lines bring them back for an A/B); guided() no longer runs by default.
+  Host: horizon 0.0321 -> 0.0008 / 0 rows (shipped P349 + P389: 0.0051), window worst zone 0.0707 -> 0.0006 (0.0098), rungs in a
+  glow p95 0.0141 -> 0.0008, 2 EV step 0.070 -> 0.0024, twigs no dark fringe (0.5-8 px: -0.0001..0.0000), +-0.5 EV texture 0.97-0.99
+  of the pyramid, clouds x0.98-0.99, P310 bar cores 0.797. Kept: 1-1.5 EV edges keep the pyramid's pop (0.032-0.036, about P389's);
+  thin dark objects lose the pyramid's own core darkening (their crispness from the detail delta).
+- DONE (item 2): continuous depth - levels = ceil(log2(min side / coarse)), the lowest band weighted by the fraction (f = 0 equals
+  one level less exactly): 12 MP 4096x3072 5 / 1.0, 4000x3000 5 / 0.966 (was 4), 50 MP 6, 200 MP 7.
+- DONE (item 3): the deep floor (P389) capped by the fused luma's noise (closed form, import_why_fusion; FusedCurve / LiveWhyTone
+  follow): the one-frame noise model / N_eff^0.8 (the merge map; without it 0.55 x the merged frames), c = 1 measured on the owner's
+  dumps with the worker's k (1.09 X200 Ultra, 1.25 room; tools/check_why_noise.py recovers a known c within 10 %); DCG shots take
+  the high-gain zone's offset. Key hybrid_why_deep_noise.
+- DONE (item 4): the pyramid's excess over the per-pixel band in levels 0-2 kept only above 2-4 sigma of the guide's band noise
+  (night I 0.1: noise 0.0102 -> 0.0063; deep shadows unchanged; 8 sigma texture 0.94). Keys hybrid_why_fusion_noise_lo / _hi /
+  _levels.
+- Checks (CI): tools/check_why_pyramid_bands.py, tools/check_why_noise.py (both also bit-identical off against the pre-P391
+  shaders), check_shader_fp16 (lpyr MODE 0-10 x EDGE_BANDS 0/1), check_why_sky (M1 on the bands path + the shares' path gate),
+  WhyFusionBandsTest, DcgPostTest, WhyNoiseClampTest. Phone cost (counted): level 0 ~54 fetches + 1 log2 per pixel against 125 + 25;
+  +13 % prepare(); no guided() (-260 M box fetches, -50-65 MB at 12 MP); +1 full-size R16F (~100 MB at 200 MP). Not timed on a phone.
+
+### P392 - partial rejection of the ultrashort and long frames under motion, without gaps (owner, 2026-10-28: «Что ты думаешь по поводу частичного отсечения короткого кадра при движении? Сможешь это сделать по умному чтобы работало чётко и без пробелов?»; the plan he confirmed: «Без отказа целиком ... Замену выбирать по пикселю ... Если пересвет и все короткие кадры там двигались, брать ES всё равно ... Без швов ... Без ложного движения ... Делаем»; bursts scam_burst-20261028-234300 (PC case, LEDs, a hand at the LED strip) and scam_burst-20261029-014303 (vivo V2405A room, ceiling lamp, a moving hand)): DONE in code (host), not tried on a phone
+- Found (scratch hdr_understand/report_A.md, replays of the two bursts with the app's tuning): the ES frames were already refused per
+  cell and per mask component (P350, 25 %), but (1) P310's coloured-light exemption and the base's 3 x 3 range let the hand's dark ES
+  colour into the pink glow (a 5000 px dark, hard-edged patch); (2) refused cells left the N clip: white holes with hard steps
+  (seam 2.4 log luma); (3) the long frames were dropped WHOLE above shastaMotionMax 4 % of moved blocks (burst 2: all three at 20 %).
+- DONE (worker keys, default 0 = replays bit for bit; the app writes bentoPartial 1, bentoAliasDamp 1, shastaMotionScope 1 after
+  us_set / long_set; scam_dev hybrid_us_partial 0 / hybrid_long_scope 0 take them out):
+  - motion regions per ES frame (noise-normalised z with hysteresis 2.0 / 4.5, closing, growth, opened by 1 cell), a plane of their
+    own: blend validity = min(gaussian of the graded check, the guided region plane) - outside the regions as before;
+  - CFA alias damping of the colour part of z (Gr-Gb departure) on the partial path only;
+  - per pixel: valid ES -> N where N holds data -> inside the N clip a moved frame that is plausible (>= 0.9 of the clip well inside,
+    0.35 of it at the clip's edge, lifted per colour to N's clip) -> a membrane fill seeded from valid cells >= 0.8 of the clip
+    (64 sweeps, per colour >= N where N clipped) -> the N clip only beyond reach; the valid and moved shares carry their own colours;
+  - the component refusal 100 % under partial (no whole-component refusal: the 25 % sweep made the seams worse);
+  - long frames: kept up to shastaScopeMax 60 % moved blocks, only the moved 8 x 8 blocks (grown 2 rings over weak blocks beyond
+    4 sigma + 5 %, feathered) leave the merge (kHybDilate SHASTA_SCOPE); not on the native Quad / Tetra path;
+  - regions and fill on their own thread from the Bento check (the first strip waits 0 ms); above 16 MP the fill per 4 x 4 cells
+    (8 x 8 above 64 MP), the scope as bytes; the race on the fill's geometry closed (sized before its task, a ready flag, the test
+    hook SCAM_TEST_FILL_DELAY_MS).
+- Measured (host): burst 1 - pixels below 0.98 inside the all-channel clip 2934 -> 0, dark px in the N clip 5000 -> 42 (all within
+  3 px of the clip's edge), seam p99 across source boundaries 0.44 (first version 0.68), LED boxes |dlog Y| <= 0.006; burst 2 - all
+  three long frames kept (out on 25-28 % of cells), the hand / arm no ghost (coherent change 0.07 / 0.23 %), dark-shelf noise x0.83;
+  control e193420 bright outliers 595 vs the app's 593; keys off: the 7 controls a1921da3 99c25c7e af3a514a b518082e e67454a5
+  76cb68c5 b6661d94, burst 1 2d8adbe4, burst 2 5aa89fd0, sky 1ecd225b; kHybMergeMain1 / kHybMergeCommon byte-identical; glslc 64
+  variants; ASan + UBSan clean; blend task 489-596 ms (HEAD 385-469); the long scope adds ~0.9 s on burst 1 (12 frames merged
+  instead of 10). Tests: HybridSettingsTest (incl. p392DevSwitchesTakeTheirLinesOut).
+- Still refused whole (told to the owner): an ES frame whose gains against the base are inconsistent; a long frame above 60 %
+  moved or whose alignment failed; on native Quad / Tetra merges (FULLRES, 2x ISZ) ES at 25 % and long frames at 4 %; ES left out
+  when nothing is clipped (usNeedClip, not motion). Not done: the moved ES shifted back into place (no burst with a light that moved
+  away), the check at the F6 position, usGainScope. One G/B-clipped LED pixel of burst 1 (1032,1630) stays dark: every short frame
+  shows the strip absent there.
+
+### P393 (A) - our pale walls and ceilings yellower than the reference app's (owner, 2026-10-29: «У нас что-то с желтыми цветом, прикрепил примеры против Арк камеры. В последней паре более жёлтое фото наше»; three pairs ours / ArkCam v206 on the X200 Ultra, messenger copies, no RAW; part A: the indoor cast, part B: the pale bright yellow leaves): the vibrance DONE in code (host), not tried on a phone; the white point and the exposure diagnosed, not changed
+- Pair 3 (bedroom, daylight / room light, «the more yellow one is ours»; our photo is a gallery screenshot carrying a Display P3
+  profile and is read as P3 - P393's first measurement read it as sRGB, 1 - 2 b* too low): the walls left / right (near-white) /
+  upper b* 11.2 / 7.5 / 16.0 against ArkCam's 6.2 / 3.6 / 10.2, the frame median (L* > 40) 9.9 against 5.75. Cause: P341's light-tone vibrance (why/combine.glsl vibHlU) ramped in over OKLab L 0.45 .. 0.75 with its
+  neutral gate open from chroma 0.002 .. 0.008, while the tone itself gives a pale colour x1.5 of the scene's chroma in the
+  mid-tones and the AgX shoulder takes it only from L ~0.6 (host ramp through the shader, chroma 0.01 - 0.03: x1.0 / 0.80 / 0.55 /
+  0.39 at L 0.60 / 0.65 / 0.75 / 0.90): pale mid-light colour went to x1.9 - 2.0 of the scene, a near-white's cast x2.1 - 2.6
+  (P378 had found the same on clouds and gated it in the sky only). Proof in the real chain: the owner's OPPO stage dump
+  (02-WhyLow -> host combine = the phone's 03-WhyCombine within 0.1 - 0.5 b* per band): a white beam a* -3.1 -> -6.3, sunlit
+  panels b* +3.3 -> +7.6, shade sidewalk b* -6.2 -> -11.9 by the vibrance alone; the V2405A room burst (host merge + host WHY,
+  the app's own JPEG within 0.3 b*): cream walls b* 5.5 -> 12.2 at L* 65 - 80 (the app 11.9).
+- DONE: vibHlShapeU (WhyTone.vibranceHlShape, WhyCombine and LiveWhyTone): for pale colour (OKLab chroma under 0.020) the ramp
+  OKLab L 0.50 .. 0.85 (the light tones keep the mid-tones' x1.4 - 1.5, the shoulder's loss made up above L 0.75) and the gate
+  0.010 .. 0.025 (a near-white's cast not raised); from chroma 0.020 .. 0.035 up P341's ramp (skin, foliage, flowers, facades, the
+  leaves of part B as before), under the sky mask P378's ramp and gate; off the mask the SKY 0 statement. scam_dev
+  vibrance_hl_shape 0 = P341's shape (bit for bit on the host's GL; on a phone GPU within rounding). Measured (host, the final
+  shape): V2405A room burst walls b* 12.3 -> 6.9 (L* 65 - 80, C* 8 - 14; without the vibrance 5.6), 11.2 -> 7.6 (L* 50 - 65),
+  the right wall 12.3 -> 6.9 (the app's own JPEG 12.0), the left ceiling -4.6 -> -2.4, palm / forearm unchanged; OPPO dump near-neutrals
+  (C* 5 - 10) a* -4.6 -> -2.2 (L* 65 - 80), -1.5 -> -0.8 (L* 80 - 90), the yellow / orange leaves and facades at C* 20 - 80 x0.98 -
+  1.00 of P341 at every L*; the owner's JPEGs re-rendered through the shader (a display LUT, P341's -> the new shape): pair 3 walls
+  b* 11.2 / 7.5 / 16.0 -> 6.6 / 3.2 / 11.0 (ArkCam 6.2 / 3.6 / 10.2), frame median 9.9 -> 5.9 (ArkCam 5.75); pair 2 (trees)
+  yellows (h_ab 60 - 100) per pixel x1.000 of P341 at every L* band; pair 1 near-neutral light blocks a* -5.3 -> -3.1, the top
+  quarter b* 21.8 -> 21.4 (its yellow is the white point's, below). Guard: tools/check_vibrance_hl.py (CI); check_why_sky's C1
+  chroma ratios against the photo as P378 measured it (P341's shape: cloud x0.48, gaps x0.87 as before) and, new, against the
+  photo as shipped without the term (cloud x0.91, gaps x0.88, viewfinder clouds x0.83; must stay <= 1); check_colour_output /
+  check_vf_fused take the P393 block out as P370's.
+- P393 review (A) (fixed): (1) the first version's pale class reached to chroma 0.04 .. 0.07 (blend smoothstep(0.04, 0.07)): a skin
+  tone or a yellow at L* 55 - 76 and chroma 0.03 - 0.05 took x0.74 - 0.88 of P341's chroma (skin hue 55 / chroma 0.04: C* 28.7 ->
+  22.1; the birch dump's yellows at C* 20 - 30 x0.77; pair 2's yellows at L* 55 - 75 x0.94, 42 - 45 % of them losing > 10 %), the
+  wrong way for the owner's trees pair where ours is already paler than ArkCam's (C* 45.6 vs 53.6 at L* 55 - 65); its pale gate
+  (chroma 0.02 - 0.035) locked that in. Now the blend is 0.020 .. 0.035: the walls stay where the first version put them (V2405A
+  walls identical), the birch yellows x0.98 - 1.00 of P341, pair 2 x1.000; the pale gate covers chroma 0.012 - 0.020, new gates:
+  every colour from chroma 0.035 up as P341 within rounding, warm hues 30 - 100 at chroma 0.035 - 0.06 >= 95 %, skin >= 97 %.
+  (2) Pair 3 re-measured as P3 (above). (3) The sky mask's chroma step: with the narrower blend the ground and the mask have the
+  same ramp from chroma 0.035 up (warm 0.03 - 0.05 inside / outside x0.95 - 1.18 as in P341's era, was 1.17 - 1.32), and the guard
+  above. (4) The gate 0.010 .. 0.020 had the steepest chroma slope (display x5.4 against P341's x4.3; the V2405A burst's white
+  walls' chroma noise x1.41 of P341's at L* 80 - 92): now 0.010 .. 0.025 (x4.7, noise x1.12; the walls b* 7.8 -> 6.9 with it, the
+  cast at chroma 0.008 x1.04), gated at most 10 % above P341's slope. (5) TONE_OP 1 measured and gated: ACES as AgX (cast x1.04,
+  pale light tones x0.95 of the mid-tones), Uchimura cast x1.04 but pale light tones x1.64 (P341 x1.89, without the vibrance x0.86:
+  P341's vibrance itself is tuned on AgX's shoulder - not changed here); the shape never adds chroma over P341's under any
+  operator. The «bit for bit» off-switch is a host claim (software GL); a phone GPU within rounding. LiveWhyTone's lines moved so
+  the merge with part B is clean there (git merge-tree: PLAN.md only). check_vibrance_hl's bench compiled one program per
+  «source text given», not per text: two variant texts in one render shared the first one's program (fixed).
+- Pair 1 (ship's mess, ceiling lights, camera 4): ours yellow-green mostly by the WHITE POINT, not the tone: ArkCam's
+  near-neutral blocks (the ceiling, distance < 0.006 from D65 in u'v') ours at u'v' (-0.0024, +0.0235) against (+0.0013, +0.0014);
+  the same +0.020 .. +0.026 v' at every chroma level and over the frame (centre +0.025, edges +0.020, thirds +0.019 .. +0.022): a
+  global green-yellow tint (~Duv +0.015). Our chain on the ISP route carries the HAL's neutral unchanged (Parameters ReCalcColor:
+  SENSOR_NEUTRAL_COLOR_POINT, diag(1/n), the result's transform rows normalised; X200U daylight log: gains = 1/neutral, rows sum
+  1; LSC centre 1.01 all channels; nothing at the defaults moves a neutral - ColourLook keep warm / tint 0). So the HAL's neutral of
+  our shot (the oldest N ring frame) left the light's green, or ArkCam's session / own AWB removed it. Not changed (no log, no
+  RAW). Decides it: one fluorescent shot - our log («colour: ISP_CST ... neutral ... AWB label», «result colorCorrection
+  transform ... gains») and ArkCam's DNG of the same scene (AsShotNeutral).
+- Pair 1 is also 0.84 EV darker (median Y of matched flat blocks x0.56): WhyAe's highlight overflow (p995 x ae > 2: ae towards
+  2 / p995 with blend 0.33); with Bento data the histogram stops at the clip 4, so ceiling lamps over 0.5 % of the frame pin
+  p995 at 4 and pull the room down (V2405A burst: deficit 2.37, ae 3.62 -> 1.53, -1.24 EV). The rule is the reference kernel's,
+  P340's sunsets matched LMC with it and 11 of 15 logged Bento shots carry a deficit 1.5 - 2.5: not changed without a lamp scene's
+  RAW against the reference. A/B: hybrid_why_hl_overflow 4 / 8 (+0.28 / +0.73 EV on the V2405A burst).
+
+- A2 (the white point, decided 2026-10-29: no code change): the X200 Ultra HAL's neutral under the ship's panel lights is green
+  (camera 3: CCT 6200-6600 K, Duv +0.013..+0.015, 12 shots; daylight +0.003..+0.004); where a white object exists in such a scene
+  (camera 3 16:42:03, paper Duv +0.006; the V2405A LED room ceiling Duv +0.001..+0.004) we already render white. A correction sized
+  for pair 1 (about -0.012 Duv) turns those pink (a* +7..+10); nothing gateable (light, CCT, Duv, ISO, AWB label) separates them.
+  Pair 1 (camera 4, no log / RAW) keeps about +0.008 Duv after the vibrance fix. Likely causes, separable only by its log: the
+  colour frame (the oldest N ring frame, ScamProcessor ~652) taken before camera 4's AWB converged; camera 4's own AWB; the
+  reference app's own AWB. Needed: log-2026-10-29.txt (both 'colour: ISP_CST ... neutral' lines, the camera-4 open time), or the
+  mess with a sheet of paper on cameras 3 and 4 after 3 s of preview plus the reference app's DNG.
+
+### P393 B - sunlit yellow leaves pale peach-white beside ArkCam's saturated yellow (owner, 2026-10-29: «У нас что-то с желтыми цветом, прикрепил примеры против Арк камеры. В последней паре более жёлтое фото наше»; pair 2 = autumn birches in a low sun; the OPPO X8U burst 15:41:26 of the same birches with its diagnostics zip): DONE in code (host), not tried on a phone
+- Pair 2 (messenger copies, relative only): the leftmost birch's leaves ArkCam C* 42 / 57 / 63 / 63 at L* 30-50 / 50-65 / 65-80 /
+  80+, hue 73 - 84; ours 35 / 50 / 43 / 33, hue 67 - 75, 17 k pixels above L* 80 against ArkCam's 1.3 k; the whole frame's
+  orange-yellow hues ArkCam C* 54 / 59 / 56 at L* 50-65 / 65-80 / 80-90, ours 46 / 42 / 32 (yellow-greens, greens, blues: ours as
+  saturated or more).
+- Cause (the 15:41:26 burst: stage dumps; a host merge of the burst with the shot's tuning reproduces the phone - Bento applied, the
+  same clip-flag counts, ScamRgb within 0.5 % of 03-ScamRgb; the WHY passes on the host at the logged AE match 03-WhyCombine within
+  1.5 L* / C*): the leaves are not clipped (N frame p99 0.34 of the RAW white, no clip flag) and ScamRgb / WhyLow hold their colour at
+  every brightness (linear sRGB 1 : 0.53 - 0.59 : 0.18 - 0.23). The loss is why/combine: (1) the per-channel AgX shoulder takes the
+  saturation of a colour whose brightest channel enters it - the leaves' OKLab chroma x1.6 of the scene's at the mid-tones, x1.04 at
+  L* 78, x0.48 at L* 89, x0.33 at L* 92 (phone: C* 55 / 47 / 33 / 24 / 20 at L* 64 / 74 / 80 / 85 / 90); (2) the hue lock holds the
+  bright leaves at the scene's own orange hue (67 - 71 deg, the sun-lit leaves are warmer than the shaded ones) where AgX's rendition
+  is 79 - 83 deg and where sRGB holds the least chroma near white (C* 49 / 33 / 20 at L* 80 / 85 / 90 at hue 68; 82 / 59 / 33 at
+  84): R 253 G 218 B 185, peach-white. Not it on this shot: the clip guard, «Inpaint opposed» (no clipped pixel), hl_white and
+  hl_soft (0 change when off), the sky term (no sky), sun bloom. Shares (host, off one at a time): macro contrast 1.1 -5 C* at the
+  top, the light-tone vibrance (P341, part A's) +5 .. +10 C* on these leaves (their OKLab chroma 0.09 - 0.12 is under its 0.10 cut).
+  Part of the gap is lightness, not chroma: our sunlit leaves land at L* 85 - 90, ArkCam's at <= 84 (the tone's level - not changed).
+- (3) The same leaves clipped WITHOUT ultrashort content (single frame, «Движение», a refused Bento - foliage in wind): RT's opposed
+  reference takes a clipped channel from the other two with ONE additive chrominance for the frame; on textured leaves (dark gaps in
+  every 3 x 3) it comes out -0.12 .. -0.99 for G, so G stays at its clip while R rises: hue 69 -> 58 -> 25 -> 12 deg (orange, salmon,
+  pink: R G B 1 : 0.25 : 0.32) - on the display 62 -> 36 -> 26 -> 20 -> 16 deg.
+- DONE (tone): why/combine.glsl LIGHT_CHROMA 1 (WhyCombine and LiveWhyTone with AgX; 0 = the shader before, token for token; scam_dev
+  hybrid_why_light_chroma 0..1, default 1, 0 = off): a saturated colour whose exposed light lies in the light tones keeps the OKLab
+  chroma of its own AgX rendition at a grey's luminance (x the light-tone vibrance's gain on it; scaled with L below that rendition's
+  L; only raised), its hue turns towards the AgX rendition's own in the light tones (OKLab L 0.70 .. 0.90) and where the locked hue
+  cannot hold that chroma (the gamut); blues keep the lock (an undetected sky does not turn cyan). Left as before: pale colours (the mid
+  rendition's C / L under 0.08 .. 0.14: skin, walls, clouds, greys - bit for bit), the grey and below (bit for bit), lights (the
+  brightest channel before the shoulders: the chroma from 0.5 to 2 x the AgX white, the hue to 2^1.5 x; bit for bit above), the sky
+  under the P378 mask (bit for bit in its core), TONE_OP 1 (bit for bit).
+- DONE (ScamRgb): scamrgb.glsl oppLocalU (ScamRgb sets it where «Inpaint opposed» runs; unset = 0 = before; scam_dev
+  hybrid_highlight_opposed_local, default on): a clipped channel also takes the local light (chanprep's Chroma8 / 32 / 128: the
+  bright unclipped pixels around - the neighbouring leaves) - one channel clipped: fitted on the two measured where their ratio
+  agrees (misfit 0.05 .. 0.20 in log); two clipped: the least scale meeting both bounds and the measured channel; only raised; not
+  where the neutral ramp (every channel at its clip, the P378 clip band) takes the pixel.
+- Measured: the birch burst at full size (host merge -> ScamRgb -> WHY at the shot's AE), the leaves by scene light: L* 80 C* 32 -> 44
+  (hue 68 -> 75), L* 87 24 -> 40 (72 -> 82), L* 91 20 -> 30 (72 -> 84), the mid-tones unchanged; 6.7 % of the frame changes > 1 code
+  (the orange-yellow light tones only). Clipped foliage without ultrashort data: hue within 1.2 deg of the true colour at every
+  exposure (was 24 - 58 deg off), C / L x0.94 - 1.0. The owner's white bulb (P368 / P376, current ScamRgb): unchanged (max 0.1 code).
+  The P378 sky (synthetic overcast, the flats): the sky core bit for bit, its soft edge <= 4 codes. The owner's indoor burst
+  (vivo V2405A 01:43:03: cream walls, a hand, a ceiling lamp; host merge, AE estimated): 0.16 % of the pixels change - a yellow tape
+  and teal boxes in the light tones; walls, skin, the lamp bit for bit (no pixel under C* 15 changes). Ramps: skin, a cream wall, a
+  neutral, lavender bit for bit; a green leaf at L* 84 - 93 45 / 39 / 34 -> 60 / 60 / 58; red / violet LEDs +3 .. +5 C* at L* 61 - 74.
+- Checks: tools/check_light_chroma.py and tools/check_opposed_foliage.py (CI); every colour host check and the CI unit list green
+  (check_colour_output --files strict needs pillow-heif: environment).
+- Open: the lightness of sunlit leaves (L* 85 - 90 vs ArkCam's <= 84) and ArkCam's generally more saturated orange-yellows (C* 42 vs
+  26 at L* 30 - 50) - the tone's level and the colour look, not this item; bright greens get more saturated in the light tones (a lime
+  lawn); sunsets: the glow under the AgX white turns more saturated and yellower in its light tones (synthetic: C* +4 .. +16, hue +9 ..
+  +14 deg at L* 68 - 83; no sunset burst here); the owner's three shots have no RAW; nothing tried on a phone.
+- Review fixes (adversarial review of 7695068f; host only, not tried on a phone):
+  - B1 (LIGHT_CHROMA snapped the hue to AgX's where the target first passed the chroma: 13 - 30 dE76 in 0.005 EV on ColorChecker
+    orange / orange-yellow, a sodium glow, amber LEDs): the chroma rises from AgX's own continuously (cOutK) and the hue turns by the
+    share of that chroma the locked hue loses to the gamut (LC_TURN 2: all of it from half lost), measured at the lightness the
+    detail may lift the pixel to (L + max(delta, 0): the textured leaves' lighter half lost the raise to the final gamut cut). The
+    turn in every light tone (OKLab L 0.70 .. 0.90) is gone. 0.005 EV ramps: the largest step now at or under the shader's before
+    (ColorChecker orange 0.58 / 0.58, orange-yellow 0.26 / 0.44, sodium 0.46 / 0.46, amber LED 0.52 / 0.79, amber 0.44 / 0.44, the
+    leaf 0.14 / 0.19). Tried and not taken: the exact turn the gamut needs (a second gamut search at AgX's hue: 0.9 deg / 1.2 dE76
+    per 0.005 EV where the shoulder starts cutting), a light-tone turn as the chroma is raised (the leaves +2 deg at L* 80 - 85, an
+    orange glow +2 deg more, the band's edge up to 3.3 dE76 a row).
+  - M3 / M4 / M5 (skin, red-orange glows, warm interiors and blues changed): the term acts on the orange-yellow scene hues only (OKLab
+    56 .. 64 in, 100 .. 120 out: LC_HUE_IN / LC_HUE_OUT; the owner's pair 2 is deficient there alone) and on the saturated ones
+    only (the mid rendition's C / L 0.14 .. 0.17: LC_SAT, was 0.08 .. 0.14). The birch shot's leaves (the trees alone, 02-WhyLow)
+    lie at scene hue p5 / p10 / p50 60 / 63 / 75 deg and C / L 0.139 / 0.149 / 0.176; skin of the leaves' hue (an olive skin 0.139,
+    Monk 6 0.145), a lit lampshade (0.124), a yellow wallpaper (0.111) lie under the gate. Bit for bit now: ColorChecker skins,
+    Fitzpatrick III - V, medium / tan / dark / blush faces, Monk 5 and 7, a red-orange glow, maple red, a lampshade, a yellow
+    wallpaper, the greens, cyans and blues (also under the P378 mask's soft edge); within 2.4 dE76: Fitzpatrick II, an olive skin,
+    Monk 6 (1.1), a warm-lit face (2.4). Sunset gradient: the red-orange end bit for bit, an orange glow of the leaves' colour as the
+    leaves (L* 88 C* +12, hue +12 deg), the hue band's edge 1.5 dE76 between neighbouring rows (0.27 deg each); rows from a pale to a
+    saturated orange-yellow (the saturation gate's edge) 1.09 / 1.27 dE76 between neighbours (before 0.61 / 0.84).
+  - B2 (oppLocalU with two channels clipped took any light): the light at the measured channel's scale only where that scale meets
+    both clipped bounds (misfit in log 0.05 .. 0.20), else RT's reference. Yellow leaves over a blue sky: RT's hue (was lime, OKLab
+    130 for 69); the leaves' gradient beside green ones 78 - 82 deg (RT 77 - 80; was 80 -> 117 in 4 px); beside white a 0.0031 OKLab
+    step (RT 0.0025, was 0.094); the textured foliage as before (within 1.2 deg). Left: where the light falls back to the neutral prior
+    deep inside a two-clipped area the pixel goes back to RT's reference within ~2 px (at most RT's own clip-edge step, 0.031 OKLab);
+    clipped leaves on a blue sky keep RT's own error (OKLab 46 / 29 deg for 69 at 2.4 / 3.2 x, salmon) - the sky round them says
+    nothing of their colour.
+  - Minors: the viewfinder's LIGHT_CHROMA define from the cached setting (as its uniform); the Ultra HDR sky ratio draws both without
+    the term; a film at full strength skips it; a pale colour's chroma is not multiplied by x / x (not exactly 1 on every GPU);
+    whitespace. Not changed: SPIR-V (photo 87.3 -> 100.1 KB, viewfinder 209.2 -> 222.1 KB; out-of-band and unsaturated pixels skip
+    the gamut search) - no phone timing here.
+  - Measured again (the birch dump 02-WhyLow on the host at the logged AE; the phone's own 03-WhyCombine within 2.2 L* / 4 C* of the
+    host's before on the leaves). The review's and the first fix's tables took every warm pixel with C* > 12 (hue 40 - 100): above L*
+    80 those were mostly sunlit window glass, the car's body and the facade panels, not leaves - the trees in this shot reach L* 85.
+    The leaves alone (the trees' boxes, scene G / R 0.35 - 0.8, B / R < 0.32, textured), by the before render's L*: at the logged AE
+    L* 70-75 / 75-80 / 80-85 C* 52.3 / 48.7 / 45.6 -> 52.6 / 50.3 / 48.8, hue 72.0 / 70.8 / 71.6 -> 72.0 / 70.7 / 72.3; at +1 EV (the
+    level of the owner's pair 2: the leaves at L* 85 - 90) L* 75-80 / 80-85 / 85-90 / 90-95 C* 45.1 / 39.3 / 31.0 / 20.5 -> 49.3 / 46.9 /
+    40.3 / 28.7, hue 77.1 / 74.6 / 72.8 / 74.0 -> 76.8 / 75.6 / 80.6 / 85.5 (7695068f: 50.2 / 48.6 / 42.5 / 27.8, hue 82 - 84). Outside
+    the leaves 1.2 % of the frame changes > 2 codes at the logged AE: the warm reflections in the window glass and the car's windows.
+    The vivo room (01:43:03, host merge, its own AE): 0.054 % of the pixels change > 2 codes - the yellow tape alone (+7.5 C*, hue -0.9
+    deg); nothing under C* 25 (walls, the hand, the lamp bit for bit).
+  - Checks: check_light_chroma (+ 0.005 EV continuity of dE76 and hue, the hue band's edge, the saturation gate's edge, skin / glow /
+    interior / green / blue bit for bit or within 3 dE76 at the edges; the leaf's hue at L* 84 kept, at L* 88 yellow - the former
+    "hue >= 76 at L* 84" was the light-tone turn the review removed), check_opposed_foliage (+ leaves on a blue sky, the gradient
+    beside five other surfaces, smooth and textured); 7695068f's shaders fail 46 / 17 of them.
+  - Open: the hue of the leaves at L* 75 - 85 stays near the scene's (75 - 77 at +1 EV; ArkCam 78 - 84, 7695068f 82) - the gamut
+    holds their raised chroma there, so the turn does not act; the lightness of sunlit leaves and ArkCam's more saturated mid-tones as
+    above.
+  - After merging P393 A: re-run check_light_chroma (hlGainK is read from the vibHl block A reshapes).

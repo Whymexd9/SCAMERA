@@ -175,6 +175,52 @@ public class DcgPostTest {
         assertEquals(0.05 / Math.sqrt(0.5 * ZONES[0] + ZONES[2]), WhyAe.gainClamp(m[0], m[1], 0.05), 1e-4);
     }
 
+    /**
+     * P391 (review): the WHY fusion's noise caps act on the deep shadows, under the knee - the high-gain zone's offset, whatever the
+     * knee, carried by the averaged model's scale as the clamp's; the clamp keeps mid grey's zone.
+     */
+    @Test public void theFusionsNoiseTakesTheDeepShadowsHighGainZone() {
+        float[] m = WhyAe.dcgShadowModel(ZONES, 6e-4f, 1.5e-5f, 3e-4, 5e-6);
+        assertEquals(ZONES[0] * 2.0, m[0], 1e-6 * m[0]);
+        assertEquals(ZONES[1] * 3.0, m[1], 1e-6 * m[1]);
+        assertEquals("the clamp: the low-gain offset above the knee", ZONES[2] * 3.0, WhyAe.dcgClampModel(ZONES, 6e-4f, 1.5e-5f, 3e-4, 5e-6)[1], 1e-6 * ZONES[2] * 3.0);
+        m = WhyAe.dcgShadowModel(new float[]{2e-4f, 1e-6f, 4e-5f, 0.8f}, 6e-4f, 1.5e-5f, Double.NaN, Double.NaN);
+        assertEquals(1e-6f, m[1], 0f);
+        // one measured zone (knee 0, equal offsets): that offset
+        m = WhyAe.dcgShadowModel(new float[]{2.13e-4f, 3.1e-6f, 3.1e-6f, 0f}, 6e-4f, 1.5e-5f, Double.NaN, Double.NaN);
+        assertEquals(3.1e-6f, m[1], 0f);
+    }
+
+    /**
+     * P391 (review): PostPipeline.computeNoise of a DCG shot with measured zones gives the clamp mid grey's (low-gain) pair and the
+     * WHY fusion's caps the deep shadows' (high-gain) one, both carried by the averaged model's scale; a plain shot gives both the
+     * averaged pair.
+     */
+    @Test public void thePipelineHandsTheFusionTheShadowsZone() {
+        @SuppressWarnings("unchecked")
+        final android.util.Pair<Double, Double>[] model = new android.util.Pair[]{new android.util.Pair<>(3e-4, 5e-6),
+                new android.util.Pair<>(3e-4, 5e-6), new android.util.Pair<>(3e-4, 5e-6)};
+        final Parameters p = new Parameters();
+        p.noiseModeler = new NoiseModeler(model, 100, 100, 0);
+        p.noiseModeler.computeModel = new android.util.Pair[]{new android.util.Pair<>(6e-4, 1.5e-5), new android.util.Pair<>(6e-4, 1.5e-5),
+                new android.util.Pair<>(6e-4, 1.5e-5)};
+        p.noiseModeler.baseModel[1] = new android.util.Pair<>(3e-4, 5e-6);
+        final PostPipeline pipeline = new PostPipeline();
+        pipeline.computeNoise(p);
+        assertEquals("a plain shot: the averaged pair", 6e-4f, pipeline.fusionNoiseS, 1e-10f);
+        assertEquals(1.5e-5f, pipeline.fusionNoiseO, 1e-12f);
+        assertEquals(pipeline.noiseO, pipeline.fusionNoiseO, 0f);
+        p.dcgShot = true;
+        p.dcgNoise = ZONES.clone();
+        pipeline.computeNoise(p);
+        assertEquals("the clamp: the low-gain offset", ZONES[2] * 3.0, pipeline.noiseO, 1e-6 * ZONES[2] * 3.0);
+        assertEquals("the fusion: the high-gain offset", ZONES[1] * 3.0, pipeline.fusionNoiseO, 1e-6 * ZONES[1] * 3.0);
+        assertEquals(ZONES[0] * 2.0, pipeline.fusionNoiseS, 1e-6 * ZONES[0] * 2.0);
+        p.dcgNoise = null;
+        pipeline.computeNoise(p);
+        assertEquals("no zones: the camera's curve for both", pipeline.noiseO, pipeline.fusionNoiseO, 0f);
+    }
+
     /** A dark scene (the night factor decides the shadow strength, no exposure floor involved). */
     private static WhyAe.Stats dark() {
         return WhyAe.stats((y, row) -> {

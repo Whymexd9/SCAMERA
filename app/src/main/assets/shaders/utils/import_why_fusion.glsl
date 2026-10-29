@@ -24,6 +24,24 @@ uniform vec2 warmU;
 // The brightest layer's weight never falls below its value deepFloorU sigma under the centre: a deep shadow takes ~the bright
 // layer (never more than em.w, the AE's own shadow exposure). Only where L.w < centre - deepFloorU * sigma; 0 / unset: off.
 uniform float deepFloorU;
+// P391 (owner, 2026-10-28: the shadow lift bounded by the frame's noise): the floor only as far as the display noise allows. A flat
+// deep shadow's fused luma F has the noise ~ gammaInv x F / SNR(I) (F ~ I^gammaInv there), so the floor may raise F only up to
+// x x SNR(I) / gammaInv: x the cap of that noise (a share of fused luma); y, z: the noise model of the guide I (variance y I + z,
+// the fusion's domain: x AE). Never under the curve without the floor, monotonic in I; x <= 0 / unset: the floor as before.
+uniform vec4 deepNoiseU;
+
+// The bright layer's floor weight of a pixel of guide I whose other layers weigh w.xyz with the lumas L (P391's cap on deepFloorU).
+float deepFloorOf(float I, vec4 w, vec4 L, float gammaInv, vec4 lw) {
+    float wf = exp(-0.5 * deepFloorU * deepFloorU) * lw.w + 0.000001;
+    if (deepNoiseU.x > 0.0) {
+        float snr = I / sqrt(max(deepNoiseU.y * I + deepNoiseU.z, 1.0e-30));
+        float fcap = deepNoiseU.x * snr / gammaInv;
+        float s0 = w.x + w.y + w.z, n0 = dot(w.xyz, L.xyz);
+        // the weight that brings (n0 + wf L.w) / (s0 + wf) to fcap; none when the bright layer itself stays under it
+        if (L.w > fcap) wf = min(wf, max((fcap * s0 - n0) / (L.w - fcap), 0.0));
+    }
+    return wf;
+}
 
 // ACES tone scale of the kernel [fc_cl_source.cl:971-976] with pre-gain 1.5, a 2.51, d 0.59.
 vec4 acescg(vec4 v, float toe) {
@@ -94,7 +112,7 @@ void prepare(vec3 rgb, out float I, out vec4 p, out vec4 L) {
     vec4 d = L - vec4(center);
     float var = max(smoothness * smoothness, 0.001);
     vec4 w = exp(-0.5 * (d * d) / var) * lw + 0.000001;
-    if (deepFloorU > 0.0 && d.w < 0.0) w.w = max(w.w, exp(-0.5 * deepFloorU * deepFloorU) * lw.w + 0.000001);
+    if (deepFloorU > 0.0 && d.w < 0.0) w.w = max(w.w, deepFloorOf(I, w, L, gammaInv, lw));
     p = w / (w.x + w.y + w.z + w.w);
 }
 
@@ -112,7 +130,7 @@ float fusedAt(float I, float sw) {
     vec4 L = pow(max(acescg(I * em, toe), vec4(0.000001)), vec4(gammaInv));
     vec4 d = L - vec4(center);
     vec4 w = exp(-0.5 * (d * d) / max(smoothness * smoothness, 0.001)) * lw + 0.000001;
-    if (deepFloorU > 0.0 && d.w < 0.0) w.w = max(w.w, exp(-0.5 * deepFloorU * deepFloorU) * lw.w + 0.000001);
+    if (deepFloorU > 0.0 && d.w < 0.0) w.w = max(w.w, deepFloorOf(I, w, L, gammaInv, lw));
     return dot(w, L) / (w.x + w.y + w.z + w.w);
 }
 

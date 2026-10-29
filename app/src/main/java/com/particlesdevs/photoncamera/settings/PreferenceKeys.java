@@ -1024,6 +1024,17 @@ public class PreferenceKeys {
         // t^2 read_b / read_f (lamp: A 3.32 -> 1.48, the optimum 1.46; X7U long shutter 4.00 -> 2.63). OPPO replays: flat noise -1 to
         // -4 %, detail -0.1 % or less, no ghosts. scam_dev.txt "hybrid_long_set 0" = before.
         if (hybridValue("long_set", 1f) > 0f) out.append("noiseRoles 1\nshastaNoiseWeight 0.005\n");
+        // P392 (owner, 2026-10-28: «Без отказа целиком. Отсекать только пятна и ячейки, где есть движение ... Замену выбирать по
+        // пикселю ... Без швов ... Без ложного движения»): after the P350 set (later lines win in the worker). The ultrashort
+        // frames refused per moved region (hysteresis on the noise-normalised check, closed and grown; alias damping of its colour
+        // part), the validity smoothed along the light's contour (guided filter), and per pixel the valid frames, N where N holds
+        // data, inside the N clip a plausible frame that moved, else a fill pulled from the valid light around (never a dark
+        // object pasted into a light, never the white clip within ~96 px of the light). scam_dev.txt "hybrid_us_partial 0" = before.
+        if (hybridValue("us_partial", 1f) > 0f) out.append("bentoPartial 1\nbentoAliasDamp 1\n");
+        // P392: a long frame whose moved share is above «Длинные кадры: отказ при движении» (up to 60 %) is kept and only its moved
+        // blocks are left out (dilated, feathered) instead of the whole frame (the owner's burst: all three long frames dropped for a
+        // moving hand, 20 % of the blocks). scam_dev.txt "hybrid_long_scope 0" = the whole frame dropped, as before.
+        if (hybridValue("long_scope", 1f) > 0f) out.append("shastaMotionScope 1\n");
         // P313 (owner, vivo X200 Ultra 2x ISZ in daylight: «все фото в области светов очень мыльное и с кучей артефактов»): the
         // native mosaic merge (Quad / Tetra) leaves Bento's cells to the N frames and fills only what they clipped from the
         // ultrashort frames, in a pass after it (worker HybridTuning::mosaicUsFill; default 0 = replays unchanged). scam_dev.txt

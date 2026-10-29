@@ -6,7 +6,8 @@ straight from the R16UI texture, LiveWhyTone.drawFused); P314's path is preview/
 linear frame, then why/combine.glsl POINT_FUSED 1 on it (LiveWhyTone.draw), both into an 8-bit target as on the phone.
 
 - RAW_SOURCE 0 leaves why/combine.glsl token for token as it was before P365 (POINT_FUSED 0: the photo; POINT_FUSED 1: the
-  viewfinder's tone pass of P314): its token streams against the stored ones of 7a920e8b, and that commit's file when git has it;
+  viewfinder's tone pass of P314): its token streams against the stored ones of 7a920e8b, and that commit's file when git has it
+  (the P370 signed hue and the P393 vibrance shape taken out as check_colour_output.py does);
 - the rawdevelop_fs functions import_vfraw.glsl carries are rawdevelop_fs's own, token for token;
 - synthetic RGGB / GRBG / GBRG / BGGR frames of a plain Bayer sensor (the tone at the viewport: the direct one-pass draw), a frame
   of Quad cell means and a Quad frame of block 2 (the tone at the mosaic's colour grid: the 2-pass case), with sensor noise,
@@ -171,9 +172,12 @@ def source_part() -> None:
     combine = read(SH / 'why/combine.glsl')
     # P370 (B2): the signed hue (signedHueU, off when unset) is taken out as check_colour_output.py does, after checking it is there
     sys.path.insert(0, str(ROOT / 'tools'))
-    from check_colour_output import has_signed_hue, without_signed_hue
+    from check_colour_output import has_signed_hue, without_signed_hue, has_p393, without_p393
     check(has_signed_hue(combine), 'combine.glsl lost the P370 signed hue')
     combine = without_signed_hue(combine)
+    # P393: the light-tone vibrance's shape (vibHlShapeU) as well - P341's block in its place (tools/check_vibrance_hl.py renders it)
+    check(has_p393(combine), 'combine.glsl lost the P393 shape of the light-tone vibrance')
+    combine = without_p393(combine)
     check('#define RAW_SOURCE 0' in combine, 'combine.glsl has no "#define RAW_SOURCE 0"')
     hashes = {p: token_hash(combine, p) for p in ('0', '1')}
     for p, h in hashes.items():

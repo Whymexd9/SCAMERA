@@ -223,7 +223,11 @@ public final class LiveWhyTone {
     private float center, smooth, gammaInv, toe, eps, mono, inScale, macro, hlWhite, filmToe, deltaChroma, clarity, flatProtect;
     /** P369 (viewfinder-vibhl): the light-tone vibrance (P341), as WhyCombine sets it. */
     private float vibHl;
+    /** P393: the light tones' share of the mid-tone chroma (LIGHT_CHROMA), as WhyCombine sets it. */
+    private float lightChroma;
     private float[] vib = new float[3];
+    /** P393: the light-tone vibrance's shape for pale colour, as WhyCombine sets it. */
+    private float[] vibHlShape = WhyTone.VIBRANCE_HL_SHAPE.clone();
     private int radius;
     /** P314: the box radius of this draw (vf_why 2): radius scaled from the viewport to the tone size, the same footprint. */
     private int boxRadius = 1;
@@ -513,7 +517,9 @@ public final class LiveWhyTone {
         deltaChroma = Math.max(0f, Math.min(1f, WhyTone.value("delta_chroma", 1f)));
         clarity = WhyTone.value("clarity", 0f);
         flatProtect = WhyTone.value("flat_protect", 0f);
+        vibHlShape = WhyTone.vibranceHlShape();
         vibHl = WhyTone.vibranceHl();
+        lightChroma = WhyTone.lightChroma();
         // P378 review: the lens' f-number (the sky's absolute EV), as Parameters reads it
         float[] apertures = camera != null ? camera.get(android.hardware.camera2.CameraCharacteristics.LENS_INFO_AVAILABLE_APERTURES) : null;
         aperture = apertures != null && apertures.length > 0 && apertures[0] > 0f ? apertures[0] : 1.8f;
@@ -628,6 +634,21 @@ public final class LiveWhyTone {
         final float merged = Math.max(1f, 0.55f * PreferenceKeys.hybridValue("zsl_frames", 20f));
         settings.noiseS = noiseS / merged;
         settings.noiseO = noiseO / merged;
+        frameNoiseS = noiseS;
+        frameNoiseO = noiseO;
+    }
+
+    /** P391: the drawn frame's one-frame noise model (variance S x + O of the normalised raw), for the fusion's noise-bound floor. */
+    private double frameNoiseS, frameNoiseO;
+
+    /**
+     * P391: import why_fusion deepNoiseU of the viewfinder at the AE {@code ae} - the photo's (WhyFusion.guideNoise) with the merge's
+     * expected share of the frame's noise (its frame map is the photo's alone): {tau, S_I, O_I}, zeros without a model.
+     */
+    private float[] deepNoise(float ae) {
+        final float[] n = WhyFusion.guideNoise((float) frameNoiseS, (float) frameNoiseO, WhyTone.expectedMerged(), ae, inScale, WhyTone.noiseScale());
+        final float tau = n == null ? 0f : WhyTone.deepNoise();
+        return tau > 0f ? new float[]{tau, n[0], n[1]} : new float[]{0f, 0f, 0f};
     }
 
     /**
@@ -737,6 +758,7 @@ public final class LiveWhyTone {
     /** P314: the fusion's curve of an AE result (FusedCurve, the current fusion settings); P383: the shown one eases towards it. */
     private void fillCurve(WhyAe.Result r) {
         FusedCurve.DEEP_FLOOR[0] = WhyTone.deepFloor();
+        System.arraycopy(deepNoise(r.ae), 0, FusedCurve.DEEP_NOISE, 0, 3);
         FusedCurve.fill(curve, WhyAe.exposures(r), lw, center, smooth, gammaInv, toe, mono);
         curveOf = r;
     }
@@ -845,6 +867,8 @@ public final class LiveWhyTone {
         set(p, "toeU", toe);
         set(p, "monoU", mono);
         set(p, "deepFloorU", WhyTone.deepFloor());
+        final float[] dn = deepNoise(aeNow);
+        GLES20.glUniform4f(loc(p, "deepNoiseU"), dn[0], dn[1], dn[2], 0f);
     }
 
     /** The separable box of WhyFusion (radius r) in place: t -> tmp -> t. */
@@ -946,8 +970,11 @@ public final class LiveWhyTone {
         set(p, "ditherU", 1);
         set(p, "headroomU", 0);
         set(p, "hlWhiteU", hlWhite);
+        GLES20.glUniform4f(loc(p, "vibHlShapeU"), vibHlShape[0], vibHlShape[1], vibHlShape[2], vibHlShape[3]);   // P393, as the photo
         // P369 (viewfinder-vibhl): the light-tone vibrance, as the photo (P301 parity)
         set(p, "vibHlU", vibHl);
+        // P393: the photo's light-tone chroma (LIGHT_CHROMA, AgX only; no location without the define)
+        set(p, "lightChromaU", lightChroma);
         if (skyOnDraw) {
             // P378 review: the photo's sky term (WhyCombine) on the shown cells - the level share eased (0 backlit), the tops in this
             // frame's log2 Y
@@ -1051,6 +1078,8 @@ public final class LiveWhyTone {
         if (point && fused) defs.add(new String[]{"RAW_SOURCE", "1"});
         if (colourOn) defs.add(new String[]{"COLOUR_LOOK", "1"});
         if (toneOp != ToneCurve.AGX) defs.add(new String[]{"TONE_OP", "1"});
+        // P393: the light tones of a saturated colour keep its mid-tone chroma, as the photo (AgX only)
+        if (toneOp == ToneCurve.AGX && lightChroma > 0f) defs.add(new String[]{"LIGHT_CHROMA", "1"});
         // P369: a film's scene table (FILM_SIM) or the chosen LUT (FILM_LUT), never both
         if (lutOn) defs.add(new String[]{scene ? "FILM_SIM" : "FILM_LUT", "1"});
         // P378 review: the sky term (the photo's SKY, its cells from LiveSky)

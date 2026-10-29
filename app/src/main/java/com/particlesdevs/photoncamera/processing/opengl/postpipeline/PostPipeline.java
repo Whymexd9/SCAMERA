@@ -254,7 +254,16 @@ public class PostPipeline extends GLBasePipeline {
         return in;
     }
 
-    private void computeNoise(Parameters parameters) {
+    /**
+     * P391 (review): the noise model of the WHY fusion's caps (WhyStats: the deep floor, the fine bands) - the one-frame pair as
+     * noiseS / noiseO, but on a DCG shot with measured zones the deep shadows' zone (high gain under the knee), where the clamp's
+     * pair is mid grey's (low gain above the knee); NaN until computeNoise.
+     */
+    public float fusionNoiseS = Float.NaN, fusionNoiseO = Float.NaN;
+
+    void computeNoise(Parameters parameters) {
+        fusionNoiseS = Float.NaN;
+        fusionNoiseO = Float.NaN;
         NoiseModeler modeler = parameters.noiseModeler;
         if (modeler == null || modeler.computeModel == null
                 || modeler.computeModel.length < 3
@@ -264,6 +273,8 @@ public class PostPipeline extends GLBasePipeline {
             Log.w("PostPipeline", "Missing noise model; using conservative fallback");
             noiseS = 1.0e-4f;
             noiseO = 1.0e-6f;
+            fusionNoiseS = noiseS;
+            fusionNoiseO = noiseO;
             return;
         }
         noiseS = modeler.computeModel[0].first.floatValue() +
@@ -279,12 +290,17 @@ public class PostPipeline extends GLBasePipeline {
         // the model averaged here (its channel ratios and stacking); without zones the camera's curve stays (logged)
         if (parameters.dcgShot && !com.particlesdevs.photoncamera.processing.opengl.PostGlMode.legacy()) {
             final float[] zones = NoiseModeler.dcgZones(parameters.dcgNoise);
-            final float[] clamp = zones == null ? null : WhyAe.dcgClampModel(zones, noiseS, noiseO,
-                    modeler.baseModel != null && modeler.baseModel.length > 1 && modeler.baseModel[1] != null
-                            ? modeler.baseModel[1].first : Double.NaN,
-                    modeler.baseModel != null && modeler.baseModel.length > 1 && modeler.baseModel[1] != null
-                            ? modeler.baseModel[1].second : Double.NaN);
+            final double baseS = modeler.baseModel != null && modeler.baseModel.length > 1 && modeler.baseModel[1] != null
+                    ? modeler.baseModel[1].first : Double.NaN;
+            final double baseO = modeler.baseModel != null && modeler.baseModel.length > 1 && modeler.baseModel[1] != null
+                    ? modeler.baseModel[1].second : Double.NaN;
+            final float[] clamp = zones == null ? null : WhyAe.dcgClampModel(zones, noiseS, noiseO, baseS, baseO);
             if (clamp != null) {
+                // P391 (review): the fusion's caps act on the deep shadows, under the knee: the high-gain zone's offset
+                final float[] shadow = WhyAe.dcgShadowModel(zones, noiseS, noiseO, baseS, baseO);
+                fusionNoiseS = shadow[0];
+                fusionNoiseO = shadow[1];
+                Log.i("PostPipeline", "DCG fusion noise model (the deep shadows' high-gain zone): S " + shadow[0] + ", O " + shadow[1]);
                 Log.i("PostPipeline", "DCG gain clamp model: S " + noiseS + " -> " + clamp[0] + ", O " + noiseO + " -> " + clamp[1]
                         + " (zones " + java.util.Arrays.toString(zones) + ", offset of 0.5's zone)");
                 noiseS = clamp[0];
@@ -296,6 +312,10 @@ public class PostPipeline extends GLBasePipeline {
         Log.d("PostPipeline", "NoiseS:" + noiseS + "\n" + "NoiseO:" + noiseO);
         noiseO = Math.max(noiseO, Float.MIN_NORMAL);
         noiseS = Math.max(noiseS, Float.MIN_NORMAL);
+        if (Float.isNaN(fusionNoiseS)) fusionNoiseS = noiseS;
+        if (Float.isNaN(fusionNoiseO)) fusionNoiseO = noiseO;
+        fusionNoiseO = Math.max(fusionNoiseO, Float.MIN_NORMAL);
+        fusionNoiseS = Math.max(fusionNoiseS, Float.MIN_NORMAL);
     }
 
     public Bitmap Run(ByteBuffer inBuffer, Parameters parameters) {

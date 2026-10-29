@@ -71,6 +71,22 @@ final class WhyNoiseClamp {
         return (float) Math.max(1.0, Math.min(normals, frames));
     }
 
+    /**
+     * P391 (review): N_eff of the WHY fusion's noise caps - {@link #effectiveFrames} when the merge's map is the output's size and
+     * the worker reported its median coverage, else (a 200 MP shot: no map above 100 MP; a report without the median) what the RAW
+     * viewfinder expects of a handheld burst, 0.55 of the merged N frames (LiveWhyTone.mergedNoise), clamped to [1, normals]: N_eff 1
+     * there gave a merged shot the one-frame noise and the caps cut its clean shadows' lift.
+     */
+    static float fusionFrames(@Nullable ByteBuffer map, int width, int height, float medianFrames, int normals) {
+        final boolean usable = map != null && width > 0 && height > 0 && (long) width * height == map.capacity() && map.limit() == map.capacity()
+                && medianFrames > 0f && !Float.isInfinite(medianFrames);
+        if (usable) return effectiveFrames(map, width, height, medianFrames, normals);
+        return normals > 1 ? Math.max(1f, Math.min(normals, EXPECTED_SHARE * normals)) : 1f;
+    }
+
+    /** P391: the share of each normal frame a handheld burst's merge keeps (LiveWhyTone's: HYBRID MERGE FACTORS of the owner's logs). */
+    static final float EXPECTED_SHARE = 0.55f;
+
     /** The factor the clamp's slope and offset are multiplied by: N_eff^-0.8 (1 for N_eff 1). */
     static double modelScale(float effective) {
         return effective > 1f ? Math.pow(effective, -EXPONENT) : 1.0;

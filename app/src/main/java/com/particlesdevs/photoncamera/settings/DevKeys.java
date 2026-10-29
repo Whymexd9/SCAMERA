@@ -234,6 +234,11 @@ public final class DevKeys {
                 "Ultrashort frames: the tile flicker field is not applied when its tiles depart from their neighbours by this share of their deviation (motion; 0: always)")));
         k.add(n(merge, "hybrid_long_set", "1", Lang.t("Длинные кадры: набор P358 (шум по замеру, вес по шуму; 0 — как раньше)",
                 "Long frames: the P358 set (measured noise, weight by noise; 0: as before)")));
+        // P392: partial rejection of the ultrashort frames and of the long frames under motion
+        k.add(n(merge, "hybrid_us_partial", "1", Lang.t("Короткие кадры: отказ только в областях движения, замена по пикселю, заполнение пересвета без швов (0 — как раньше)",
+                "Ultrashort frames: refusal only in the moved regions, the replacement chosen per pixel, the clip filled without seams (0: as before)")));
+        k.add(n(merge, "hybrid_long_scope", "1", Lang.t("Длинные кадры: при движении убираются только сдвинутые блоки, а не весь кадр (0 — как раньше)",
+                "Long frames: under motion only the moved blocks are left out, not the whole frame (0: as before)")));
         k.add(n(merge, "hybrid_rej_set", "1", Lang.t("Реджекты: набор P344 (чистая карта на статике, движение отсекается; 0 — как P341)", "Rejection: the P344 set (a clean map on static areas, motion still cut; 0: as P341)")));
         k.add(n(merge, "hybrid_rej_pool", "1", Lang.t("Реджекты: расстояние по 3×3 клеткам вместо одной (чистая карта без шумовых отказов; 0 — как раньше)", "Rejection: the distance over 3x3 cells instead of one (a clean map without noise rejections; 0: as before)")));
         k.add(n(merge, "hybrid_rej_prior", "1", Lang.t("Реджекты: плавный учёт движения по полю выравнивания (0 — порог по плитке, как раньше)", "Rejection: soft motion prior from the alignment field (0: the per-tile threshold as before)")));
@@ -281,6 +286,9 @@ public final class DevKeys {
         // P362: RawTherapee's «Inpaint opposed» where no ultrashort frame holds the highlight
         k.add(s(post, "hybrid_highlight_opposed", true, Lang.t("Пересветы без коротких кадров (одиночные кадры, «Движение», отказ Bento): «Inpaint opposed» из RawTherapee (выкл — восстановление SCAM)",
                 "Highlights without ultrashort frames (single frames, Motion, Bento refused): RawTherapee's «Inpaint opposed» (off: the SCAM recovery)")));
+        // P393: a clipped channel of a coloured surface also takes the local light's colour (scamhdr/scamrgb oppLocalU)
+        k.add(s(post, "hybrid_highlight_opposed_local", true, Lang.t("Пересветы без коротких кадров: клипнутый канал цветной поверхности (листва на солнце) по цвету соседних неклипнутых пикселей, а не только по общей поправке кадра (выкл — как раньше: жёлтые листья уходили в оранжевый и розовый)",
+                "Highlights without ultrashort frames: a clipped channel of a coloured surface (sunlit leaves) from the colour of the unclipped pixels around, not the frame's one correction alone (off: as before - yellow leaves went orange and pink)")));
         k.add(n(post, "post_priority", null, Lang.t("Приоритет потока обработки (nice; пусто — не менять)", "Priority of the processing thread (nice; empty: unchanged)")));
         k.add(n(post, "gpu_low_priority", "2", Lang.t("Приоритет GPU-контекста обработки: 2 — средний, 1 — низкий, 0 — обычный", "Priority of the processing GPU context: 2 medium, 1 low, 0 normal")));
         k.add(s(post, "post_shared_context", true, Lang.t("Один GPU-контекст обработки на всё время работы: программы шейдеров не загружаются заново на каждый снимок (выкл — новый контекст на каждый снимок)",
@@ -319,14 +327,44 @@ public final class DevKeys {
         k.add(n(post, "hybrid_why_sat_light_hi", "0.95", Lang.t("Тон с запасом Bento: цветной свет: насыщенность полных весов ядра", "Tone with Bento headroom: coloured light - saturation of the full kernel weights")));
         k.add(n(post, "hybrid_why_sat_light_warm_lo", "0.1", Lang.t("Тон с запасом Bento: цветной свет: тёплые оттенки (закат, огонь) без весов ядра, начало ((G-B)/(R-B)); нижняя = верхней — выкл.", "Tone with Bento headroom: coloured light - warm hues (sunset, fire) left out of the kernel's weights, start ((G-B)/(R-B)); lo = hi: off")));
         k.add(n(post, "hybrid_why_sat_light_warm_hi", "0.25", Lang.t("Тон с запасом Bento: цветной свет: тёплые оттенки, полное исключение", "Tone with Bento headroom: coloured light - warm hues fully left out")));
-        k.add(n(post, "hybrid_why_fusion_guided_lo", "0.8", Lang.t("Тон: света выше белого через guided filter вместо пирамиды (без ореолов у тёмных предметов), начало (яркость x AE); нижняя = верхней — выкл.", "Tone: light above white through the guided filter instead of the pyramid (no halos round dark objects), start (luminance x AE); lo = hi: off")));
-        k.add(n(post, "hybrid_why_fusion_guided_hi", "1.6", Lang.t("Тон: света через guided filter, полностью (яркость x AE)", "Tone: light through the guided filter, fully (luminance x AE)")));
-        k.add(n(post, "hybrid_why_fusion_edge_lo", "0.3", Lang.t("Тон: у резких границ (рама окна) guided filter вместо пирамиды (без ореола вдоль рамы), начало: отличие света пикселя от грубого уровня, EV; нижняя = верхней — выкл.", "Tone: at strong edges (a window frame) the guided filter instead of the pyramid (no glow along the frame), start: the pixel's light against the coarsest level, EV; lo = hi: off")));
-        k.add(n(post, "hybrid_why_fusion_edge_hi", "1.0", Lang.t("Тон: у резких границ guided filter полностью (EV)", "Tone: at strong edges the guided filter fully (EV)")));
+        k.add(n(post, "hybrid_why_fusion_guided_lo", "0.8", Lang.t("Тон: света выше белого через guided filter вместо пирамиды (без ореолов у тёмных предметов), начало (яркость x AE); нижняя = верхней — выкл.; при включённых полосах пирамиды — выкл., если строка не задана явно", "Tone: light above white through the guided filter instead of the pyramid (no halos round dark objects), start (luminance x AE); lo = hi: off; off with the pyramid's bands on unless the line is set explicitly")));
+        k.add(n(post, "hybrid_why_fusion_guided_hi", "1.6", Lang.t("Тон: света через guided filter, полностью (яркость x AE); при включённых полосах пирамиды — выкл., если строка не задана явно", "Tone: light through the guided filter, fully (luminance x AE); off with the pyramid's bands on unless the line is set explicitly")));
+        k.add(n(post, "hybrid_why_fusion_edge_lo", "0.3", Lang.t("Тон: у резких границ (рама окна) guided filter вместо пирамиды (без ореола вдоль рамы), начало: отличие света пикселя от грубого уровня, EV; нижняя = верхней — выкл.; при включённых полосах пирамиды — выкл., если строка не задана явно", "Tone: at strong edges (a window frame) the guided filter instead of the pyramid (no glow along the frame), start: the pixel's light against the coarsest level, EV; lo = hi: off; off with the pyramid's bands on unless the line is set explicitly")));
+        k.add(n(post, "hybrid_why_fusion_edge_hi", "1.0", Lang.t("Тон: у резких границ guided filter полностью (EV); при включённых полосах пирамиды — выкл., если строка не задана явно", "Tone: at strong edges the guided filter fully (EV); off with the pyramid's bands on unless the line is set explicitly")));
         k.add(n(post, "hybrid_why_fusion_edge_floor", "0.0078125", Lang.t("Тон: порог света (яркость x AE), ниже которого глубокие тени считаются одним уровнем (без доли на их шуме)", "Tone: the light floor (luminance x AE) under which the deep shadows count as one level (no share on their noise)")));
+        // P391: the edge-aware bands of the WHY pyramid, its continuous depth, the noise-bound deep floor and band gain
+        k.add(n(post, "hybrid_why_fusion_bands", "1", Lang.t("Тон: у резких границ полосы пирамиды берутся из попиксельного слияния (без ореолов у рам окон, веток, ламп, горизонта); 0 — выкл., пирамида как раньше",
+                "Tone: at strong edges the pyramid's bands come from the per-pixel fusion (no halos at window frames, twigs, lamps, the horizon); 0: off, the pyramid as before")));
+        k.add(n(post, "hybrid_why_fusion_bands_lo", "1.2", Lang.t("Тон, полосы: перепад света у границы (EV), с которого она берёт полосы попиксельного слияния (текстура ±0,5 EV остаётся пирамиде)",
+                "Tone, bands: the light step at an edge (EV) from which it takes the per-pixel fusion's bands (a ±0.5 EV texture stays the pyramid's)")));
+        k.add(n(post, "hybrid_why_fusion_bands_hi", "1.8", Lang.t("Тон, полосы: перепад света у границы (EV), с которого полосы попиксельного слияния берутся полностью",
+                "Tone, bands: the light step at an edge (EV) from which the per-pixel fusion's bands are taken fully")));
+        k.add(n(post, "hybrid_why_fusion_bands_reach", "3", Lang.t("Тон, полосы: охват вокруг границы на каждом уровне, пикс. уровня",
+                "Tone, bands: reach round an edge at every level, level px")));
+        k.add(n(post, "hybrid_why_fusion_bands_fall", "0.25", Lang.t("Тон, полосы: спад меры границы на пиксель уровня от неё, доля верхнего порога (сильная граница охватывает больше, пик текстуры почти не расходится)",
+                "Tone, bands: the edge measure's fall per level px away from it, a share of the upper threshold (a strong edge reaches further, a texture's peak hardly spreads)")));
+        k.add(n(post, "hybrid_why_fusion_bands_strength", "1.0", Lang.t("Тон, полосы: сила (0 — пирамида, кроме предела шума мелких полос)",
+                "Tone, bands: strength (0: the pyramid, but for the fine bands' noise limit)")));
+        k.add(n(post, "hybrid_why_fusion_bands_noise", "2", Lang.t("Тон, полосы: граница считается только сверх стольких сигм шума её меры (вычитаются в квадратуре; шум — не граница); 0 — выкл.",
+                "Tone, bands: an edge counts only beyond this many noise sigmas of its measure (taken out in quadrature; noise is no edge); 0: off")));
+        k.add(n(post, "hybrid_why_fusion_depth_smooth", "1", Lang.t("Тон: глубина пирамиды без скачков по разрешению (нижняя полоса по дробной глубине, с полосами); 0 — целые уровни, как раньше",
+                "Tone: the pyramid's depth without jumps across resolutions (the lowest band by the fractional depth, with the bands); 0: whole levels, as before")));
+        k.add(n(post, "hybrid_why_deep_noise", "0.008", Lang.t("Тон: глубокие тени поднимаются ярким слоем не дальше, чем позволяет шум кадра — предел шума в тенях (доля яркости слияния); 0 — выкл.",
+                "Tone: deep shadows lifted by the bright layer only as far as the frame's noise allows - the shadow noise limit (share of fused luma); 0: off")));
+        k.add(n(post, "hybrid_why_noise_scale", "1.0", Lang.t("Тон: поправка модели шума к шуму whyLow (после шумодава) для пределов шума тона",
+                "Tone: noise-model correction to whyLow's noise (after the denoise) for the tone's noise limits")));
+        k.add(n(post, "hybrid_why_fusion_noise_lo", "2", Lang.t("Тон: усиление мелких полос пирамиды сверх кривой — только где полоса выше шума, начало (сигмы шума); нижняя = верхней — выкл.",
+                "Tone: the pyramid's fine-band gain beyond the curve only above the noise, start (noise sigmas); lo = hi: off")));
+        k.add(n(post, "hybrid_why_fusion_noise_hi", "4", Lang.t("Тон: усиление мелких полос сверх кривой полностью (сигмы шума)",
+                "Tone: the fine-band gain beyond the curve fully (noise sigmas)")));
+        k.add(n(post, "hybrid_why_fusion_noise_levels", "3", Lang.t("Тон: сколько мелких уровней пирамиды ограничены шумом (до 4)",
+                "Tone: how many fine pyramid levels the noise limits (up to 4)")));
         k.add(n(post, "hybrid_why_sun_bloom", "1.0", Lang.t("Тон: ореол вокруг полностью клипнутого ядра (солнце на закате), 0 — выкл.", "Tone: glow round a fully clipped core (a setting sun), 0 = off")));
         k.add(n(post, "hybrid_why_sun_bloom_radius", "0.033", Lang.t("Тон: радиус ореола солнца, доля короткой стороны кадра", "Tone: radius of the sun glow, share of the frame's shorter side")));
         k.add(n(post, "hybrid_why_vibrance_hl", "1.0", Lang.t("Тон: насыщенность светлых тонов (небо на закате), яркость не меняется; 0 — выкл.", "Tone: vibrance of the light tones (a sunset sky), lightness kept; 0 = off")));
+        // P393: the light-tone vibrance's shape for pale colour (why/combine.glsl vibHlShapeU)
+        k.add(s(post, "vibrance_hl_shape", true, Lang.t("Тон: насыщенность светлых тонов не усиливает оттенок баланса белого на бледных стенах, потолке, фасадах (выкл — как раньше, P341)",
+                "Tone: the light-tone vibrance leaves the white balance's tint of pale walls, ceilings and facades as it is (off: as before, P341)")));
         // P378: the WHY tone's sky term (WhySky / WhySkyMask; why/combine.glsl SKY)
         k.add(n(post, "hybrid_why_sky", "1.0", Lang.t("Тон: небо (облака нейтральные, небо ниже и объёмнее, без белой пелены на облаках; в контровом свете яркость неба не меняется), сила; 0 — выкл., как раньше",
                 "Tone: the sky (neutral clouds, a lower and more modelled sky, no white veil on the clouds; a backlit sky keeps its brightness), strength; 0 = off, as before")));
@@ -340,6 +378,9 @@ public final class DevKeys {
                 "Tone: deep shadows take the fusion's bright layer (threshold in sigmas under the centre; a room under a window is not crushed to black); 0 = off")));
         k.add(n(post, "hybrid_why_macro_toe", "1", Lang.t("Тон: контраст ниже середины степенью, без сдвига чёрного (тени не обрезаются в чёрный); 0 — прямая, как раньше",
                 "Tone: contrast below the middle as a power, no black offset (shadows are not clipped to black); 0 = the line, as before")));
+        // P393: the light tones of a saturated colour keep its mid-tone chroma (why/combine.glsl LIGHT_CHROMA, AgX only)
+        k.add(n(post, "hybrid_why_light_chroma", "1.0", Lang.t("Тон: насыщенные оранжево-жёлтые цвета в светах (листва на солнце) держат насыщенность полутонов, оттенок сдвигается к AgX только там, где sRGB его не удержит; кожа, зелень, синие, лампы, небо и бледные цвета как раньше; 0 — выкл., как раньше",
+                "Tone: saturated orange-yellow colours in the light tones (sunlit leaves) keep their mid-tone saturation, the hue moves towards AgX's only where sRGB cannot hold it; skin, greens, blues, lamps, the sky and pale colours as before; 0 = off, as before")));
         k.add(n(post, "hybrid_why_hr_knee", "0.5", Lang.t("Тон, света Bento выше 4x: колено плеча (x верх)", "Tone, Bento highlights above 4x: shoulder knee (x top)")));
         k.add(n(post, "hybrid_why_hr_room", "0.4", Lang.t("Тон, света Bento выше 4x: запас плеча (x верх)", "Tone, Bento highlights above 4x: shoulder room (x top)")));
         k.add(n(post, "hybrid_why_hr_detail", "0.35", Lang.t("Тон, света Bento выше 4x: деталь светов", "Tone, Bento highlights above 4x: highlight detail")));
