@@ -44,6 +44,7 @@ JAVA = ROOT / 'app/src/main/java/com/particlesdevs/photoncamera/processing/openg
 PROBE = '''precision highp float;
 precision highp sampler2D;
 uniform sampler2D InputBuffer;
+#define GAMMA_TYPE 0
 #import why_fusion
 out vec4 Output;
 void main() {

@@ -882,7 +882,8 @@ public class SettingsMenuTest {
             androidx.preference.PreferenceGroup cat=root.findPreference(g[0]);
             assertTrue(g[0]+" starts with its switch",cat.getPreference(0) instanceof androidx.preference.TwoStatePreference);
             assertEquals(g[1],cat.getPreference(0).getKey());
-            assertFalse("off by default",((androidx.preference.TwoStatePreference)cat.getPreference(0)).isChecked());
+            // P405: the own curve is the default operator (the owner's reference config), ACES and Uchimura are off
+            assertEquals(g[1]+" by default",g[1].endsWith("curve_on"),((androidx.preference.TwoStatePreference)cat.getPreference(0)).isChecked());
             for(int i=0;i<cat.getPreferenceCount();i++)
                 assertTrue("only its own settings in "+g[0]+": "+cat.getPreference(i).getKey(),cat.getPreference(i).getKey().startsWith(g[2]));
         }
@@ -933,7 +934,11 @@ public class SettingsMenuTest {
             assertNotNull(graph);
             int w=600;row.measure(android.view.View.MeasureSpec.makeMeasureSpec(w,android.view.View.MeasureSpec.EXACTLY),android.view.View.MeasureSpec.makeMeasureSpec(0,android.view.View.MeasureSpec.UNSPECIFIED));
             row.layout(0,0,w,row.getMeasuredHeight());
-            assertEquals("the default S",5,graph.curve().size());
+            // P405: unset, the reference config's 17 points; «S-кривая» puts WhyCam's S in
+            assertEquals("the reference config's curve",com.particlesdevs.photoncamera.processing.color.ToneCurve.SETTING_POINTS,pref.points());
+            assertEquals(17,graph.curve().size());
+            row.findViewWithTag("tone_curve_default").performClick();
+            assertEquals("the S",5,graph.curve().size());
             // a tap on an empty spot of the graph (x 0.6, y 0.3 of the plot) adds a point there, a drag moves it
             float x=graph.getLeft()+graph.getWidth()*0.6f,y=graph.getHeight()*0.62f;
             long t=android.os.SystemClock.uptimeMillis();
@@ -1147,7 +1152,9 @@ public class SettingsMenuTest {
      * curve's group, a new point being dragged, an edited curve with more points, then the ACES and Uchimura groups.
      */
     @Test @Config(qualifiers="ru-w400dp-h880dp-xhdpi") public void toneCurvePageRenderedForReview() throws Exception {
-        prefs.edit().putBoolean("pref_scam_hybrid_why_curve_on",true).commit();
+        // the edits below start from WhyCam's S (P405: the default is the reference config's 17 points)
+        prefs.edit().putBoolean("pref_scam_hybrid_why_curve_on",true)
+                .putString("pref_scam_hybrid_why_curve_points",com.particlesdevs.photoncamera.processing.color.ToneCurve.DEFAULT_POINTS).commit();
         try(var controller=org.robolectric.Robolectric.buildActivity(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.class)){
             controller.setup();var activity=controller.get();var fm=activity.getSupportFragmentManager();fm.executePendingTransactions();
             var root=(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment)fm.findFragmentById(R.id.settings_container);

@@ -374,7 +374,7 @@
     <string name="prefs_scam_hybrid_why_film_toe_title">Black depth (Shadow Crush)</string>
     <string name="prefs_scam_hybrid_why_film_toe_summary">Deepens the darkest tones. Higher: deeper blacks; lower: lighter shadows; 0: off.</string>
     <string name="prefs_scam_hybrid_why_curves_screen_title">Global tone mapping (AgX, ACES, curve)</string>
-    <string name="prefs_scam_hybrid_why_curves_screen_summary">AgX by default; ACES, Uchimura or your own curve instead.</string>
+    <string name="prefs_scam_hybrid_why_curves_screen_summary">Your own curve by default; AgX, ACES or Uchimura instead.</string>
     <string name="prefs_scam_hybrid_why_agx_category_title">AgX curve</string>
     <string name="prefs_scam_hybrid_why_agx_look_title">AgX look (Look Preset)</string>
     <string name="prefs_scam_hybrid_why_agx_look_summary">%s. Preset look of the AgX curve; Custom uses the settings below.</string>

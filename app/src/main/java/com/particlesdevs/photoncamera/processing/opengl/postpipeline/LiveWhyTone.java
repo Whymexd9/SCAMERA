@@ -515,7 +515,7 @@ public final class LiveWhyTone {
         toneOp = WhyTone.toneOperator();
         lw = WhyTone.layerWeights();
         center = WhyTone.fusionCenter();
-        smooth = WhyTone.value("blend_smoothness", 0.25f);
+        smooth = WhyTone.value("blend_smoothness", 0.45f);
         gammaInv = 1f / WhyTone.gamma();
         toe = WhyTone.value("aces_toe", 0.05f);
         radius = WhyFusion.GF_RADIUS > 1 ? WhyFusion.GF_RADIUS >> 1 : 1;
@@ -523,9 +523,9 @@ public final class LiveWhyTone {
         mono = WhyTone.fusionMono();
         inScale = (float) Math.pow(2.0, WhyTone.value("input_ev", 0f));
         macro = WhyTone.value("macro_contrast", 1.1f);
-        vib = new float[]{WhyTone.value("vibrance", 0f), WhyTone.value("vibrance_sky", 0.40f), WhyTone.value("vibrance_green", 0.20f)};
+        vib = new float[]{WhyTone.value("vibrance", 0f), WhyTone.value("vibrance_sky", 0.25f), WhyTone.value("vibrance_green", 0.05f)};
         hlWhite = Math.max(0f, Math.min(1f, WhyTone.value("hl_white", 0.15f)));
-        filmToe = WhyTone.value("film_toe", 0.10f);
+        filmToe = WhyTone.value("film_toe", 0f);
         deltaChroma = Math.max(0f, Math.min(1f, WhyTone.value("delta_chroma", 1f)));
         clarity = WhyTone.value("clarity", 0f);
         flatProtect = WhyTone.value("flat_protect", 0f);

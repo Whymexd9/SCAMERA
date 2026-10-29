@@ -112,8 +112,10 @@ public class ScamDiagnosticsReadmeTest {
                 WhyTone.colourMatrixOf(p, null));
         final float[] chain = parse(readme, "cameraToLinearSRGB");
         assertNotNull(readme, chain);
-        final float[] want = {2.852f, -0.484f, -0.187f, -0.242f, 1.344f, -0.505f, 0.113f, -0.543f, 3.542f};
-        for (int i = 0; i < 9; i++) assertEquals("element " + i, want[i], chain[i], 2e-3f);
+        // the ISP route's camera -> sRGB product, then the default matrix saturation (P405: 1.25, Y kept) of the look on the left
+        final float[] isp = {2.852f, -0.484f, -0.187f, -0.242f, 1.344f, -0.505f, 0.113f, -0.543f, 3.542f};
+        final float[] sat = WhyTone.cctSat(1.25f, null), want = mul3(sat, isp);
+        for (int i = 0; i < 9; i++) assertEquals("element " + i, want[i], chain[i], 3e-3f);
         final float[] n = p.whitePoint;
         for (int r = 0; r < 3; r++) assertEquals("row " + r + " maps the neutral to white", 1f,
                 chain[r * 3] * n[0] + chain[r * 3 + 1] * n[1] + chain[r * 3 + 2] * n[2], 1e-4f);
@@ -127,8 +129,8 @@ public class ScamDiagnosticsReadmeTest {
         assertTrue(readme, readme.contains("\nsensorToProPhoto=[1.8253"));
         assertTrue(readme, readme.contains("\nCamera2 noise slope=3.4935298E-4 offset=5.384647E-7"));
         // the accessor for new consumers is the same product before the look
-        final float[] c2s = p.cameraToSrgb();
-        for (int i = 0; i < 9; i++) assertEquals(chain[i], c2s[i], 1e-6f);
+        final float[] c2s = mul3(sat, p.cameraToSrgb());
+        for (int i = 0; i < 9; i++) assertEquals(chain[i], c2s[i], 1e-5f);
     }
 
     /** The uploaded intermediateToSRGB is the «Цвет» white matrix after CCT.matrix (WhyTone.colourMatrix). */
@@ -138,10 +140,11 @@ public class ScamDiagnosticsReadmeTest {
         p.ReCalcColor(false, result(X8U_CST, 0.54785156f, 0.41796875f));
         final float[] white = {1.1f, -0.05f, -0.05f, 0f, 1f, 0f, -0.02f, -0.02f, 1.04f};
         final float[] up = WhyTone.colourMatrixOf(p, white);
+        final float[] look = WhyTone.withCctSat(white);   // P405: the default matrix saturation 1.25 on the white matrix
         for (int r = 0; r < 3; r++)
             for (int c = 0; c < 3; c++) {
                 float s = 0f;
-                for (int k = 0; k < 3; k++) s += white[r * 3 + k] * p.CCT.matrix[k * 3 + c];
+                for (int k = 0; k < 3; k++) s += look[r * 3 + k] * p.CCT.matrix[k * 3 + c];
                 assertEquals(s, up[r * 3 + c], 1e-6f);
             }
         final String readme = ScamDiagnostics.readme(p, 597, 1L, 1L, 0f, 0f, "scene", null, up);
@@ -161,5 +164,13 @@ public class ScamDiagnosticsReadmeTest {
         p.ReCalcColor(false, result(cst(1, 1, 0, 0, 0, 1, 0, 0, 0, 1), 0.54785156f, 0.41796875f));
         assertEquals("DNG_FM", p.colourSource);
         assertTrue(p.colourSummary(), p.colourSummary().startsWith("colour: DNG_FM"));
+    }
+
+    private static float[] mul3(float[] a, float[] b) {
+        final float[] o = new float[9];
+        for (int r = 0; r < 3; r++)
+            for (int c = 0; c < 3; c++)
+                for (int k = 0; k < 3; k++) o[r * 3 + c] += a[r * 3 + k] * b[k * 3 + c];
+        return o;
     }
 }

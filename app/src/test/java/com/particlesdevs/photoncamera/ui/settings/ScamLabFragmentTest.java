@@ -212,8 +212,14 @@ public class ScamLabFragmentTest {
 
     @Test public void acesAndUchimuraParametersActWithTheirOperator() {
         final Map<String, Object> none = Collections.emptyMap();
-        assertEquals(Collections.singletonMap(H + "why_aces_on", true), ScamLabFragment.forced(H + "why_aces_a", none, tree));
-        assertEquals(Collections.singletonMap(H + "why_uchi_on", true), ScamLabFragment.forced(H + "why_uchi_b", none, tree));
+        // P405: the own curve is on by default, so an ACES or Uchimura row turns it off too
+        final Map<String, Object> acesNone = new HashMap<>(), uchiNone = new HashMap<>();
+        acesNone.put(H + "why_aces_on", true);
+        acesNone.put(H + "why_curve_on", false);
+        uchiNone.put(H + "why_uchi_on", true);
+        uchiNone.put(H + "why_curve_on", false);
+        assertEquals(acesNone, ScamLabFragment.forced(H + "why_aces_a", none, tree));
+        assertEquals(uchiNone, ScamLabFragment.forced(H + "why_uchi_b", none, tree));
         // WhyTone.toneOperator: own curve > Uchimura > ACES
         final Map<String, Object> both = new HashMap<>();
         both.put(H + "why_curve_on", true);

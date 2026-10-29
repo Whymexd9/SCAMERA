@@ -798,6 +798,27 @@ public final class SettingsMigration {
             e.putInt(CELL_CLIP_REV, 1);
             markOnly = true;
         }
+        // P405 (owner, 2026-10-29: «сделай так чтобы настройки из этого конфига были у нас дефолтные»): the reference config's
+        // values are the defaults; a stored former XML default (written by setDefaultValues) moves to it once, a value chosen by
+        // hand stays. Own marker, set in the first run whatever it finds.
+        if (!values.containsKey(CONFIG_DEFAULTS_REV)) {
+            for (Object[] row : CONFIG_DEFAULTS) {
+                final String key = ScamHybridKeys.PREFIX + row[0];
+                final Object v = values.get(key);
+                if (v == null) continue;
+                if (row[1] instanceof Boolean) {
+                    if (row[1].equals(v)) { ModuleProfiles.put(e, key, row[2]); changed = true; }
+                } else if (row[1] instanceof String) {
+                    if (row[1].equals(v)) { e.putString(key, (String) row[2]); changed = true; }
+                } else if (isNumber(v, (Float) row[1])) {
+                    final float to = (Float) row[2];
+                    ModuleProfiles.put(e, key, v instanceof String ? PreferenceNumber.format(to, true) : (Object) to);
+                    changed = true;
+                }
+            }
+            e.putInt(CONFIG_DEFAULTS_REV, 1);
+            markOnly = true;
+        }
         // P164: the multiscale finish denoise's stored engine value has its own name; any value but "nlm" is that engine
         final Object engine = values.get(ScamHybridKeys.PREFIX + "dn_engine");
         if (engine instanceof String && !"nlm".equals(engine) && !"multiscale".equals(engine)) {
@@ -843,6 +864,25 @@ public final class SettingsMigration {
     static final String GLOW_DEFAULTS_REV = "pref_scam_hybrid_glow_defaults_rev";
     /** P394: marker of the one-time move of a stored «Клип ячейки 2×2 целиком» (on, the former default) to off. */
     static final String CELL_CLIP_REV = "pref_scam_hybrid_cell_clip_rev";
+
+    /** P405: marker of the one-time move of the former defaults to the owner's reference config of 2026-10-29. */
+    static final String CONFIG_DEFAULTS_REV = "pref_scam_hybrid_config_defaults_rev";
+    /** P405: {key after pref_scam_hybrid_, the former default, the reference config's}. */
+    static final Object[][] CONFIG_DEFAULTS = {
+            {"why_bright_thresh", 0.8f, 0.9f}, {"why_hl_boost", 1f, 1.1f}, {"why_hl_blend", 0.33f, 0.5f}, {"why_dark_thresh", 15f, 12.5f},
+            {"why_dark_pixel_thresh", 10f, 22f}, {"why_contrast_boost", 0.5f, 0.3f}, {"why_agx_slope", 2.7f, 2.45f}, {"why_agx_tp", 1.6f, 2f},
+            {"why_agx_ev", 0.3f, 0f}, {"why_agx_inset", 100f, 50f}, {"why_uchi_post_gain", 0.9f, 1f}, {"why_curve_on", false, true},
+            {"why_curve_points", com.particlesdevs.photoncamera.processing.color.ToneCurve.DEFAULT_POINTS,
+                    com.particlesdevs.photoncamera.processing.color.ToneCurve.SETTING_POINTS},
+            {"why_curve_boost", 0f, 1f}, {"why_film_toe", 0.1f, 0f}, {"why_highlight_str", 2f, 2.1f}, {"why_fusion_layout", "0", "1"},
+            {"why_classic_weight_hl", 0.8f, 1f}, {"why_classic_weight_mid", 1f, 2f}, {"why_classic_weight_shadow", 0.5f, 1f},
+            {"why_classic_weight_center", 0.5f, 1f}, {"why_blend_smoothness", 0.25f, 0.45f}, {"why_bracket_denoise", 1f, 0f},
+            {"why_ms_denoise", false, true}, {"why_ms_luma", 1f, 0.2f}, {"why_ms_luma_l0", 1f, 0.4f}, {"why_ms_luma_l1", 1f, 0.1f},
+            {"why_ms_luma_l2", 1f, 0.35f}, {"why_ms_chroma", 2f, 0.5f}, {"why_ms_chroma_l0", 1f, 0.2f}, {"why_ms_chroma_l1", 1f, 0.4f},
+            {"why_ms_chroma_l2", 1f, 0.6f}, {"why_ms_model_scale", 1f, 1.5f}, {"why_hr_strength", 1f, 0.6f}, {"why_hr_knee", 0.5f, 0.6f},
+            {"why_hr_room", 0.4f, 0.35f}, {"why_vibrance_sky", 0.4f, 0.25f}, {"why_vibrance_green", 0.2f, 0.05f}, {"why_cct_sat", 1f, 1.25f},
+            {"why_sharp_usm_radius", 0.5f, 0.1f}, {"why_sharp_usm_amount", 1f, 0.5f}, {"why_sharp_usm_thresh", 50f, 0f},
+            {"why_sharp_gf_lc", 0.25f, 0f}, {"why_sharp_rl3_amount", 1f, 1.5f}, {"dezipper", 0f, 4.5f}};
 
     private static boolean isNumber(Object v, float expected) {
         try {

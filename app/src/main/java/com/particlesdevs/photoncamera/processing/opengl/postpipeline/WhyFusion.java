@@ -80,7 +80,7 @@ public final class WhyFusion extends Node {
         glProg.setVar("layerU", lw[0], lw[1], lw[2], lw[3]);
         glProg.setVar("aeU", ae);
         glProg.setVar("centerU", center);
-        glProg.setVar("smoothU", WhyTone.value("blend_smoothness", 0.25f));
+        glProg.setVar("smoothU", WhyTone.value("blend_smoothness", 0.45f));
         glProg.setVar("gammaInvU", 1f / WhyTone.gamma());
         glProg.setVar("toeU", WhyTone.value("aces_toe", 0.05f));
         // P291 (owner, 2026-10-20: «сделай максимально похоже на результат Why, но с чуть большим количеством информации»): the
@@ -149,7 +149,7 @@ public final class WhyFusion extends Node {
         long started = System.currentTimeMillis();
         WhyAe.Result r = st.ae;
         Point lowSize = st.low.mSize;
-        float strength = whyDenoise(basePipeline.mParameters) ? WhyTone.value("bracket_denoise", 1f) : 0f;
+        float strength = whyDenoise(basePipeline.mParameters) ? WhyTone.value("bracket_denoise", 0f) : 0f;
         strength = bracketStrength(strength, basePipeline.mParameters != null && basePipeline.mParameters.dcgShot,
                 ScamHybridBurst.lastBentoApplied, com.particlesdevs.photoncamera.processing.opengl.PostGlMode.legacy());
         st.lowDn = st.low;

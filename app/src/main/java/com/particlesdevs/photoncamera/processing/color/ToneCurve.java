@@ -24,6 +24,8 @@ public final class ToneCurve {
     public static final int SAMPLES = 256;
     /** WhyCam's default: a gentle S around the middle grey. */
     public static final String DEFAULT_POINTS = "0.0000:0.0000,0.2500:0.1600,0.5000:0.5000,0.7500:0.8400,1.0000:1.0000";
+    /** The setting's default (pref_scam_hybrid_why_curve_points): the owner's reference config of 2026-10-29. */
+    public static final String SETTING_POINTS = "0.0000:0.0000,0.0625:0.0314,0.1250:0.0599,0.1875:0.0881,0.2500:0.1282,0.3125:0.1971,0.3750:0.2867,0.4375:0.3915,0.5000:0.5100,0.5625:0.6347,0.6250:0.7542,0.6875:0.8577,0.7500:0.9350,0.8125:0.9757,0.8750:0.9937,0.9375:1.0000,1.0000:1.0000";
     /** Two points never share an x closer than this (a vertical step is no tone curve). */
     public static final float MIN_GAP = 0.01f;
 

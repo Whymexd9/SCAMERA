@@ -374,7 +374,7 @@
     <string name="prefs_scam_hybrid_why_film_toe_title">Глубина чёрного (Shadow Crush)</string>
     <string name="prefs_scam_hybrid_why_film_toe_summary">Углубляет самые тёмные тона. Больше — чёрный глубже, меньше — тени светлее; 0 — выкл.</string>
     <string name="prefs_scam_hybrid_why_curves_screen_title">Глобальный тонмап (AgX, ACES, кривая)</string>
-    <string name="prefs_scam_hybrid_why_curves_screen_summary">AgX по умолчанию; вместо неё — ACES, Uchimura или своя кривая.</string>
+    <string name="prefs_scam_hybrid_why_curves_screen_summary">Своя кривая по умолчанию; вместо неё — AgX, ACES или Uchimura.</string>
     <string name="prefs_scam_hybrid_why_agx_category_title">Кривая AgX</string>
     <string name="prefs_scam_hybrid_why_agx_look_title">Стиль AgX (Look Preset)</string>
     <string name="prefs_scam_hybrid_why_agx_look_summary">%s. Готовый стиль кривой AgX; «Свой» берёт параметры ниже.</string>

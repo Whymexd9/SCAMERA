@@ -85,12 +85,12 @@ public class ToneCurvePreference extends Preference {
     @Override
     protected Object onGetDefaultValue(android.content.res.TypedArray a, int index) {
         String v = a.getString(index);
-        return v != null ? v : ToneCurve.DEFAULT_POINTS;
+        return v != null ? v : ToneCurve.SETTING_POINTS;
     }
 
-    /** The stored points (the default S when none). */
+    /** The stored points (the setting's default when none). */
     public String points() {
-        return getPersistedString(ToneCurve.DEFAULT_POINTS);
+        return getPersistedString(ToneCurve.SETTING_POINTS);
     }
 
     /** «Из файла…»: the settings screen opens the system picker and hands the result to {@link #load}. */

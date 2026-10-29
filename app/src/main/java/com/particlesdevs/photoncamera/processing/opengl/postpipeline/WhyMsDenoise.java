@@ -31,7 +31,7 @@ public final class WhyMsDenoise extends Node {
     public void Compile() {}
 
     static boolean enabled() {
-        return PreferenceKeys.hybridSwitch("why_ms_denoise", false);
+        return PreferenceKeys.hybridSwitch("why_ms_denoise", true);
     }
 
     /** The noise model's factor of the thresholds (1 without a model or with the scale at 0). */
@@ -42,14 +42,17 @@ public final class WhyMsDenoise extends Node {
         return (float) Math.max(0.25, Math.min(4.0, 1.0 + (nf - 1.0) * scale));
     }
 
+    /** The levels' default shares (the owner's reference config, 2026-10-29). */
+    static final float[] LUMA_LEVELS = {0.4f, 0.1f, 0.35f}, CHROMA_LEVELS = {0.2f, 0.4f, 0.6f};
+
     /** {luma, chroma} thresholds of level 0, 1, 2 and the base's chroma (index 3): the settings x the model factor. */
     static float[][] thresholds(float model) {
-        final float luma = 0.012f * Math.max(0f, WhyTone.value("ms_luma", 1f)) * model;
-        final float chroma = 0.02f * Math.max(0f, WhyTone.value("ms_chroma", 2f)) * model;
+        final float luma = 0.012f * Math.max(0f, WhyTone.value("ms_luma", 0.2f)) * model;
+        final float chroma = 0.02f * Math.max(0f, WhyTone.value("ms_chroma", 0.5f)) * model;
         final float[][] t = new float[4][2];
         for (int l = 0; l < 3; l++) {
-            t[l][0] = luma * Math.max(0f, WhyTone.value("ms_luma_l" + l, 1f));
-            t[l][1] = chroma * Math.max(0f, WhyTone.value("ms_chroma_l" + l, 1f));
+            t[l][0] = luma * Math.max(0f, WhyTone.value("ms_luma_l" + l, LUMA_LEVELS[l]));
+            t[l][1] = chroma * Math.max(0f, WhyTone.value("ms_chroma_l" + l, CHROMA_LEVELS[l]));
         }
         t[3][1] = t[2][1];   // the base takes the coarsest level's colour share, as the reference app's driver
         return t;
@@ -92,7 +95,7 @@ public final class WhyMsDenoise extends Node {
         if (fromRender == null) return;
         final float[] wp = pipeline.mParameters.whitePoint;
         final long started = System.currentTimeMillis();
-        final float model = modelFactor(pipeline.noiseS, pipeline.noiseO, WhyTone.value("ms_model_scale", 1f));
+        final float model = modelFactor(pipeline.noiseS, pipeline.noiseO, WhyTone.value("ms_model_scale", 1.5f));
         final float[][] th = thresholds(model);
         final float shadow = Math.max(0f, WhyTone.value("ms_shadow", 1.5f));
         final List<GLTexture> owned = new ArrayList<>();
