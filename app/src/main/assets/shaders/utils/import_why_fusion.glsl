@@ -87,6 +87,17 @@ float guideOf(vec3 rgb) {
 }
 
 // Guide, weights and lumas of one whyLow pixel [gf_prepare_weights].
+#if GAMMA_TYPE == 0
+#else
+// P404: the display standard's encoding of the layers' lumas (GAMMA_TYPE of the including shader: 1 sRGB, 2 Rec.709)
+vec4 encG4(vec4 v) {
+#if GAMMA_TYPE == 1
+    return mix(12.92 * v, 1.055 * pow(max(v, vec4(0.0031308)), vec4(1.0 / 2.4)) - 0.055, step(vec4(0.0031308), v));
+#else
+    return mix(4.5 * v, 1.099 * pow(max(v, vec4(0.018)), vec4(0.45)) - 0.099, step(vec4(0.018), v));
+#endif
+}
+#endif
 void prepare(vec3 rgb, out float I, out vec4 p, out vec4 L) {
     float ae = aeU > 0.0 ? aeU : 1.0;
     vec4 em = expU.x + expU.y + expU.z + expU.w > 0.0 ? expU : vec4(1.0);
@@ -108,7 +119,11 @@ void prepare(vec3 rgb, out float I, out vec4 p, out vec4 L) {
     vec4 l709 = r * 0.2126 + g * 0.7152 + b * 0.0722;
     vec4 lmax = max(max(r, g), b);
     vec4 meter = max(l709, lmax * 0.5);
+#if GAMMA_TYPE == 0
     L = pow(max(acescg(meter, toe), vec4(0.000001)), vec4(gammaInv));
+#else
+    L = encG4(max(acescg(meter, toe), vec4(0.0)));
+#endif
     vec4 d = L - vec4(center);
     float var = max(smoothness * smoothness, 0.001);
     vec4 w = exp(-0.5 * (d * d) / var) * lw + 0.000001;
@@ -127,7 +142,11 @@ float fusedAt(float I, float sw) {
     float smoothness = smoothU > 0.0 ? smoothU : 0.25;
     float gammaInv = gammaInvU > 0.0 ? gammaInvU : 1.0 / 2.2;
     float toe = toeU > 0.0 ? toeU : 0.05;
+#if GAMMA_TYPE == 0
     vec4 L = pow(max(acescg(I * em, toe), vec4(0.000001)), vec4(gammaInv));
+#else
+    vec4 L = encG4(max(acescg(I * em, toe), vec4(0.0)));
+#endif
     vec4 d = L - vec4(center);
     vec4 w = exp(-0.5 * (d * d) / max(smoothness * smoothness, 0.001)) * lw + 0.000001;
     if (deepFloorU > 0.0 && d.w < 0.0) w.w = max(w.w, deepFloorOf(I, w, L, gammaInv, lw));

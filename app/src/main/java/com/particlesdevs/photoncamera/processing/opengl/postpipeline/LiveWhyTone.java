@@ -229,6 +229,14 @@ public final class LiveWhyTone {
     private float yellowHue;
     /** P398: a pale light tone towards white (hlNeutralU), as WhyCombine sets it. */
     private float hlNeutral;
+    /** P402: the v2.07 fusion layout's base of the tone (ARK_BASE), as WhyCombine sets it. */
+    private boolean arkBase;
+    /** P402: the AgX inset's strength (AGX_INSET below 1), as WhyCombine sets it. */
+    private float inset = 1f;
+    /** P404: the display standard (GAMMA_TYPE), as WhyCombine sets it. */
+    private int gammaType;
+    /** P404: the reference app's vibrance terms (ARK_VIB), as WhyCombine sets them; null: none. */
+    private float[][] arkVib;
     private float[] vib = new float[3];
     /** P393: the light-tone vibrance's shape for pale colour, as WhyCombine sets it. */
     private float[] vibHlShape = WhyTone.VIBRANCE_HL_SHAPE.clone();
@@ -353,7 +361,7 @@ public final class LiveWhyTone {
             final int hw = (lw2 + 1) / 2, hh = (lh2 + 1) / 2;
             for (int mode = 0; mode < 3; mode++) {
                 target(means[mode], hw, hh, GLES30.GL_RGBA32F, GLES20.GL_NEAREST);
-                int g = program("why/gf", new String[][]{{"MODE", String.valueOf(mode)}});
+                int g = program("why/gf", gammaType != 0 ? new String[][]{{"MODE", String.valueOf(mode)}, {"GAMMA_TYPE", String.valueOf(gammaType)}} : new String[][]{{"MODE", String.valueOf(mode)}});
                 weights(g, em, aeNow);
                 texture(g, "InputBuffer", 0, low.id);
                 draw(means[mode]);
@@ -371,7 +379,7 @@ public final class LiveWhyTone {
                 box(ab[mode]);
             }
             target(fused, lw2, lh2, GLES30.GL_RGBA32F, GLES20.GL_NEAREST);
-            int g3 = program("why/gf", new String[][]{{"MODE", "3"}});
+            int g3 = program("why/gf", gammaType != 0 ? new String[][]{{"MODE", "3"}, {"GAMMA_TYPE", String.valueOf(gammaType)}} : new String[][]{{"MODE", "3"}});
             weights(g3, em, aeNow);
             texture(g3, "InputBuffer", 0, low.id);
             texture(g3, "MeanA", 1, ab[0].id);
@@ -506,7 +514,7 @@ public final class LiveWhyTone {
         colourOn = !look.shaderNeutral();
         toneOp = WhyTone.toneOperator();
         lw = WhyTone.layerWeights();
-        center = WhyTone.value("weight_center", 0.6f);
+        center = WhyTone.fusionCenter();
         smooth = WhyTone.value("blend_smoothness", 0.25f);
         gammaInv = 1f / WhyTone.gamma();
         toe = WhyTone.value("aces_toe", 0.05f);
@@ -526,6 +534,11 @@ public final class LiveWhyTone {
         lightChroma = WhyTone.lightChroma();
         yellowHue = WhyTone.yellowHue();
         hlNeutral = WhyTone.hlNeutral();
+        arkBase = WhyTone.arkLayout();
+        inset = WhyTone.insetStrength();
+        gammaType = WhyTone.gammaType();
+        arkVib = WhyTone.arkVibrance();
+        FusedCurve.GAMMA_TYPE[0] = gammaType;
         // P378 review: the lens' f-number (the sky's absolute EV), as Parameters reads it
         float[] apertures = camera != null ? camera.get(android.hardware.camera2.CameraCharacteristics.LENS_INFO_AVAILABLE_APERTURES) : null;
         aperture = apertures != null && apertures.length > 0 && apertures[0] > 0f ? apertures[0] : 1.8f;
@@ -609,7 +622,7 @@ public final class LiveWhyTone {
         mergedNoise(noiseS, noiseO);
         final WhyAe.Result r = WhyAe.smartHdr(aePixels, 4, aw, ah, settings, iso, maxIso);
         filmAeTarget = WhyAe.filmAe(r);
-        emTarget = WhyAe.exposures(r);
+        emTarget = WhyFusion.liveExposures(r);
         metered();
         ae = r;
         return true;
@@ -668,7 +681,7 @@ public final class LiveWhyTone {
         final WhyAe.Result r = meter.measure(v, inScale, settings, f.iso, f.maxAnalogIso);
         if (r == null) return ae != null;
         filmAeTarget = WhyAe.filmAe(r);
-        emTarget = WhyAe.exposures(r);
+        emTarget = WhyFusion.liveExposures(r);
         metered();
         ae = r;
         if (skyWanted) decideSky(v, r);
@@ -765,7 +778,7 @@ public final class LiveWhyTone {
     private void fillCurve(WhyAe.Result r) {
         FusedCurve.DEEP_FLOOR[0] = WhyTone.deepFloor();
         System.arraycopy(deepNoise(r.ae), 0, FusedCurve.DEEP_NOISE, 0, 3);
-        FusedCurve.fill(curve, WhyAe.exposures(r), lw, center, smooth, gammaInv, toe, mono);
+        FusedCurve.fill(curve, WhyFusion.liveExposures(r), lw, center, smooth, gammaInv, toe, mono);
         curveOf = r;
     }
 
@@ -972,6 +985,7 @@ public final class LiveWhyTone {
             GLES20.glUniform4f(loc(p, "uchiBU"), uchi[1][0], uchi[1][1], uchi[1][2], uchi[1][3]);
             float[] curve = WhyTone.curveSamples();
             GLES20.glUniform4fv(loc(p, "curveU"), Math.min(64, curve.length / 4), curve, 0);
+            set(p, "curveBoostU", WhyTone.curveBoost(r.contrastC));   // P404, as the photo
         }
         set(p, "ditherU", 1);
         set(p, "headroomU", 0);
@@ -983,6 +997,11 @@ public final class LiveWhyTone {
         set(p, "lightChromaU", lightChroma);
         set(p, "yellowHueU", yellowHue);   // P395, as the photo (no location without the define)
         set(p, "hlNeutralU", hlNeutral);   // P398, as the photo
+        if (inset < 0.999f) set(p, "insetU", inset);   // P402, as the photo
+        if (arkVib != null) {
+            GLES20.glUniform4f(loc(p, "arkVibU"), arkVib[0][0], arkVib[0][1], arkVib[0][2], arkVib[0][3]);
+            GLES20.glUniform3f(loc(p, "arkSkinU"), arkVib[1][0], arkVib[1][1], arkVib[1][2]);
+        }
         if (skyOnDraw) {
             // P378 review: the photo's sky term (WhyCombine) on the shown cells - the level share eased (0 backlit), the tops in this
             // frame's log2 Y
@@ -1090,6 +1109,10 @@ public final class LiveWhyTone {
         if (toneOp == ToneCurve.AGX && lightChroma > 0f) defs.add(new String[]{"LIGHT_CHROMA", "1"});
         if (yellowHue > 0f) defs.add(new String[]{"YELLOW_HUE", "1"});   // P395, as the photo
         if (hlNeutral > 0f) defs.add(new String[]{"HL_NEUTRAL", "1"});   // P398, as the photo
+        if (arkBase) defs.add(new String[]{"ARK_BASE", "1"});   // P402, as the photo
+        if (inset < 0.999f) defs.add(new String[]{"AGX_INSET", "1"});   // P402, as the photo
+        if (gammaType != 0) defs.add(new String[]{"GAMMA_TYPE", String.valueOf(gammaType)});   // P404, as the photo
+        if (arkVib != null) defs.add(new String[]{"ARK_VIB", "1"});   // P404, as the photo
         // P369: a film's scene table (FILM_SIM) or the chosen LUT (FILM_LUT), never both
         if (lutOn) defs.add(new String[]{scene ? "FILM_SIM" : "FILM_LUT", "1"});
         // P378 review: the sky term (the photo's SKY, its cells from LiveSky)

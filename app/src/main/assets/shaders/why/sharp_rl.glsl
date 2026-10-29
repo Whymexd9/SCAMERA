@@ -4,7 +4,7 @@ precision highp sampler2D;
 // 690-876; why_sharpen.md 3.2; reference why_sharpen_ref.py rl_pass] - est = Lobs; per iteration
 // ratio = clamp(Lobs / max(PSF * est, 1e-4), 0.05, 10), est = max(0, est * (PSF * ratio)); the last iteration also
 // blends (est - Lobs) * amount back into Lobs with the shadow fade, contrast damping and halo clamp of rl_blend.
-// The TV damping term (damping 0 on X8U) is not ported. PSF (Airy, pillbox or Gaussian, built by WhyLumaSharpen) is
+// P404: the TV damping of v2.07's rl_mult (dampU, per stage; 0 = off as before). PSF (Airy, pillbox or Gaussian, built by WhyLumaSharpen) is
 // symmetric in x and y: psfU holds one quadrant, q[|dy| * (half + 1) + |dx|], normalised over the whole kernel.
 //  modeU 0: ratio            (Estimate -> R16F)
 //  modeU 1: estimate update  (Estimate, Ratio -> R16F)
@@ -27,6 +27,7 @@ uniform float macroU;               // rl_halo_macro; <= 0 -> 0.4
 uniform float protectShadowsU;
 uniform float protectHighlightsU;
 uniform int nbU;                    // radius of the local min / max window (1 = 3x3); <= 0 -> 1
+uniform float dampU;                // P404: total-variation damping of the update (0 = off)
 out vec4 Output;
 
 // The kernel's blur buffers are half: round the convolutions to fp16 as OpenCL stores them.
@@ -91,6 +92,19 @@ void main() {
         return;
     }
     float est = max(0.0, texelFetch(Estimate, xy, 0).r * convolve(Ratio, xy, last, h));
+    if (dampU > 0.0001) {
+        // P404: v2.07 rl_mult - the update divided by 1 - damping x 0.002 x the curvature of the estimate's level lines
+        float c0 = texelFetch(Estimate, xy, 0).r;
+        float r = texelFetch(Estimate, clamp(xy + ivec2(1, 0), ivec2(0), last), 0).r, l = texelFetch(Estimate, clamp(xy + ivec2(-1, 0), ivec2(0), last), 0).r;
+        float d = texelFetch(Estimate, clamp(xy + ivec2(0, 1), ivec2(0), last), 0).r, u = texelFetch(Estimate, clamp(xy + ivec2(0, -1), ivec2(0), last), 0).r;
+        float dl = texelFetch(Estimate, clamp(xy + ivec2(-1, 1), ivec2(0), last), 0).r, ul = texelFetch(Estimate, clamp(xy + ivec2(-1, -1), ivec2(0), last), 0).r;
+        float ur = texelFetch(Estimate, clamp(xy + ivec2(1, -1), ivec2(0), last), 0).r;
+        float ux = (r - c0) / sqrt((r - c0) * (r - c0) + 0.25 * (d - u) * (d - u) + 1e-6);
+        float uy = (d - c0) / sqrt(0.25 * (r - l) * (r - l) + (d - c0) * (d - c0) + 1e-6);
+        float uxl = (c0 - l) / sqrt((c0 - l) * (c0 - l) + 0.25 * (dl - ul) * (dl - ul) + 1e-6);
+        float uyu = (c0 - u) / sqrt(0.25 * (ur - ul) * (ur - ul) + (c0 - u) * (c0 - u) + 1e-6);
+        est /= max(0.1, 1.0 - dampU * 0.002 * ((ux - uxl) + (uy - uyu)));
+    }
     if (modeU == 1) {
         Output = vec4(est, 0.0, 0.0, 1.0);
         return;

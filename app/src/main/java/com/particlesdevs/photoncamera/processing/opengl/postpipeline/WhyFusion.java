@@ -73,6 +73,7 @@ public final class WhyFusion extends Node {
     /** {@code asset} (gf or lpyr) in MODE {@code mode} with the fusion's uniforms of this shot (import why_fusion). */
     private void fusionProgram(String asset, int mode, GLTexture source, float[] em, float[] lw, float ae, float center, float[] satLight) {
         glProg.setDefine("MODE", mode);
+        gammaDefine();
         glProg.useAssetProgram(asset, false);
         glProg.setTexture("InputBuffer", source);
         glProg.setVar("expU", em[0], em[1], em[2], em[3]);
@@ -94,6 +95,12 @@ public final class WhyFusion extends Node {
         glProg.setVar("deepFloorU", WhyTone.deepFloor());
         // set on every pass (a linked program keeps its uniforms): zeros = the floor as before
         glProg.setVar("deepNoiseU", deepNoise[0], deepNoise[1], deepNoise[2], deepNoise[3]);
+    }
+
+    /** P404: «Стандарт гаммы дисплея» on the next fusion program (import why_fusion GAMMA_TYPE; the pure power sets none). */
+    private void gammaDefine() {
+        final int t = WhyTone.gammaType();
+        if (t != 0) glProg.setDefine("GAMMA_TYPE", t);
     }
 
     /** Separable box of radius r; closes the input. */
@@ -153,7 +160,8 @@ public final class WhyFusion extends Node {
             glProg.setVar("strengthU", strength);
             glProg.drawBlocks(st.lowDn);
         }
-        float[] em = WhyAe.exposures(r, headroomExposure(WhyAe.darkestExposure(r), r.ae, r.clip, r.hr));
+        final boolean ark = WhyTone.arkLayout();
+        float[] em = ark ? exposures207(r) : WhyAe.exposures(r, headroomExposure(WhyAe.darkestExposure(r), r.ae, r.clip, r.hr));
         float[] lw = WhyTone.layerWeights();
         // P391: the noise model of the fusion's guide (the noise-bound deep floor, the bands' noise cap); the old run of post_ab
         // keeps the fusion before P391
@@ -169,9 +177,9 @@ public final class WhyFusion extends Node {
         // the kernel's weights put lit paper on 150 - 190 grey where WhyCam has 245. There the well-exposed centre moves up and
         // the highlight layer weighs less (host replay of the owner's desk-lamp shots: the sheet 255 .. 205 against WhyCam's
         // 249 .. 199); without headroom the kernel's weights as before.
-        float center = WhyTone.value("weight_center", 0.6f);
+        float center = WhyTone.fusionCenter();
         float[] satLight = new float[6];
-        if (r.hr > 0f) {
+        if (r.hr > 0f && !ark) {
             // P310: only neutral light (a white sheet under a lamp) takes the headroom weights; a coloured light and what it lights
             // keep the kernel's centre and highlight weight (and no monotonic lift), ramped over the light's saturation
             final float[] ramp = WhyTone.saturatedLightRamp();
@@ -191,7 +199,18 @@ public final class WhyFusion extends Node {
                 st.skyMask = null;
                 glProg.closed = true;
             }
-            pyramid(st, em, lw, r.ae, center, satLight, started, strength, noiseI);
+            // P401: a room with daylit windows takes build 31091's fusion inside them (why/lpyr WINDOW; null: off)
+            final com.particlesdevs.photoncamera.processing.render.Parameters prm = basePipeline.mParameters;
+            final float[] win = WhyTone.bands() != null && !ark ? windowParams(WhyTone.windowShare(), r, prm != null
+                    ? WhySkyMask.evOffset(prm.iso, prm.exposureTime, prm.aperture, st.inScale) : Float.NaN) : null;
+            GLTexture fused31 = null;
+            try {
+                if (win != null) fused31 = pyramid(st, exposures31(r), LAYERS_31091.clone(), r.ae, CENTER_31091, new float[6], started,
+                        strength, noiseI, true, null, null);
+                pyramid(st, em, lw, r.ae, center, satLight, started, strength, noiseI, false, win, fused31);
+            } finally {
+                if (fused31 != null) fused31.close();
+            }
             return;
         }
         st.fused = guided(st, em, lw, r.ae, center, satLight);
@@ -300,9 +319,13 @@ public final class WhyFusion extends Node {
         return new float[]{levels, f >= 1.0 - 1e-6 ? 1f : (float) Math.max(0.0, f)};
     }
 
-    /** P333: the Laplacian pyramid fusion (why/lpyr.glsl) into st.fused. */
-    private void pyramid(WhyTone.State st, float[] em, float[] lw, float ae, float center, float[] satLight, long started, float strength,
-                         float[] noiseI) {
+    /**
+     * P333: the Laplacian pyramid fusion (why/lpyr.glsl) into st.fused, or ({@code aux}) into a texture returned to the caller
+     * (P401's build 31091 pass: no sky term, no window term, no log); {@code win} / {@code fused31}: the window term (why/lpyr
+     * WINDOW) and that pass's fused luma.
+     */
+    private GLTexture pyramid(WhyTone.State st, float[] em, float[] lw, float ae, float center, float[] satLight, long started, float strength,
+                              float[] noiseI, boolean aux, float[] win, GLTexture fused31) {
         final Point low = st.low.mSize;
         final float coarse = WhyTone.value("ef_coarse", COARSE);
         // P391: the edge-aware bands (null: off, the pyramid as before)
@@ -339,11 +362,9 @@ public final class WhyFusion extends Node {
         final float[] beta = new float[4];
         if (noiseCap) for (int l = 0; l < Math.min(4, (int) nz[2]); l++) beta[l] = WhyTone.BAND_BETA[l];
         GLTexture guidedF = null;
-        // P400: the daylit-window term (null: off) at the window level of the log light's pyramid
-        final com.particlesdevs.photoncamera.processing.render.Parameters prm = basePipeline.mParameters;
-        final float[] win = bands ? windowParams(WhyTone.windowDepth(), st.ae, prm != null
-                ? WhySkyMask.evOffset(prm.iso, prm.exposureTime, prm.aperture, st.inScale) : Float.NaN) : null;
-        final int winLevel = win != null ? windowLevel(fragment ? frozen.lowWidth : low.x, deep) : 0;
+        // P401: the window term at the window level of the log light's pyramid
+        final int winLevel = win != null && bands && fused31 != null ? windowLevel(fragment ? frozen.lowWidth : low.x, deep) : 0;
+        GLTexture out = null;
         try {
             Point size = low;
             final GLFormat r16 = new GLFormat(GLFormat.DataType.FLOAT_16, 1), rg16 = new GLFormat(GLFormat.DataType.FLOAT_16, 2);
@@ -368,6 +389,7 @@ public final class WhyFusion extends Node {
             for (int l = 2; l <= levels; l++) {
                 for (GLTexture[] p : new GLTexture[][]{L, W}) {
                     glProg.setDefine("MODE", 2);
+                    gammaDefine();
                     glProg.useAssetProgram("why/lpyr", false);
                     glProg.setTexture("InputBuffer", p[l - 1]);
                     glProg.drawBlocks(p[l]);
@@ -381,6 +403,7 @@ public final class WhyFusion extends Node {
                 glProg.drawBlocks(GF[1]);
                 for (int l = 2; l <= deep; l++) {
                     glProg.setDefine("MODE", 2);
+                    gammaDefine();
                     glProg.useAssetProgram("why/lpyr", false);
                     glProg.setTexture("InputBuffer", GF[l - 1]);
                     glProg.drawBlocks(GF[l]);
@@ -394,6 +417,7 @@ public final class WhyFusion extends Node {
                 glProg.drawBlocks(D0);
                 for (int l = 1; l < levels; l++) {
                     glProg.setDefine("MODE", 8);
+                    gammaDefine();
                     glProg.useAssetProgram("why/lpyr", false);
                     glProg.setTexture("LevelGF", GF[l]);
                     glProg.setTexture("RefG", GF[l + REF_DOWN]);
@@ -404,6 +428,7 @@ public final class WhyFusion extends Node {
                 // carried 3 x 3 (a coarse band never keeps more excess than the finer one round the same edge); the coarsest the carry
                 for (int l = 1; l <= levels; l++) {
                     glProg.setDefine("MODE", 10);
+                    gammaDefine();
                     glProg.useAssetProgram("why/lpyr", false);
                     glProg.setTexture("FineA", l == 1 ? D0 : A[l - 1]);
                     if (l < levels) glProg.setTexture("LevelA", D[l]);
@@ -428,6 +453,7 @@ public final class WhyFusion extends Node {
                 glProg.drawBlocks(G[1]);
                 for (int l = 2; l <= levels; l++) {
                     glProg.setDefine("MODE", 2);
+                    gammaDefine();
                     glProg.useAssetProgram("why/lpyr", false);
                     glProg.setTexture("InputBuffer", G[l - 1]);
                     glProg.drawBlocks(G[l]);
@@ -439,6 +465,7 @@ public final class WhyFusion extends Node {
             // then every band from coarse to fine
             if (bands) glProg.setDefine("EDGE_BANDS", 1);
             glProg.setDefine("MODE", 3);
+            gammaDefine();
             glProg.useAssetProgram("why/lpyr", false);
             glProg.setTexture("LevelL", L[levels]);
             glProg.setTexture("LevelW", W[levels]);
@@ -451,6 +478,7 @@ public final class WhyFusion extends Node {
             for (int l = levels - 1; l >= 1; l--) {
                 if (bands) glProg.setDefine("EDGE_BANDS", 1);
                 glProg.setDefine("MODE", 4);
+                gammaDefine();
                 glProg.useAssetProgram("why/lpyr", false);
                 glProg.setTexture("LevelL", L[l]);
                 glProg.setTexture("LevelW", W[l]);
@@ -471,15 +499,17 @@ public final class WhyFusion extends Node {
                 java.util.Arrays.fill(W, null);
                 guidedF = guided(st, em, lw, ae, center, satLight);
             }
-            st.fused = new GLTexture(low, one, null, GL_NEAREST, GL_CLAMP_TO_EDGE);
+            out = new GLTexture(low, one, null, GL_NEAREST, GL_CLAMP_TO_EDGE);
+            if (!aux) st.fused = out;
             // P378 (M1): the clear sky keeps the pyramid's fusion of its clouds (only with the guided share and a sky)
-            final boolean sky = guidedF != null && st.sky != null;
+            final boolean sky = !aux && guidedF != null && st.sky != null;
             if (sky) glProg.setDefine("SKY", 1);
             if (bands) glProg.setDefine("EDGE_BANDS", 1);
-            if (win != null) glProg.setDefine("WINDOW", 1);
+            if (winLevel > 0) glProg.setDefine("WINDOW", 1);
             fusionProgram("why/lpyr", 5, st.lowDn, em, lw, ae, center, satLight);
-            if (win != null) {
+            if (winLevel > 0) {
                 glProg.setTexture("WinMean", GF[winLevel]);
+                glProg.setTexture("Fused31", fused31);
                 glProg.setVar("winU", win[0], win[1], win[2], 0f);
                 glProg.setVar("winScaleU", (float) (1 << winLevel));
             }
@@ -505,13 +535,17 @@ public final class WhyFusion extends Node {
             // set on every shot (a linked program keeps its uniforms): zeros = the share off
             if (edgeOn) glProg.setTexture("GuideC", G[levels]);
             glProg.setVar("edgeMixU", edgeOn ? edge[0] : 0f, edgeOn ? edge[1] : 0f, edgeOn ? edge[2] : 0f, edgeScale);
-            glProg.drawBlocks(st.fused);
+            glProg.drawBlocks(out);
             glProg.closed = true;
+        } catch (RuntimeException e) {
+            if (aux && out != null) out.close();
+            throw e;
         } finally {
             for (GLTexture[] p : new GLTexture[][]{L, W, F, G, GF, D, A}) for (GLTexture t : p) if (t != null) t.close();
             if (D0 != null) D0.close();
             if (guidedF != null) guidedF.close();
         }
+        if (aux) return out;
         final float[] gmixLog = WhyTone.guidedLights();
         Log.i("SCAM_PIPELINE", "WHY fusion (Laplacian pyramid) " + params(em, lw, center, satLight) + " levels=" + levels
                 + (lowBand < 1f ? String.format(java.util.Locale.ROOT, " lowBand=%.3f", lowBand) : "") + " coarse=" + coarse
@@ -522,15 +556,40 @@ public final class WhyFusion extends Node {
                 + (deepNoise[0] > 0f ? " deepNoise=" + deepNoise[0] : "")
                 + (gmixLog[1] > gmixLog[0] ? " guidedShare=" + gmixLog[0] + ".." + gmixLog[1] : "")
                 + (edgeOn ? " edgeShare=" + edge[0] + ".." + edge[1] + "EV floor=" + edge[2] : "")
-                + (win != null ? String.format(java.util.Locale.ROOT, " window=%.3f@%.2f..%.2f level %d", win[0], win[1], win[2], winLevel) : "")
+                + (winLevel > 0 ? String.format(java.util.Locale.ROOT, " window31091=%.2f@%.2f..%.2f level %d", win[0], win[1], win[2], winLevel) : "")
                 + " bracketDn=" + (st.lowDn != st.low ? strength : 0f) + " ms=" + (System.currentTimeMillis() - started));
+        return null;
+    }
+
+    /** P401: build 31091's fusion (ArkFusion / ArkAe of 2026-10-19): the kernel's centre and layer weights (hl, mid, ext_hl, shadow). */
+    static final float CENTER_31091 = 0.6f;
+    static final float[] LAYERS_31091 = {0.8f, 1f, 0.7f, 0.5f};
+
+    /** P401: build 31091's synthetic exposures: 2^(-1.5 effH) (no P340 cap by the headroom), 1, 2^effS (<= 8), 2^(2 effS) (<= 16). */
+    /**
+     * P402: the reference app v2.07's synthetic exposures (ef_pyr_prep's em) in our layer order - darkest 2^(-2.5 effH), base 1,
+     * second dark 2^(-1.2 effH), bright min(2^(1.8 effS), 16).
+     */
+    static float[] exposures207(WhyAe.Result r) {
+        return new float[]{(float) Math.pow(2.0, -2.5 * r.effH), 1f, (float) Math.pow(2.0, -1.2 * r.effH),
+                (float) Math.min(Math.pow(2.0, 1.8 * r.effS), 16.0)};
+    }
+
+    /** The fusion's exposures of the viewfinder and the curve (no headroom cap): the layout's. */
+    static float[] liveExposures(WhyAe.Result r) {
+        return WhyTone.arkLayout() ? exposures207(r) : WhyAe.exposures(r);
+    }
+
+    static float[] exposures31(WhyAe.Result r) {
+        return new float[]{(float) Math.pow(2.0, -1.5 * r.effH), 1f, (float) Math.min(Math.pow(2.0, r.effS), 8.0),
+                (float) Math.min(Math.pow(2.0, 2.0 * r.effS), 16.0)};
     }
 
     /**
-     * P400: the daylit-window term of the fusion (why/lpyr WINDOW) - {strength, the window's log light ramp lo, hi (log2 of the guide
-     * I = Y x AE, lpyr's G)} - or null (off): only with Bento headroom (r.hr above the clip) and a known exposure ({@code ev}: the
-     * EV100 of a whyLow value of 1, WhySkyMask.evOffset), in a room (the frame's median at EV 10 or less, gone from EV 11.5: no
-     * landscape under a bright sky takes it); the window is daylight at EV 10.5 .. 12.
+     * P400 / P401: the daylit-window term of the fusion (why/lpyr WINDOW) - {build 31091's share, the window's log light ramp lo, hi
+     * (log2 of the guide I = Y x AE, lpyr's G)} - or null (off): only with Bento headroom (r.hr above the clip) and a known exposure
+     * ({@code ev}: the EV100 of a whyLow value of 1, WhySkyMask.evOffset), in a room (the frame's median at EV 10 or less, gone from
+     * EV 11.5: no landscape under a bright sky takes it); the window is daylight at EV 10.5 .. 12.
      */
     static float[] windowParams(float depth, WhyAe.Result r, float ev) {
         if (!(depth > 0f) || r == null || !(r.hr > r.clip) || !Float.isFinite(ev) || !(r.ae > 0f)) return null;

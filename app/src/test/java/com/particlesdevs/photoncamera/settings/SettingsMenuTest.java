@@ -568,11 +568,12 @@ public class SettingsMenuTest {
             var root=(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment)fm.findFragmentById(R.id.settings_container);
             // 2026-10-27: the brightness, now a row of «Снимок» on the root, is not greyed by a page above it either
             assertTrue(root.findPreference("pref_scam_hybrid_why_ae_target").isEnabled());
-            PreferenceScreen tone=root.findPreference("scam_hybrid_why_tone_screen");
+            // P403: the metering on «Экспозиция (AE)»
+            PreferenceScreen tone=root.findPreference("scam_hybrid_why_ae_screen");
             activity.onPreferenceStartScreen(root,tone);fm.executePendingTransactions();
             org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
             var page=(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment)fm.findFragmentById(R.id.settings_container);
-            assertEquals("scam_hybrid_why_tone_screen",page.getPreferenceScreen().getKey());
+            assertEquals("scam_hybrid_why_ae_screen",page.getPreferenceScreen().getKey());
             // 2026-10-27: the brightness moved to «Снимок»; the metering stays on this page
             assertTrue(page.findPreference("pref_scam_hybrid_why_metering").isEnabled());
             assertTrue(PreferenceKeys.isScamHdrEnabled());
@@ -1150,9 +1151,10 @@ public class SettingsMenuTest {
         try(var controller=org.robolectric.Robolectric.buildActivity(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.class)){
             controller.setup();var activity=controller.get();var fm=activity.getSupportFragmentManager();fm.executePendingTransactions();
             var root=(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment)fm.findFragmentById(R.id.settings_container);
-            activity.onPreferenceStartScreen(root,root.findPreference("scam_hybrid_why_tone_screen"));fm.executePendingTransactions();
-            var tone=(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment)fm.findFragmentById(R.id.settings_container);
-            activity.onPreferenceStartScreen(tone,tone.findPreference("scam_hybrid_why_curves_screen"));fm.executePendingTransactions();
+            // P403: «Глобальный тонмап» is a page of SHDR itself
+            activity.onPreferenceStartScreen(root,root.findPreference("scam_hybrid_screen"));fm.executePendingTransactions();
+            var shdr=(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment)fm.findFragmentById(R.id.settings_container);
+            activity.onPreferenceStartScreen(shdr,shdr.findPreference("scam_hybrid_why_curves_screen"));fm.executePendingTransactions();
             org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
             var page=(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment)fm.findFragmentById(R.id.settings_container);
             assertEquals("scam_hybrid_why_curves_screen",page.getPreferenceScreen().getKey());
@@ -1277,9 +1279,11 @@ public class SettingsMenuTest {
     /** «Кривая AgX и ACES» is the first row of «Тон WHY» (owner, 2026-10-15). */
     @Test public void curvesOpenTheWhyTonePage(){
         PreferenceScreen root=inflate();
-        androidx.preference.PreferenceGroup tone=root.findPreference("scam_hybrid_why_tone_screen");
-        assertNotNull(tone);
-        assertEquals("scam_hybrid_why_curves_screen",tone.getPreference(0).getKey());
+        // P403: the curves page («Глобальный тонмап») after «Экспозиция (AE)» on SHDR, before «Локальный тонмап»
+        androidx.preference.PreferenceGroup shdr=root.findPreference("scam_hybrid_screen");
+        assertNotNull(root.findPreference("scam_hybrid_why_tone_screen"));
+        assertEquals("scam_hybrid_why_curves_screen",shdr.getPreference(1).getKey());
+        assertEquals("scam_hybrid_why_tone_screen",shdr.getPreference(2).getKey());
         assertNotNull(root.findPreference("pref_scam_hybrid_why_agx_look"));assertNotNull(root.findPreference("pref_scam_hybrid_why_aces_toe"));
     }
     /** Every page of the settings root has its own icon («Цвет» and «Интерфейс» both showed the palette, 2026-10-15). */
@@ -1337,8 +1341,10 @@ public class SettingsMenuTest {
         for(int i=0;i<noise.getPreferenceCount();i++)order.add(noise.getPreference(i).getKey());
         int hl=order.indexOf("pref_scam_hybrid_bento_denoise_max"),dark=order.indexOf("pref_scam_hybrid_dn_dark_fade");
         assertTrue(order.toString(),hl>0&&dark>0);
-        assertEquals("pref_scam_hybrid_why_bracket_denoise",order.get(hl+1));
+        assertEquals("pref_scam_hybrid_dn_dark_fade",order.get(hl+1));
         assertEquals("pref_scam_hybrid_why_chroma_denoise",order.get(dark+1));
+        // P403: the short frames' denoise with the HDR shoulder («Настройки HDR», as the reference app)
+        assertEquals("scam_hybrid_hdr_frames_category",screen.findPreference("pref_scam_hybrid_why_bracket_denoise").getParent().getKey());
         for(String k:new String[]{"pref_scam_hybrid_diagnostics","pref_scam_hybrid_profile","pref_scam_hybrid_dev_note",
                 "shdr_capture_report","scamera_full_debug"})
             assertEquals(k,"scam_diagnostics_screen",screen.findPreference(k).getParent().getKey());
@@ -1480,8 +1486,10 @@ public class SettingsMenuTest {
                 "pref_scam_hybrid_why_vibrance","pref_scam_hybrid_why_vibrance_sky","pref_scam_hybrid_colour_vib_highlights","colour_mixer_screen",
                 "pref_scam_hybrid_colour_mix_blue_sat","colour_grading_screen","pref_scam_hybrid_colour_grade_highlights_hue"})
             assertNotNull(key,fine.findPreference(key));
-        assertEquals(Arrays.asList("pref_scam_hybrid_colour_skin_protect","pref_scam_hybrid_colour_skin_hue","pref_scam_hybrid_colour_skin_even"),
-                keys(screen.findPreference("colour_skin_category")));
+        // P404: the skin's own mask and protection from the extra vibrance terms after ours
+        assertEquals(Arrays.asList("pref_scam_hybrid_colour_skin_protect","pref_scam_hybrid_colour_skin_hue","pref_scam_hybrid_colour_skin_even",
+                "pref_scam_hybrid_why_skin_protect","pref_scam_hybrid_why_skin_hue_center","pref_scam_hybrid_why_skin_luma_min",
+                "pref_scam_hybrid_why_skin_sat_shift"),keys(screen.findPreference("colour_skin_category")));
         assertSame(fine,((Preference)screen.findPreference("colour_skin_category")).getParent());
         // «Файл и размер»
         assertEquals(Arrays.asList("output_settings_screen","photo_size_screen","pref_wide169_key","watermark_screen","pref_file_name_pattern"),
@@ -1519,8 +1527,12 @@ public class SettingsMenuTest {
             assertNotNull(key,((androidx.preference.PreferenceGroup)screen.findPreference("colour_expert_category")).findPreference(key));
         for(String key:new String[]{"scam_diagnostics_screen","camera_package_spoof_screen","developer_settings_screen"})
             assertNotNull(key,advanced.findPreference(key));
-        // the Richardson–Lucy page sits with the microtexture rows (its one-page category is gone)
-        assertEquals("scam_hybrid_why_microtexture_category",((Preference)screen.findPreference("scam_hybrid_why_rl_screen")).getParent().getKey());
+        // P403 (owner, 2026-10-29: «Изучи расположение/группировку настроек Арк камеры и сделай у нас схоже»): SHDR in the reference
+        // app's order - exposure, global and local tone, sharpness, the Richardson–Lucy deconvolution on its own page, noise
+        // reduction, the merge, the capture frames, the HDR shoulder, the highlights and aberrations
+        assertEquals(Arrays.asList("scam_hybrid_why_ae_screen","scam_hybrid_why_curves_screen","scam_hybrid_why_tone_screen",
+                "scam_hybrid_why_sharp_screen","scam_hybrid_why_rl_screen","scam_hybrid_photo_screen","scam_hybrid_merge_screen",
+                "scam_hybrid_capture_screen","scam_hybrid_hdr_screen","scam_hybrid_artifacts_screen"),keys(screen.findPreference("scam_hybrid_screen")));
         // rows removed: the module hub (P384: the modules are a group of the main page), the LUT link, empty containers
         for(String key:new String[]{"module_profiles_screen","photo_style_lut","scam_hybrid_why_rl_category","adv_processing"})
             assertNull(key,screen.findPreference(key));

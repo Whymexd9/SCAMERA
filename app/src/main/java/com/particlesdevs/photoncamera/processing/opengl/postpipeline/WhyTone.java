@@ -91,8 +91,26 @@ public final class WhyTone {
      * the one bright layer 1.0 (the closest to the old set's shadows and mid-tones of the curves on a grid of strengths).
      */
     static float[] layerWeights() {
+        if (arkLayout()) return new float[]{value("classic_weight_ext_hl", 0.7f), value("classic_weight_mid", 1f), value("classic_weight_hl", 0.8f),
+                value("classic_weight_shadow", 0.5f)};
         return new float[]{value("weight_hl", LAYER_WEIGHTS[0]), value("weight_mid", LAYER_WEIGHTS[1]),
                 value("weight_dark2", LAYER_WEIGHTS[2]), value("weight_bright", LAYER_WEIGHTS[3])};
+    }
+
+    /**
+     * P402 (owner, 2026-10-29: «Перенеси то чего нам не хватает для того чтобы применить конфиг который я кинул»): «Раскладка слоёв» 1
+     * = the reference app's v2.07 fusion (WhyFusion.exposures207) with its own rows - the weights of the deepest highlights, the
+     * moderate highlights, the base and the shadows (classic_weight_ext_hl / _hl / _mid / _shadow, 0.7 / 0.8 / 1.0 / 0.5) and its centre
+     * (classic_weight_center 0.5) -, no headroom weights (P291 / P310), no darkest-exposure cap (P340), no window term (P401). 0 (the
+     * default): ours.
+     */
+    static boolean arkLayout() {
+        return value("fusion_layout", 0f) >= 0.5f;
+    }
+
+    /** The fusion's well-exposed centre without headroom: weight_center (0.6), the v2.07 layout's classic_weight_center (0.5). */
+    static float fusionCenter() {
+        return arkLayout() ? value("classic_weight_center", 0.5f) : value("weight_center", 0.6f);
     }
 
     /** AE / Smart-HDR / AgX settings (defaults: WhyCam 2.85 X8U effective values, tone_port.md section 3). */
@@ -102,6 +120,8 @@ public final class WhyTone {
         s.maxBoost = value("ae_max_boost", 5.0f);
         s.minLimit = Math.min(value("ae_min_limit", 0.5f), s.maxBoost);
         s.hlOverflow = value("hl_overflow", 2.0f);
+        // P402: the share of the frame's exposure kept above the highlight overflow's limit (the reference app's ae_hl_blend)
+        s.hlBlend = Math.max(0f, Math.min(1f, value("hl_blend", 0.33f)));
         float nightVal = value("night_thresh", 0.05f);
         if (nightVal >= 1.0f) nightVal = 0.05f; // migration of legacy ISO values (e.g. 100)
         // The row is the noise-based gain clamp only. Since P63 the ISO night threshold took the same value, always below ISO 1,
@@ -131,6 +151,7 @@ public final class WhyTone {
         // P216: the Bento ultrashort frames merged - data above the native ceiling of 4 is the shot's real highlight range
         s.bentoHeadroom = ScamHybridBurst.lastBentoApplied;
         s.hrMix = Math.max(0f, Math.min(1f, value("hr_mix", 0.5f)));
+        s.v207 = arkLayout();   // P402: the classic layout's Smart-HDR strengths
         return s;
     }
 
@@ -443,11 +464,11 @@ public final class WhyTone {
     }
 
     /**
-     * P400 (owner, 2026-10-29, the ship's bridge: the crane and the tower behind the window washed out, «такую проблему мы уже решали
-     * очень давно»): how much fused luma a daylit window's mid-tones under its sky give up in a room (why/lpyr WINDOW; 0 = off).
+     * P401 (owner, 2026-10-29: the cranes and the clouds behind a window as build 31091 drew them, «при этом у нас остаётся пирамида
+     * Лапласа»): the share of build 31091's fusion a daylit window takes in a room (why/lpyr WINDOW; 0 = off, 1 = all of it).
      */
-    static float windowDepth() {
-        return Math.max(0f, Math.min(0.3f, value("window_depth", 0.10f)));
+    static float windowShare() {
+        return Math.max(0f, Math.min(1f, value("window_31091", 1f)));
     }
 
     /** Window burst: why/combine MACRO_TOE - the macro contrast below its pivot as a power, no black offset (scam_dev macro_toe 0: off). */
@@ -463,6 +484,19 @@ public final class WhyTone {
      */
     static float lightChroma() {
         return Math.max(0f, Math.min(1f, value("light_chroma", 1f)));
+    }
+
+    /**
+     * P402: «Плёночное выгорание светов» - the AgX inset's strength 0..1 (the reference app's agx_inset_strength / 100: the inset matrix
+     * towards the identity, the outset its inverse; 1 = the full matrix, as before).
+     */
+    static float insetStrength() {
+        return Math.max(0f, Math.min(1f, value("agx_inset", 100f) / 100f));
+    }
+
+    /** P402: the headroom shoulder's strength 0..1 (hdr_shoulder_strength; 1 = the full shoulder, as before). */
+    static float shoulderStrength() {
+        return Math.max(0f, Math.min(1f, value("hr_strength", 1f)));
     }
 
     static float[] headroomTone() {
@@ -538,9 +572,74 @@ public final class WhyTone {
 
     /** The own curve's 256 samples (pref_scam_hybrid_why_curve_points, WhyCam's S when empty). */
     static float[] curveSamples() {
-        return com.particlesdevs.photoncamera.processing.color.ToneCurve
+        return curveModified(com.particlesdevs.photoncamera.processing.color.ToneCurve
                 .parse(PreferenceKeys.hybridString("why_curve_points", com.particlesdevs.photoncamera.processing.color.ToneCurve.DEFAULT_POINTS))
-                .samples(com.particlesdevs.photoncamera.processing.color.ToneCurve.SAMPLES);
+                .samples(com.particlesdevs.photoncamera.processing.color.ToneCurve.SAMPLES), new float[]{value("curve_lift", 0f),
+                value("curve_contrast", 0f), value("curve_shadow_contrast", 0f), value("curve_highlight_contrast", 0f),
+                value("curve_deep_shadows", 0f), value("curve_extreme_highlights", 0f), value("curve_offset", 0f)});
+    }
+
+    /**
+     * P404: «Модификаторы кривой» of the reference app (ToneCurveHelper.calcDeltaY): each sample of the own curve at x moves by offset
+     * / 200 + 2.5e-6 (B lift - C contrast - E shadow contrast - F highlight contrast + G deep shadows - H extreme highlights), the six
+     * tables over x (17 nodes, smoothstep between them), within 0..1; all 0: the curve as it is. m: lift, contrast, shadow
+     * contrast, highlight contrast, deep shadows, extreme highlights (-100..100), offset (-50..50).
+     */
+    static float[] curveModified(float[] y, float[] m) {
+        boolean any = false;
+        for (float v : m) any |= Math.abs(v) > 1e-4f;
+        if (!any) return y;
+        final float[] out = new float[y.length];
+        for (int i = 0; i < y.length; i++) {
+            final float x = y.length > 1 ? i / (float) (y.length - 1) : 0f;
+            final float d = m[6] / 200f + 2.5e-6f * (curveCoeff(CURVE_B, x) * m[0] - curveCoeff(CURVE_C, x) * m[1] - curveCoeff(CURVE_E, x) * m[2]
+                    - curveCoeff(CURVE_F, x) * m[3] + curveCoeff(CURVE_G, x) * m[4] - curveCoeff(CURVE_H, x) * m[5]);
+            out[i] = Math.max(0f, Math.min(1f, y[i] + d));
+        }
+        return out;
+    }
+
+    static final float[] CURVE_B = {0, 0, 4, 50, 178, 401, 674, 906, 1000, 906, 674, 401, 178, 50, 4, 0, 0},
+            CURVE_C = {0, 349, 659, 889, 1000, 964, 769, 431, 0, -431, -769, -964, -1000, -889, -659, -349, 0},
+            CURVE_E = {0, 349, 659, 889, 1000, 962, 769, 471, 206, 51, 6, 0, 0, 0, 0, 0, 0},
+            CURVE_F = {0, 0, 0, 0, 0, 0, -6, -51, -206, -471, -769, -962, -1000, -889, -659, -349, 0},
+            CURVE_G = {0, 667, 1000, 956, 697, 402, 180, 61, 14, 1, 0, 0, 0, 0, 0, 0, 0},
+            CURVE_H = {0, 0, 0, 0, 0, 0, 0, -1, -14, -61, -180, -402, -697, -956, -1000, -667, 0};
+
+    /** ToneCurveHelper.sampleCoeff: the table at x (17 nodes over 0..1), smoothstep between two nodes. */
+    static float curveCoeff(float[] t, float x) {
+        final float idx = x * 16f;
+        final int i = (int) idx;
+        if (i < 0) return t[0];
+        if (i >= 16) return t[16];
+        final float f = idx - i;
+        return t[i] + f * f * (3f - 2f * f) * (t[i + 1] - t[i]);
+    }
+
+    /**
+     * P404: the reference app's vibrance terms (why/combine ARK_VIB): {saturated, mid-tones, shadows, skin protection 0..1} and {the
+     * skin hue centre in radians (deg 41.2), its lower OKLab L (0.16), its saturation shift}; null when the three terms and the shift
+     * are 0 (no define).
+     */
+    static float[][] arkVibrance() {
+        final float sat = value("vibrance_saturated", 0f), mid = value("vibrance_mid", 0f), sh = value("vibrance_shadows", 0f),
+                skinSat = value("skin_sat_shift", 0f);
+        if (Math.abs(sat) < 1e-4f && Math.abs(mid) < 1e-4f && Math.abs(sh) < 1e-4f && Math.abs(skinSat) < 1e-4f) return null;
+        return new float[][]{{sat, mid, sh, Math.max(0f, Math.min(1f, value("skin_protect", 1f)))},
+                {(float) Math.toRadians(value("skin_hue_center", 41.2f)), value("skin_luma_min", 0.16f), skinSat}};
+    }
+
+    /**
+     * P404: the own curve's contrast boost - the AE's flat-scene contrast {@code c} (what AgX adds to its slope) x «Контраст-буст»
+     * (0..2; 0 by default: the own curve as before, 1 as the reference app).
+     */
+    static float curveBoost(float c) {
+        return c * Math.max(0f, Math.min(2f, value("curve_boost", 0f)));
+    }
+
+    /** P404: «Стандарт гаммы дисплея» - 0 the pure power 1 / gamma (as before), 1 sRGB, 2 Rec.709 (why/combine GAMMA_TYPE). */
+    static int gammaType() {
+        return Math.max(0, Math.min(2, Math.round(value("gamma_type", 0f))));
     }
 
     /** ef_gamma; the mod takes 2.2 for a value at or below 0.1 [pushCurrentLut 0x80da4]. */
@@ -630,7 +729,37 @@ public final class WhyTone {
      */
     static float[] colourMatrixOf(Parameters p, float[] white) {
         float[] m = intermediateToSRGB(p);
+        white = withCctSat(white);
         return white != null ? ColourLook.mul(white, m) : m;
+    }
+
+    /**
+     * P402: the reference app's cct_sat - the saturation of the colour matrix about the Rec.709 luminance (Y kept; 1 = none), on top
+     * of the «Цвет» white matrix {@code white} (null: none) of linear sRGB; null when both are neutral.
+     */
+    public static float[] withCctSat(float[] white) {
+        return cctGain(new float[]{gain("cct_gain_r"), gain("cct_gain_g"), gain("cct_gain_b")},
+                cctSat(Math.max(0f, Math.min(2f, value("cct_sat", 1f))), white));
+    }
+
+    private static float gain(String key) {
+        return Math.max(0.7f, Math.min(1.3f, value(key, 1f)));
+    }
+
+    /** P404: the reference app's cct_gain R/G/B - the rows of the matrix ({@code white}, null: none) scaled; null when all are 1. */
+    static float[] cctGain(float[] g, float[] white) {
+        if (Math.abs(g[0] - 1f) < 1e-4f && Math.abs(g[1] - 1f) < 1e-4f && Math.abs(g[2] - 1f) < 1e-4f) return white;
+        final float[] d = {g[0], 0f, 0f, 0f, g[1], 0f, 0f, 0f, g[2]};
+        return white != null ? ColourLook.mul(d, white) : d;
+    }
+
+    /** {@link #withCctSat} of the saturation {@code k}. */
+    static float[] cctSat(float k, float[] white) {
+        if (Math.abs(k - 1f) < 1e-4f) return white;
+        final float[] luma = {0.2126f, 0.7152f, 0.0722f}, sat = new float[9];
+        for (int i = 0; i < 3; i++)
+            for (int j = 0; j < 3; j++) sat[i * 3 + j] = (i == j ? k : 0f) + (1f - k) * luma[j];
+        return white != null ? ColourLook.mul(sat, white) : sat;
     }
 
     /** P370 (B1): {@link #colourMatrixOf} with the «Цвет» rows of now (the diagnostic README before the pipeline runs). */

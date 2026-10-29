@@ -12,6 +12,8 @@ package com.particlesdevs.photoncamera.processing.opengl.postpipeline;
 final class FusedCurve {
     /** The deep-shadow floor of the fusion's bright layer (WhyTone.deepFloor), set by the caller before fill. */
     static final float[] DEEP_FLOOR = {0f};
+    /** P404: the display standard of the lumas (WhyTone.gammaType: 0 the pure power, 1 sRGB, 2 Rec.709), as the photo's fusion. */
+    static final int[] GAMMA_TYPE = {0};
     /**
      * P391: import why_fusion deepNoiseU - {tau, S_I, O_I}: the floor only as far as a lifted deep shadow's fused-luma noise stays
      * under tau (variance S_I I + O_I of the guide I); tau 0: the floor as before. Set by the caller before fill.
@@ -41,7 +43,7 @@ final class FusedCurve {
         final double var = Math.max(s * s, 0.001);
         final double[] l = new double[4], w = new double[4];
         for (int k = 0; k < 4; k++) {
-            l[k] = Math.pow(Math.max(acescg(I * em[k], t), 1e-6), gi);
+            l[k] = GAMMA_TYPE[0] == 0 ? Math.pow(Math.max(acescg(I * em[k], t), 1e-6), gi) : enc(Math.max(acescg(I * em[k], t), 0.0), GAMMA_TYPE[0]);
             w[k] = Math.exp(-0.5 * (l[k] - c) * (l[k] - c) / var) * lw[k] + 1e-6;
         }
         // import why_fusion deepFloorU (the viewfinder's curve = the photo's): the brightest layer (k = 3) floors in deep shadows,
@@ -53,6 +55,12 @@ final class FusedCurve {
             swl += w[k] * l[k];
         }
         return swl / sw;
+    }
+
+    /** P404: import why_fusion encG4 - sRGB (1) or Rec.709 (2). */
+    static double enc(double v, int type) {
+        if (type == 1) return v < 0.0031308 ? 12.92 * v : 1.055 * Math.pow(v, 1.0 / 2.4) - 0.055;
+        return v < 0.018 ? 4.5 * v : 1.099 * Math.pow(v, 0.45) - 0.099;
     }
 
     /** import why_fusion deepFloorOf: the bright layer's floor weight at guide I, the other layers' weights w and lumas l. */

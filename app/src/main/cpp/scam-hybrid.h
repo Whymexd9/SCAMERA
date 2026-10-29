@@ -548,6 +548,12 @@ struct HybridTuning {
     // detail +12..24 %, noise +19 %); the structure threshold (f2 / f3 x0.1..0.5) and the rejection changed nothing. 1 = off (replays
     // unchanged); the app sends 0.8.
     float s61NightScale=1.f,s61NightKeyLo=8.f,s61NightKeyHi=16.f;
+    // P402 (owner, 2026-10-29: «dezipper нам также перенеси»): the reference app v2.07's dezipper (sabre_dezipper_thresh, its merge's
+    // kernel_blurring_params.x): where the donors were rejected (their accepted weight below 98 % of the donor frames, fully under 70 %)
+    // the base frame weighs up to max(1, dezipper - accepted donors) instead of 1, so a moving edge is the base's own sample and not a
+    // few partly accepted donors' interleaved with it (the zipper / staircase of a moving edge). 0 = off: the merge program as before
+    // (its DEZIP code is compiled only with this on).
+    float dezipper=0.f;
     // ... in daylight (key > s61MaxKey) instead: the emulated LUT leaves flat areas on the narrow "structure" kernel at ISO 100-200
     // (smooth-area noise x2.3 against the round-4 kernel); 16 / 4 keep the detail (-1 %) at x1.45 (f6_local_align.md)
     float s61DayTensorNoise=16.f,s61DayGdNoise=4.f;
@@ -1044,7 +1050,7 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             ||set("shastaEnable",nullptr,&t.shastaEnable)||set("shastaForce",nullptr,&t.shastaForce)||set("shastaMotionMax",&t.shastaMotionMax)||set("snr",nullptr,&t.snrFixed)||set("snrScale",&t.snrScale)||set("debugFrame",nullptr,&t.debugFrame)
             ||set("cellClip",nullptr,&t.cellClip)||set("staticShift",&t.staticShift)||set("hotSigma",&t.hotSigma)||set("hotFrames",nullptr,&t.hotFrames)||set("cellsPlain",nullptr,&t.cellsPlain)||set("blendStages",nullptr,&t.blendStages)||set("blendLists",nullptr,&t.blendLists)||set("hotBaseSigma",&t.hotBaseSigma)
             ||set("hotCross",&t.hotCross)||set("hotMaxLevel",&t.hotMaxLevel)||set("hotCap",&t.hotCap)||set("bentoScam",nullptr,&t.bentoScam)||set("bentoInvalid",&t.bentoInvalid)||set("bentoInpaintMiddle",&t.bentoInpaintMiddle)
-            ||set("bentoInpaintMin",&t.bentoInpaintMin)||set("clipFlags",nullptr,&t.clipFlags)||set("sabre61",nullptr,&t.sabre61)||set("s61Fine",&t.s61Fine)||set("s61NightScale",&t.s61NightScale)||set("s61NightKeyLo",&t.s61NightKeyLo)||set("s61NightKeyHi",&t.s61NightKeyHi)
+            ||set("bentoInpaintMin",&t.bentoInpaintMin)||set("clipFlags",nullptr,&t.clipFlags)||set("sabre61",nullptr,&t.sabre61)||set("s61Fine",&t.s61Fine)||set("s61NightScale",&t.s61NightScale)||set("dezipper",&t.dezipper)||set("s61NightKeyLo",&t.s61NightKeyLo)||set("s61NightKeyHi",&t.s61NightKeyHi)
             ||set("s61TensorNoise",&t.s61TensorNoise)||set("s61GdNoise",&t.s61GdNoise)||set("s61MinMotion",&t.s61MinMotion)
             ||set("s61DayTensorNoise",&t.s61DayTensorNoise)||set("s61DayGdNoise",&t.s61DayGdNoise)||set("s61Mode",nullptr,&t.s61Mode)||set("s61MaxKey",&t.s61MaxKey)||set("hotMaxKey",&t.hotMaxKey)||set("subset",nullptr,&t.subset)||set("profile",nullptr,&t.profile)
             ||set("rimRatio",nullptr,&t.rimRatio)||set("rimSigma",&t.rimSigma)||set("rimLo",&t.rimLo)||set("rimHi",&t.rimHi)||set("rimStride",nullptr,&t.rimStride)||set("rimLift",nullptr,&t.rimLift)
@@ -2566,6 +2572,36 @@ void usWide(inout vec3 num,inout vec3 den,inout vec3 clipW,int f,vec2 O,float r,
 )";
 
 // Grid 1 (sensor grid): one evaluation per sensor pixel.
+// P402: the dezipper (HybridTuning::dezipper) - put into kHybMergeCommon's text by HybridGpu (hybridDezipSource) only when it is on,
+// so the merge program without it stays byte-identical (the same program cache entry): the donors' accepted weight of this output
+// pixel is summed as they come (main merges the base last); the base's weight rises where they were rejected.
+static const char* kHybDezip=R"(
+uniform vec2 dezipU; // x: the dezipper (frames), y: the donor frames merged
+float dzDonors=0.0;
+float dezip(int f,int role,float r,float cover){
+    if(f!=0){if(role!=5)dzDonors+=cover;return r;}
+    float hole=clamp((0.98-dzDonors/max(dezipU.y,1.0))/0.28,0.0,1.0);
+    float k=mix(1.0,max(1.0,dezipU.x-dzDonors),hole);
+    dzDonors=0.0;
+    return r*k;
+}
+)";
+// kHybMergeCommon (or its DCG copy) with kHybDezip before frameSamples and its call at the top of frameSamples / frameSamplesPlain
+inline std::string hybridDezipSource(const std::string& common){
+    std::string s=common;
+    const std::string head="void frameSamples(inout Acc a,int f,vec2 O,float r,float cover,vec3 P,bool win){\n";
+    const size_t at=s.find(head);
+    if(at==std::string::npos||s.find(head,at+1)!=std::string::npos)throw std::runtime_error("HYBRID GPU: dezipper: frameSamples not found once");
+    s.insert(at,kHybDezip);
+    const std::string role="    int role=int(fParam[f].w);\n";
+    for(const char* fn:{"void frameSamples(inout Acc a,","void frameSamplesPlain(inout Acc a,"}){
+        const size_t f=s.find(fn);
+        const size_t r=f==std::string::npos?f:s.find(role,f);
+        if(r==std::string::npos||r-f>200)throw std::runtime_error(std::string("HYBRID GPU: dezipper: no role line in ")+fn);
+        s.insert(r+role.size(),"    r=dezip(f,role,r,cover);\n");
+    }
+    return s;
+}
 static const char* kHybMergeMain1=R"(
 void main(){
     int w2=size.x/2;
@@ -5324,7 +5360,8 @@ inline bool hybridPartialOn(const HybridTuning& t,bool native=false){
 // (kHybDilate: SHASTA_SCOPE; not on the native mosaic, whose merge has no scope planes); "" with both keys off (the programs exactly
 // as before). Part of the programs' source: the cache key.
 inline std::string hybridPartialSpec(const HybridTuning& t,bool native=false){
-    return std::string(hybridPartialOn(t,native)?"#define BLEND_PARTIAL 1\n":"")+(!native&&t.shastaMotionScope>0?"#define SHASTA_SCOPE 1\n":"");
+    return std::string(hybridPartialOn(t,native)?"#define BLEND_PARTIAL 1\n":"")+(!native&&t.shastaMotionScope>0?"#define SHASTA_SCOPE 1\n":"")
+        +(t.dezipper>0.f?"#define DEZIP 1\n":""); // P402: DEZIP into the merge program
 }
 struct HybridDcgSources { std::string helpers,mergeCommon,mosaicFast,guide; };
 inline std::string hybridDcgReplace(const std::string& text,const char* what,const char* from,const char* to){
@@ -5877,7 +5914,9 @@ public:
             { // debugging: SCAM_HYB_DEFS=A,B -> "#define A" / "#define B" before the merge body
                 std::string defs;const char* env=std::getenv("SCAM_HYB_DEFS");
                 if(env){std::stringstream s(env);std::string d;while(std::getline(s,d,','))if(!d.empty())defs+="#define "+d+"\n";}
-                const std::string body=defs+mergeCommon()+kHybMergeMain1;
+                // P402: the dezipper put into the common text only when it is on (hybridDezipSource)
+                const std::string common=partialSpec.find("DEZIP")!=std::string::npos?hybridDezipSource(mergeCommon()):std::string(mergeCommon());
+                const std::string body=defs+common+kHybMergeMain1;
                 mergeProgram=timed("merge",body.c_str());
             }
             const char* blendDefs=blendOpts?"#define BLEND_OPTS 1\n":""; // P350
@@ -6266,6 +6305,11 @@ public:
          glUniform2f(loc(dilateProgram,"db"),bin?tune.rejBinLo:0.f,bin?tune.rejBinHi:0.f);}
         glUseProgram(mergeProgram);
         glUniform4f(loc(mergeProgram,"kD"),tune.widenBelow,tune.widenMul,tune.kernelFloor,bentoMix?1.f:0.f);
+        if(tune.dezipper>0.f){ // P402: the dezipper and the donor frames it counts against (normal and bracketed frames merged)
+            int donors=0;
+            for(size_t f=1;f<in.role.size()&&f<in.weight.size();++f)if(in.role[f]!=5&&in.weight[f]>0.f)donors++;
+            glUniform2f(loc(mergeProgram,"dezipU"),std::clamp(tune.dezipper,0.5f,15.f),float(std::max(donors,1)));
+        }
         {const float us=std::max(0.3f,tune.bentoUsSigma),cs=tune.bentoChromaSigma;
          // The merge program stays exactly as it was: on Adreno 750 even one more term in its clip-flag condition made the whole
          // merge ~15x slower (and changed its rounding). The Bento colour pass gets its own uniforms.

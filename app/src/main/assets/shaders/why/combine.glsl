@@ -115,6 +115,24 @@ precision highp int;
 // P398 (owner, 2026-10-29, the ship's bridge: «света почему-то получаются кремовые»): 1 = a pale colour lands on white at the top of
 // the tone (hlNeutralU; 0 = the shader before)
 #define HL_NEUTRAL 0
+// P402 ARK_BASE 1 (WhyCombine sets it with the reference app v2.07's fusion layout, WhyTone.arkLayout): its base of the tone -
+// with headroom (clip > 1.05) the fused target_lin goes softly into the tonemapper's top above 0.7 of it (AgX 0.18 x 2^(max EV +
+// EV), ACES 3, the others 4) instead of up the ACES inverse's asymptote, and the gain is held in 0.05 .. 12 against an auto
+// exposure above 1 that fades to 1 over the lights (Y 0.70 .. 1.20). 0: the shader before P402, token for token.
+#define ARK_BASE 0
+// P402 AGX_INSET 1 (WhyCombine sets it for «Плёночное выгорание светов» below 100 %): the reference app v2.07's inset strength - the
+// inset matrix of the tone goes towards the identity (insetU 1: the matrix, 0: per channel) and the outset is its inverse, as there.
+// 0: the shader before P402, token for token.
+#define AGX_INSET 0
+// P404 GAMMA_TYPE (WhyTone.gammaType, «Стандарт гаммы дисплея»): 1 sRGB (IEC 61966-2-1), 2 Rec.709 for the display encoding, the
+// fusion's lumas (import why_fusion) and their inversion, as the reference app's u_gamma_curve_type; 0: the pure power 1 / gamma,
+// the shader as before token for token. The sun glow keeps its pure-power round trip (an approximate linear, exact where none).
+#define GAMMA_TYPE 0
+// P404 ARK_VIB 1 (WhyCombine sets it when one of these rows is not 0): the reference app's vibrance terms ours lacked - of saturated
+// colours (chroma 0.02 .. 0.09 up), of the mid-tones (OKLab L 0.15 .. 0.75) and of the shadows (L under 0.08 .. 0.25), held off
+// skin by its own mask (OKLab hue round the skin centre, sigma 0.28 rad, chroma 0.015 .. 0.28, L from the skin's lower luminance)
+// x the skin protection, and the skin's saturation shift; with our vibrance, in scene OKLab. 0: the shader before, token for token.
+#define ARK_VIB 0
 #import interpolation
 uniform sampler2D InputBuffer;      // full-size white-balanced linear camera RGB (the merge after denoising)
 uniform sampler2D GainMap;          // lens shading gains
@@ -137,6 +155,10 @@ uniform float toeU;                 // ACES toe; <= 0 -> 0.05
 uniform float gammaInvU;            // 1 / ef_gamma; <= 0 -> 1 / 2.2
 uniform float macroU;               // OKLab macro contrast; <= 0 -> 1.1
 uniform vec3 vibU;                  // vibrance: overall, sky, green (0 = off)
+#if ARK_VIB == 1
+uniform vec4 arkVibU;               // P404: saturated, mid-tones, shadows, skin protection (0..1)
+uniform vec3 arkSkinU;              // P404: the skin hue centre (radians, OKLab), its lower luminance (OKLab L), its saturation shift
+#endif
 uniform float vibHlU;               // P341: vibrance of the light tones (OKLab L 0.45 .. 0.75 up), lightness kept (0 = off)
 uniform vec4 vibHlShapeU;           // P393: its shape for pale colour - OKLab L from / full, chroma gate from / full; unset: 0.57 / 0.89, 0.010 / 0.025
 uniform float chromaDnU;            // chroma denoise of strongly lifted pixels (0 = off)
@@ -164,6 +186,7 @@ uniform int headroomU;              // 1: real headroom above 1 (clipped RAW rec
 uniform float hrU;
 uniform float hrKneeU;              // shoulder knee x the tonemapper top; <= 0 -> 0.5 (WhyCam 1.58 hdr_shoulder_knee: 0.6)
 uniform float hrRoomU;              // shoulder headroom x the top; <= 0 -> 0.4 (hdr_shoulder_headroom: 0.35)
+uniform float hrEaseU;              // P402: 1 - the shoulder's strength (hdr_shoulder_strength; 0 / unset = full, as before)
 uniform float hrDetailU;            // highlight detail: share of the full-size log contrast kept in OKLab L (0 = off)
 #endif
 uniform float hlWhiteU;             // path to white of saturated light entering the shoulder (0 = off)
@@ -232,6 +255,7 @@ uniform vec4 acesU;                 // ACES: pre-gain, a, d, toe
 uniform vec4 uchiAU;                // Uchimura: pre-gain, post-gain, P (max brightness), a (contrast)
 uniform vec4 uchiBU;                // Uchimura: m (linear start), l (linear length), c (toe power), b (black offset)
 uniform vec4 curveU[64];            // own curve: 256 samples over x 0..1 (0.5 + EV / 10 around the 0.18 grey)
+uniform float curveBoostU;          // P404: the flat scene's contrast boost on the own curve (WhyAe contrastC; 0 = none)
 #endif
 #if FILM_LUT == 1
 precision highp sampler3D;
@@ -543,6 +567,15 @@ float toneUchimura(float v) {
 float curveSample(int i) {
     return curveU[i >> 2][i & 3];
 }
+// P404: the reference app's get_curve_contrast_delta per unit of boost: an S about the middle of the curve's input (x 0.5)
+float curveContrast(float x) {
+    const float C[17] = float[17](0.0, 0.349, 0.659, 0.889, 1.0, 0.964, 0.769, 0.431, 0.0, -0.431, -0.769, -0.964, -1.0, -0.889, -0.659,
+                                  -0.349, 0.0);
+    float idx = clamp(x * 16.0, 0.0, 16.0);
+    int i0 = clamp(int(floor(idx)), 0, 15);
+    float t = idx - float(i0);
+    return -mix(C[i0], C[i0 + 1], t * t * (3.0 - 2.0 * t)) * 0.125;
+}
 float toneCurve(float x) {
     float f = clamp(x, 0.0, 1.0) * 255.0;
     int i = min(int(f), 254);
@@ -707,6 +740,31 @@ float agxTonescale(float x, float slope, float sp, float tp, float px) {
     return py - ts * ft;
 }
 
+#if AGX_INSET == 1
+uniform float insetU;               // P402: the inset strength 0..1
+const mat3 AGX_INSET_M = mat3(0.842479062253094, 0.0423282422610123, 0.0423756549057051, 0.0784335999999992, 0.8784686364697720,
+                              0.0784336000000000, 0.0792237451477643, 0.0791661274605434, 0.8791429737931040);
+mat3 insetA() { return mat3(1.0 - clamp(insetU, 0.0, 1.0)) + clamp(insetU, 0.0, 1.0) * AGX_INSET_M; }
+// the shader's fixed outset is the inverse of AGX_INSET_M: this turns its result into the inverse of insetA's
+vec3 insetFix(vec3 g) { return inverse(insetA()) * (AGX_INSET_M * g); }
+#endif
+#if GAMMA_TYPE == 0
+#else
+vec3 encG(vec3 v) {
+#if GAMMA_TYPE == 1
+    return mix(12.92 * v, 1.055 * pow(max(v, vec3(0.0031308)), vec3(1.0 / 2.4)) - 0.055, step(vec3(0.0031308), v));
+#else
+    return mix(4.5 * v, 1.099 * pow(max(v, vec3(0.018)), vec3(0.45)) - 0.099, step(vec3(0.018), v));
+#endif
+}
+vec3 decG(vec3 v) {
+#if GAMMA_TYPE == 1
+    return mix(v / 12.92, pow((max(v, vec3(0.04045)) + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), v));
+#else
+    return mix(v / 4.5, pow((max(v, vec3(0.081)) + 0.099) / 1.099, vec3(1.0 / 0.45)), step(vec3(0.081), v));
+#endif
+}
+#endif
 #if LIGHT_CHROMA == 1
 // P393: the AgX rendition (display-linear, before the gamut cut) of a scene colour, as main() renders a pixel: inset, the tone scale per
 // channel, the look, pow 2.4, outset and the AgX saturation sat
@@ -714,6 +772,9 @@ vec3 agxGraded(vec3 scene, vec4 agxA, vec4 agxB, int look, float sat) {
     vec3 ins = max(vec3(0.842479062253094 * scene.r + 0.0784335999999992 * scene.g + 0.0792237451477643 * scene.b,
                         0.0423282422610123 * scene.r + 0.8784686364697720 * scene.g + 0.0791661274605434 * scene.b,
                         0.0423756549057051 * scene.r + 0.0784336000000000 * scene.g + 0.8791429737931040 * scene.b), vec3(0.0));
+#if AGX_INSET == 1
+    ins = max(insetA() * scene, vec3(0.0));
+#endif
     float range = max(agxB.y + max(agxB.z, 0.0) - agxB.x, 1.0);
     float px = clamp(-agxB.x / range, 0.05, 0.95);
     vec3 lg = clamp((log2(max(ins, vec3(0.0000001)) / 0.18) + agxB.z - agxB.x) / range, 0.0, 1.0);
@@ -727,6 +788,9 @@ vec3 agxGraded(vec3 scene, vec4 agxA, vec4 agxB, int look, float sat) {
     vec3 g = vec3(1.19687902425835 * d.r - 0.09802088114013 * d.g - 0.09902975707567 * d.b,
                   -0.05289685400450 * d.r + 1.15190312998791 * d.g - 0.09896117934484 * d.b,
                   -0.05297163539640 * d.r - 0.09804337634422 * d.g + 1.15107253721836 * d.b);
+#if AGX_INSET == 1
+    g = insetFix(g);
+#endif
     if (abs(sat - 1.0) > 0.001) {
         float ol = dot(g, LUMA);
         g = vec3(ol) + (g - vec3(ol)) * sat;
@@ -980,9 +1044,30 @@ void main() {
 #endif
 #endif
     // === 2. ACES inversion and base gain [:1500-1509] ===
+#if GAMMA_TYPE == 0
     float targetLin = inverseAcescg(pow(max(fused, 0.0), 2.2), toe);
+#else
+    float targetLin = inverseAcescg(decG(vec3(max(fused, 0.0))).x, toe);
+#endif
     float origLuma = max(max(dot(orig, LUMA), max3(orig) * 0.5), 0.0001);
+#if ARK_BASE == 1
+    if (clipCeiling > 1.05) {
+#if TONE_OP == 1
+        float topT = toneOpU == 1 ? 3.0 : 4.0;
+#else
+        float topT = max(0.18 * exp2(agxB.y + max(agxB.z, 0.0)), 1.0);
+#endif
+        float kneeT = 0.7 * topT;
+        if (targetLin > kneeT) {
+            float exT = targetLin - kneeT, roomT = topT - kneeT;
+            targetLin = kneeT + exT * roomT / (exT + roomT);
+        }
+    }
+    float aeEff = clipCeiling > 1.05 && ae > 1.0 ? mix(ae, 1.0, smoothstep(0.70, 1.20, origLuma)) : ae;
+    float gain = clamp(targetLin / max(origLuma * aeEff, 0.0001), 0.05, 12.0) * (aeEff / ae);
+#else
     float gain = targetLin / max(origLuma * ae, 0.0001);
+#endif
     vec3 lin = orig * ae * gain;
     float linScale = ae * gain;  // P370: every scale lin takes before OKLab, for the signed colour
 #if SKY == 1
@@ -1176,6 +1261,21 @@ void main() {
 #endif
     if (abs(vibU.z) > 0.001 && lab.y < 0.0) satMult += vibU.z * clamp(-lab.y / sat, 0.0, 1.0) * protect;
     lab.yz *= satMult;
+#if ARK_VIB == 1
+    {
+        // P404: v2.07 tonemap_final 4.1 - 4.4 (its strength, sky and green terms are ours above, its light-tone term ours below)
+        float cs = max(length(lab.yz), 0.0001);
+        float dth = atan(lab.z, lab.y) - arkSkinU.x;
+        dth = mod(dth + 3.14159265, 6.2831853) - 3.14159265;
+        float skinA = clamp(exp(-0.5 * dth * dth / (0.28 * 0.28)) * smoothstep(0.015, 0.040, cs) * (1.0 - smoothstep(0.18, 0.28, cs))
+                            * smoothstep(arkSkinU.y - 0.06, arkSkinU.y + 0.06, lab.x) * (1.0 - smoothstep(0.88, 0.98, lab.x)), 0.0, 1.0);
+        float boost = arkVibU.x * smoothstep(0.02, 0.09, cs)
+                      + arkVibU.y * smoothstep(0.15, 0.35, lab.x) * (1.0 - smoothstep(0.55, 0.75, lab.x))
+                      + arkVibU.z * (1.0 - smoothstep(0.08, 0.25, lab.x));
+        lab.yz *= max(0.0, 1.0 + boost * (1.0 - 0.70 * skinA * arkVibU.w));
+        if (abs(arkSkinU.z) > 0.001) lab.yz *= max(0.0, 1.0 + arkSkinU.z * skinA);
+    }
+#endif
 #if LIGHT_CHROMA == 1
     float cPreK = length(lab.yz);   // P393: the chroma before the light tones' vibrance (its gain is divided out of the mid rendition)
 #endif
@@ -1320,7 +1420,9 @@ void main() {
         float mw = mix(max3(scene), dot(scene, LUMA), satW);
         if (mw > knee) {
             float ex = mw - knee;
-            scene *= (knee + ex * room / (ex + room)) / mw;
+            float kw = (knee + ex * room / (ex + room)) / mw;
+            if (hrEaseU > 0.0) kw = mix(kw, 1.0, min(hrEaseU, 1.0));   // P402: the shoulder's strength below 1
+            scene *= kw;
         }
     }
 #endif
@@ -1380,12 +1482,16 @@ void main() {
     vec3 ins = max(vec3(0.842479062253094 * scene.r + 0.0784335999999992 * scene.g + 0.0792237451477643 * scene.b,
                         0.0423282422610123 * scene.r + 0.8784686364697720 * scene.g + 0.0791661274605434 * scene.b,
                         0.0423756549057051 * scene.r + 0.0784336000000000 * scene.g + 0.8791429737931040 * scene.b), vec3(0.0));
+#if AGX_INSET == 1
+    ins = max(insetA() * scene, vec3(0.0));
+#endif
 #if TONE_OP == 1
     vec3 graded;
     if (toneOpU == 3) {
         // the own curve on -5..+5 EV around the grey, display values -> linear (2.4) -> the AgX outset, as AgX itself
         vec3 nx = clamp(vec3(0.5) + log2(max(ins, vec3(0.0000001)) / 0.18) * 0.1, 0.0, 1.0);
         vec3 curDisp = vec3(toneCurve(nx.r), toneCurve(nx.g), toneCurve(nx.b));
+        if (curveBoostU > 0.0001) curDisp = clamp(curDisp + vec3(curveContrast(nx.r), curveContrast(nx.g), curveContrast(nx.b)) * curveBoostU, 0.0, 1.0);
         vec3 dispLinC = pow(max(curDisp, vec3(0.0)), vec3(2.4));
         graded = vec3(1.19687902425835 * dispLinC.r - 0.09802088114013 * dispLinC.g - 0.09902975707567 * dispLinC.b,
                       -0.05289685400450 * dispLinC.r + 1.15190312998791 * dispLinC.g - 0.09896117934484 * dispLinC.b,
@@ -1399,6 +1505,9 @@ void main() {
                       -0.05289685400450 * curOp.r + 1.15190312998791 * curOp.g - 0.09896117934484 * curOp.b,
                       -0.05297163539640 * curOp.r - 0.09804337634422 * curOp.g + 1.15107253721836 * curOp.b);
     }
+#if AGX_INSET == 1
+    graded = insetFix(graded);
+#endif
 #else
     float minEv = agxB.x, maxEv = agxB.y, ev = agxB.z;
     float range = max(maxEv + max(ev, 0.0) - minEv, 1.0);
@@ -1414,6 +1523,9 @@ void main() {
     vec3 graded = vec3(1.19687902425835 * dispLin.r - 0.09802088114013 * dispLin.g - 0.09902975707567 * dispLin.b,
                        -0.05289685400450 * dispLin.r + 1.15190312998791 * dispLin.g - 0.09896117934484 * dispLin.b,
                        -0.05297163539640 * dispLin.r - 0.09804337634422 * dispLin.g + 1.15107253721836 * dispLin.b);
+#if AGX_INSET == 1
+    graded = insetFix(graded);
+#endif
     if (abs(agxA.w - 1.0) > 0.001) {
         float ol = dot(graded, LUMA);
 #if COLOUR_LOOK == 1
@@ -1629,13 +1741,25 @@ void main() {
     // === display: power 1/gamma, film toe [:1805-1825], dither [:1836-1843] ===
 #if P3_OUT == 1
     // P3 values, display-encoded; the film toe scales them by the factor the sRGB render takes (same linear scale).
+#if GAMMA_TYPE == 0
     vec3 outRgb = pow(max(SRGB_TO_P3 * graded, vec3(0.000001)), vec3(gammaInv));
+#else
+    vec3 outRgb = encG(max(SRGB_TO_P3 * graded, vec3(0.0)));
+#endif
     if (filmToeU > 0.0) {
+#if GAMMA_TYPE == 0
         float ls = max(dot(pow(max(graded, vec3(0.000001)), vec3(gammaInv)), LUMA), 0.0001);
+#else
+        float ls = max(dot(encG(max(graded, vec3(0.0))), LUMA), 0.0001);
+#endif
         if (ls < 0.15) outRgb *= (pow(max(ls / 0.15, 0.000001), 1.0 + filmToeU) * 0.15) / ls;
     }
 #else
+#if GAMMA_TYPE == 0
     vec3 outRgb = pow(max(graded, vec3(0.000001)), vec3(gammaInv));
+#else
+    vec3 outRgb = encG(max(graded, vec3(0.0)));
+#endif
     if (filmToeU > 0.0) {
         float ls = max(dot(outRgb, LUMA), 0.0001);
         if (ls < 0.15) outRgb *= (pow(max(ls / 0.15, 0.000001), 1.0 + filmToeU) * 0.15) / ls;
@@ -1677,9 +1801,17 @@ void main() {
             vec3 sN = clamp(sceneTone / max(max3(sceneTone), 0.000001), 0.0, 1.0);
             float satS = 1.0 - min(sN.r, min(sN.g, sN.b));
 #if P3_OUT == 1
+#if GAMMA_TYPE == 0
             vec3 sTop = pow(clamp(SRGB_TO_P3 * sN, 0.0, 1.0), vec3(gammaInv));
 #else
+            vec3 sTop = encG(clamp(SRGB_TO_P3 * sN, 0.0, 1.0));
+#endif
+#else
+#if GAMMA_TYPE == 0
             vec3 sTop = pow(sN, vec3(gammaInv));
+#else
+            vec3 sTop = encG(sN);
+#endif
 #endif
             sTop /= max(max3(sTop), 0.000001);
             vec3 top = mix(sTop, vec3(1.0), 1.0 - smoothstep(0.08, 0.30, satS));

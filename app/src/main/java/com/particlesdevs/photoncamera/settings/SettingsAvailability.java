@@ -109,6 +109,10 @@ public final class SettingsAvailability {
             case "bright_thresh": case "dark_thresh": case "dark_pixel_thresh": case "hl_boost": case "shadow_str": case "highlight_str":
             case "weight_dark2": case "weight_hl": case "weight_mid": case "weight_bright": case "weight_center": case "blend_smoothness":
             case "ef_coarse":
+            case "fusion_layout": case "classic_weight_ext_hl": case "classic_weight_hl": case "classic_weight_mid": case "classic_weight_shadow":
+            case "classic_weight_center": case "hr_strength": case "hr_knee": case "hr_room":   // P402
+            case "gamma_type": case "vibrance_saturated": case "vibrance_mid": case "vibrance_shadows": case "skin_protect":
+            case "skin_hue_center": case "skin_luma_min": case "skin_sat_shift":   // P404
             case "sharp_gf_lc": case "sharp_film_grain":
                 return true;
             default:

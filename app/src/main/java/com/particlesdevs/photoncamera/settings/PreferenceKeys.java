@@ -935,6 +935,10 @@ public class PreferenceKeys {
         // burst: fine detail +11..16 %, text in the darks +31..48 %, flat noise +18 %. scam_dev.txt "hybrid_s61_night_scale 1" = before.
         final float nightScale = hybridValue("s61_night_scale", 0.8f);
         if (nightScale > 0f && nightScale != 1f) out.append("s61NightScale ").append(Math.max(0.25f, Math.min(2f, nightScale))).append('\n');
+        // P402 (owner, 2026-10-29: «dezipper нам также перенеси»): the reference app's dezipper - the base frame's weight up to
+        // max(1, value - accepted donors) where the donors were rejected (worker dezipper; 0 = off, the merge program as before)
+        final float dezipper = hybridValue("dezipper", 0f);
+        if (dezipper > 0f) out.append("dezipper ").append(Math.max(0.5f, Math.min(15f, dezipper))).append('\n');
         // P335 (owner, 2026-10-25: Ark's rejections and anti-zipper «улучшить и добавить нам»): the rejection's soft motion prior
         // (worker rejPrior) and the Bayer base demosaic's false-colour damping by the Gr / Gb step above its noise (baseDemosaicAlias);
         // worker defaults = before (replays unchanged). Synthetic bursts with their truth (tools/replay_synth_burst.py): moving-area

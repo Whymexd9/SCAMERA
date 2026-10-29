@@ -9099,3 +9099,77 @@ dump 14:14:07 and the full JPEG pair): DONE (host), not tried on a phone
   on a blue sky beside a blown window at every radius.
 - tools/check_why_window.py (CI), WhyWindowTest; check_why_pyramid_bands (fuse(win=...)), _pyramid, _edge, _noise, _sky,
   _highlights, _headroom, shader_fp16 PASS.
+
+### P401 - a daylit window as build 31091 drew it (owner, 2026-10-29: «изучи что было на версии 31091 и проверь как будет на всех наших
+бурстах», then «делай. При этом у нас остаётся пирамида Лапласа»): DONE (host), not tried on a phone; replaces P400's constant
+- Build 31091 (ArkFusion / ArkAe, 2026-10-18/19): guided-filter fusion, exposures (2^-1.5 effH, 1, 2^effS <= 8, 2^2effS <= 16),
+  layer weights (0.8, 1, 0.7, 0.5), centre 0.6, no envelope. Since: P291 (31106, centre 0.75 / highlight layer 0.4 / envelope),
+  P333 / P391 (pyramid, edge bands), P340 / P341 (the darkest exposure capped at 2 / (ae hr)), the layout (em0, 1, sqrt em0,
+  2^1.5effS) with (0.8, 1, 0.1, 1).
+- Host, every burst kept here (the 14:14 / 14:22 / 14:24 bridge dumps, V2405A 01:43, X200U 23:43, the OPPO window, the 10:27
+  facade), 31091 whole against now: the frame 0.26 - 0.42 EV darker, the lamp's dark ring back, a window's clouds / sun / cranes
+  kept. 31091's weights in the pyramid's bands alone changed nothing (the clouds live in the base levels).
+- DONE: why/lpyr WINDOW now mixes Fused31 (the same pyramid drawn with build 31091's exposures, centre, layer weights and P291's
+  envelope: WhyFusion.exposures31, CENTER_31091, LAYERS_31091; a second pyramid pass only when the term is on) where P400 took
+  a constant off: the same gates (a room: median EV <= 10, off from 11.5; Bento headroom; the window level's mean light at EV
+  10.5 .. 12; the pixel above I 0.12 .. 0.3). WhyTone.windowShare (scam_dev hybrid_why_window_31091, default 1; replaces
+  hybrid_why_window_depth). Host: 14:22 the window's sky 0.91 -> 0.62, tower 0.70 -> 0.46, the room bit for bit; the OPPO window
+  its clouds and sun back; the lamp room and the PC case unchanged (no daylight).
+- tools/check_why_window.py (inside the window = Fused31 within 1e-6, the sky leaves white, room / backlit face / lamp-lit room bit
+  for bit, the 31091 constants mirrored), WhyWindowTest; check_why_pyramid(_bands, _edge), _noise, shader_fp16 PASS.
+
+### P402 - the reference app v2.07's settings that ours lacked (owner, 2026-10-29: «Перенеси то чего нам не хватает для того чтобы
+применить конфиг который я кинул», «dezipper нам также перенеси», «те параметры которые ты перенёс должны быть не в дев настройках»,
+«добавлять поддержку конфигов Арк нам не нужна»): DONE (host), not tried on a phone; every default as before
+- «Раскладка слоёв экспозиции» (why_fusion_layout 1 «Классическая (v2.07)»): exposures (2^-2.5 effH, 1, 2^-1.2 effH,
+  min(2^1.8 effS, 16)) (WhyFusion.exposures207, the viewfinder's curve too), its own weights classic_weight_ext_hl / _hl / _mid /
+  _shadow (0.7 / 0.8 / 1 / 0.5) and centre classic_weight_center 0.5 (separate rows: the menu's stored defaults would hide the
+  layout's own), no P291 / P310 headroom weights, no P340 cap, no P401 window term; with it the v2.07 Smart-HDR strengths
+  (WhyAe.Settings.v207: effS without nf, effH = min(hl_str, 0.833 soft(log2(peak / 0.85 bt)) hl_boost (1 + 0.35 ..) (0.2 + 0.8
+  area))) and why/combine ARK_BASE (target_lin's knee at 0.7 of the top, the gain held in 0.05 .. 12 with ae fading to 1 over the
+  lights).
+- why/combine hrEaseU («Сила удержания цвета в светах», hr_strength 1), AGX_INSET («Плёночное выгорание светов», agx_inset 100:
+  lerp(I, inset) and its inverse as the outset, from libopenhdr_engine 0x13c068), WhyAe hl_blend («Баланс защиты светов» 0.33),
+  WhyTone.withCctSat («Общая насыщенность матрицы» cct_sat 1: Y709-kept saturation of the colour matrix, the viewfinder too).
+- WhyMsDenoise + why/msdn.glsl («Пирамидальный шумодав», off): the ms denoise of v2.07 (3 Laplacian levels and a base in OKLab,
+  thresholds 0.012 x luma / 0.02 x chroma x the level shares x the noise model's factor 20 / SNR(0.18) in 0.4 .. 3.5, eased by the
+  model scale, from 0x138be8 - 0x139278), its change added to the camera RGB (no node when off).
+- The dezipper («Подавление зубчатого муара», dezipper 0): v2.07's kernel_blurring_params.x - the base frame's weight max(1, T -
+  accepted donors) where they were rejected (98 % .. 70 % of the donors); kHybDezip put into kHybMergeCommon only when on
+  (hybridDezipSource), the merge program's sources byte-identical when off.
+- Night_dim of v2.07 is our «night_thresh» (the noise gain clamp), already there.
+- Host, the owner's config applied to the port (classic layout, weights 0.7 / 1 / 2 / 1, centre 1, smoothness 0.45, the v2.07
+  AE with its thresholds, hl_blend 0.5, shoulder 0.6 / 0.35 x0.6, inset 50 %, cct_sat 1.25, AgX 2.45 / 2.0 / -8.5, film toe 0, sky /
+  green vibrance 0.25 / 0.05) against the last APK on 7 bursts: mean -0.28 .. +0.17 EV, shadows +0.23 .. +0.51 EV (facade -0.34),
+  lights -0.08 .. -0.30 EV. Without the v2.07 AE (our effH) the classic layout came out 1.4 - 1.6 EV darker.
+- Checks: tools/check_why_v207.py, check_ms_denoise.py, check_hybrid_dezipper.py; WhyV207PortTest.
+
+### P403 - SHDR's pages in the reference app's grouping (owner, 2026-10-29: «Изучи расположение/группировку настроек Арк камеры и
+сделай у нас схоже с учётом отличия наших параметров»): DONE
+- SHDR: «Экспозиция (AE)» (metering / highlight protection / shadows and contrast / limits), «Глобальный тонмап» (the curves page
+  from the tone page: AgX + inset, ACES, Uchimura, the own curve, gamma and deep black), «Локальный тонмап» (DR compression,
+  layer weights + layout, the classic weights, fusion and contrast), «Резкость» (USM with its halo, bilateral, guided, edges and
+  protection), «Деконволюция RL» (its own page), «Шумоподавление» (+ «Пирамидальный шумодав»), «Склейка» (+ the dezipper),
+  «Кадры светов и теней», «Настройки HDR» (the shoulder, the short frames' denoise), «Света и аберрации». Every row kept its key
+  and attributes (SettingsMovesKeepValuesTest); Lab groups follow.
+
+
+### P404 - the rest of the reference app's colour, tone, sharpness and denoise rows (owner, 2026-10-29: «Шумодав: усиление
+пирамидального шумодава в зонах движения», «Цвет: сочность ярких тонов, полутонов и теней; силу защиты кожи; целевой тон кожи и
+порог яркости кожи; сдвиг насыщенности кожи; баланс R/G/B в матрице», «Глобальный тонмап: модификаторы кривой ...; выбор стандарта
+гаммы ...; контраст-буст для своей кривой», «И резкость»): DONE
+- Pyramid denoise: the merge's frame map (ScamHybridBurst.lastEffectiveFrames, frames = code x median / 64) at the input's size ->
+  msdn MOTION 1: the detail thresholds x (1 + 0.30 k) luma / (1 + 0.50 k) colour x smoothstep of (1 - (n - 1) / 5) - pyr_laplace_
+  filter_msdenoise's boost, k = «Усиление в зонах движения» (1). No map (a single frame, legacy, another size): no boost.
+- Colour: ARK_VIB in combine's scene OKLab with our vibrance (saturated / mid-tone / shadow terms, held off skin by the reference's
+  own skin mask x «Сила защиты кожи», hue centre 41.2 deg, lower L 0.16, the skin saturation shift); its strength / sky / green /
+  light terms are ours, its skin hue shift is «Оттенок кожи». cct_gain R/G/B: a diagonal on the matrix after cct_sat (photo and
+  viewfinder through withCctSat). «Сочность в светах» stays ours.
+- Tone: curve modifiers (ToneCurveHelper.calcDeltaY: six 17-node tables, smoothstep) on the own curve's samples; GAMMA_TYPE 1 / 2
+  (sRGB, Rec.709) for combine's encode and the target inversion, the fusion lumas (import why_fusion, lpyr / gf define) and
+  FusedCurve; the sun glow keeps the pure-power round trip. curveBoostU = the AE's flat-scene contrast x «Контраст-буст» (0 by default) on the
+  own curve (get_curve_contrast_delta).
+- Sharpness: Sobel boost (amount, threshold / 255) and edge thinning in sharp_compose (luma_compose_usm, inner pixels, before the
+  edge damping); the TV damping of rl_mult per RL stage.
+- Defaults bit for bit: combine (check_colour_output --shader), lpyr / gf / msdn token streams (check_why_p404.py), the new
+  runtime terms 0. GPU vs numpy: Sobel / thinning / RL damping (check_why_p404.py); WhyV207PortTest.

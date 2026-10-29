@@ -322,16 +322,21 @@ public final class WhyLumaSharpen extends Node {
         // look - only on the share the simulation's strength leaves; USM, bilateral and RL (they restore the merge's blur) stay
         float gfLc = filmShare(WhyTone.value("sharp_gf_lc", 0.25f) * lowLight, pipeline.film);
         float grain = filmShare(WhyTone.value("sharp_film_grain", 0f) / 255f, pipeline.film);
+        // P404: the reference app's Sobel edge boost (amount, threshold / 255) and edge thinning; 0 = off
+        float sobelAmount = WhyTone.value("sharp_sobel_amount", 0f) * lowLight, sobelThresh = WhyTone.value("sharp_sobel_thresh", 0f) / 255f;
+        float thin = WhyTone.value("sharp_edge_thinning", 0f);
         float rlHalo = clamp01(WhyTone.value("sharp_rl_halo_control", 100f) / 100f);
         float rlMargin = WhyTone.value("sharp_rl_halo_margin", 0.15f);
         float rlMacro = WhyTone.value("sharp_rl_halo_macro", 0.4f);
         // (kernel, radius, amount, iterations) of the three RL stages; X8U: Airy 1 x3, off, Gaussian 0.5 x3
         float[][] rl = {
-                {WhyTone.value("sharp_rl1_kernel", 2f), WhyTone.value("sharp_rl1_rad", 1f), WhyTone.value("sharp_rl1_amount", 1f) * lowLight, WhyTone.value("sharp_rl1_iters", 3f)},
-                {WhyTone.value("sharp_rl2_kernel", 1f), WhyTone.value("sharp_rl2_rad", 0f), WhyTone.value("sharp_rl2_amount", 0f) * lowLight, WhyTone.value("sharp_rl2_iters", 0f)},
+                {WhyTone.value("sharp_rl1_kernel", 2f), WhyTone.value("sharp_rl1_rad", 1f), WhyTone.value("sharp_rl1_amount", 1f) * lowLight, WhyTone.value("sharp_rl1_iters", 3f),
+                        WhyTone.value("sharp_rl1_damping", 0f)},
+                {WhyTone.value("sharp_rl2_kernel", 1f), WhyTone.value("sharp_rl2_rad", 0f), WhyTone.value("sharp_rl2_amount", 0f) * lowLight, WhyTone.value("sharp_rl2_iters", 0f),
+                        WhyTone.value("sharp_rl2_damping", 0f)},
                 {WhyTone.value("sharp_rl3_kernel", 0f), WhyTone.value("sharp_rl3_rad", 0.5f),
                         com.particlesdevs.photoncamera.settings.DeviceDefaults.rl3Amount(WhyTone.value("sharp_rl3_amount", 1f), pipeline.mParameters.cameraID) * lowLight,
-                        WhyTone.value("sharp_rl3_iters", 3f)}};
+                        WhyTone.value("sharp_rl3_iters", 3f), WhyTone.value("sharp_rl3_damping", 0f)}};   // P404: the TV damping per stage
 
         GLTexture gainMap = pipeline.GainMap;
         GLTexture fallback = null;
@@ -427,6 +432,8 @@ public final class WhyLumaSharpen extends Node {
         glProg.setVar("protectShadowsU", protectShadows);
         glProg.setVar("protectHighlightsU", protectHighlights);
         glProg.setVar("grainU", grain);
+        glProg.setVar("sobelU", sobelAmount, sobelThresh);   // P404
+        glProg.setVar("thinU", thin);
         glProg.drawBlocks(obs);
         src.close(); // ya itself without R1
         if (ab != null) ab.close();
@@ -464,6 +471,7 @@ public final class WhyLumaSharpen extends Node {
                 glProg.setVar("psfHalfU", k.half);
                 glProg.setVarFloats("psfU", k.quadrant);
                 glProg.setVar("amountU", amount);
+                glProg.setVar("dampU", Math.max(0f, rl[i][4]));   // P404
                 glProg.setVar("haloU", rlHalo);
                 glProg.setVar("marginU", rlMargin);
                 glProg.setVar("macroU", rlMacro);

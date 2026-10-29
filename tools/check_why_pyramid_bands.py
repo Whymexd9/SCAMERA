@@ -156,7 +156,8 @@ def share_uniforms(bands, level, coarsest):
 def fuse(gl, low, uni, coarse=24, bands=None, noise=None, low_band=1.0, levels=None, gmix=None, edge=None, sh=None, shift=None, win=None):
     """WhyFusion.pyramid on whyLow {low} (H x W x 4): bands None = EDGE_BANDS 0 (the pyramid; gmix / edge: P349's guided share,
     P389's edge share, as shipped before P391), else EDGE_BANDS 1 with the noise cap {noise}, the lowest band's weight {low_band}
-    and the edges' noise shift {shift} (k, S_I, O_I); win (P400, with bands): (strength, lo, hi, the window level) = WINDOW 1.
+    and the edges' noise shift {shift} (k, S_I, O_I); win (P400, with bands): (strength, lo, hi, the window level) = WINDOW 1;
+    win (P401): (share, lo, hi, the window level, the fused luma of build 31091's weights: Fused31, whyLow's size).
     -> (fused, levels)."""
     h, w = low.shape[:2]
     src = gl.tex(low)
@@ -211,6 +212,7 @@ def fuse(gl, low, uni, coarse=24, bands=None, noise=None, low_band=1.0, levels=N
         if bands is not None:
             tx += [('LevelGF', GF[l]), ('CoarseGF', GF[l + 1]), ('LevelA', A[l])]
             un = band_uniforms(bands, noise, l, 1.0 - low_band if l == n - 1 else 0.0, shift)
+
         gl.draw(P(4), F[l], tx, un)
     tx = [('InputBuffer', src), ('CoarseL', L[1]), ('CoarseF', F[1])]
     u5 = dict(u)
@@ -232,10 +234,12 @@ def fuse(gl, low, uni, coarse=24, bands=None, noise=None, low_band=1.0, levels=N
         u5['edgeMixU'] = eu['edgeMixU']
     out = gl.target(w, h, 1, 'f4')
     if win is not None and bands is not None:
-        # P400: the log light's Gaussian at the window level (MODE 7's pyramid)
-        tx += [('WinMean', GF[win[3]])]
+        # P400 / P401: the log light's Gaussian at the window level (MODE 7's pyramid), build 31091's fused luma
+        f31 = gl.tex(np.ascontiguousarray(win[4][..., None], np.float32), 'f4')
+        tx += [('WinMean', GF[win[3]]), ('Fused31', f31)]
         u5.update(winU=(float(win[0]), float(win[1]), float(win[2]), 0.0), winScaleU=float(2 ** win[3]))
         gl.draw(gl.progd('why/lpyr', {'MODE': '5', 'EDGE_BANDS': eb, 'WINDOW': '1'}, sh), out, tx, u5)
+        f31.release()
     else:
         gl.draw(P(5), out, tx, u5)
     res = gl.read(out)[:, :, 0]

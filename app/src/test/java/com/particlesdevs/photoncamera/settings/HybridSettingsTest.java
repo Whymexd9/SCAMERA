@@ -195,9 +195,11 @@ public class HybridSettingsTest {
         assertNotNull(sharp);
         for(String kept:new String[]{"pref_scam_hybrid_why_sharp_note","pref_scam_hybrid_why_sharp_domain",
                 "pref_scam_hybrid_why_sharp_scale","pref_scam_hybrid_why_sharp_usm_amount","pref_scam_hybrid_why_sharp_bilateral_amount",
-                "pref_scam_hybrid_why_sharp_gf_lc","pref_scam_hybrid_why_sharp_film_grain","pref_scam_hybrid_why_sharp_rl1_amount",
+                "pref_scam_hybrid_why_sharp_gf_lc","pref_scam_hybrid_why_sharp_film_grain",
                 "pref_scam_hybrid_why_sharp_halo_control"})
             assertNotNull(kept,sharp.findPreference(kept));
+        // P403: the deconvolution on its own page beside «Резкость» (as the reference app's «Деконволюция RL»)
+        assertNotNull(((PreferenceGroup)root.findPreference("scam_hybrid_why_rl_screen")).findPreference("pref_scam_hybrid_why_sharp_rl1_amount"));
         // 2026-10-27 (owner: settings anyone can set up alone): the overall strength is «Резкость» of «Снимок»
         assertNotNull(((PreferenceGroup)root.findPreference("root_colour")).findPreference("pref_scam_hybrid_why_sharp_gain"));
         assertNull(sharp.findPreference("pref_scam_hybrid_why_sharp_gain"));

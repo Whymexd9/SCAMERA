@@ -386,9 +386,9 @@ public final class DevKeys {
         k.add(n(post, "hybrid_why_sat_light_level_lo", "0.25", Lang.t("Тон с запасом Bento: цветной свет: уровень света (x AE), с которого начинаются веса ядра", "Tone with Bento headroom: coloured light - light level (x AE) where the kernel's weights start")));
         k.add(n(post, "hybrid_why_sat_light_level_hi", "0.6", Lang.t("Тон с запасом Bento: цветной свет: уровень света полных весов ядра", "Tone with Bento headroom: coloured light - light level of the full kernel weights")));
         k.add(n(post, "hybrid_why_fusion_mono", "0.04", Lang.t("Тон: подъём слияния к монотонной огибающей (нет тёмного кольца у лампы)", "Tone: fusion lifted to its monotonic envelope (no dark ring round a lamp)")));
-        // P400: a daylit window's mid-tones under its sky, in a room
-        k.add(n(post, "hybrid_why_window_depth", "0.10", Lang.t("Тон: в комнате то, что видно в освещённом окне (краны, надстройки, берег), темнее неба, а не выбелено до него; освещённые солнцем места у окна чуть темнее; сама комната, пересвеченное небо и белые света как раньше; 0 — выкл.",
-                "Tone: in a room, what is seen through a daylit window (cranes, superstructures, the shore) darker than the sky, not bleached to it; sunlit spots by the window a little darker; the room itself, the blown sky and white lights as before; 0: off")));
+        // P401: a daylit window in a room as build 31091 drew it
+        k.add(n(post, "hybrid_why_window_31091", "1.0", Lang.t("Тон: в комнате освещённое окно (облака, солнце, краны, надстройки за стеклом) как в сборке 31091, а не выбелено; сама комната, лампы и сцены на улице как сейчас; 0 — выкл., 1 — полностью",
+                "Tone: in a room, a daylit window (clouds, the sun, cranes, superstructures behind the glass) as build 31091 drew it, not bleached; the room itself, lamps and outdoor scenes as now; 0: off, 1: fully")));
         k.add(n(post, "hybrid_why_deep_floor", "2.0", Lang.t("Тон: глубокие тени берут яркий слой слияния (порог в сигмах под центром; комната под окном не уходит в чёрный); 0 — выкл.",
                 "Tone: deep shadows take the fusion's bright layer (threshold in sigmas under the centre; a room under a window is not crushed to black); 0 = off")));
         k.add(n(post, "hybrid_why_macro_toe", "1", Lang.t("Тон: контраст ниже середины степенью, без сдвига чёрного (тени не обрезаются в чёрный); 0 — прямая, как раньше",
@@ -396,8 +396,6 @@ public final class DevKeys {
         // P393: the light tones of a saturated colour keep its mid-tone chroma (why/combine.glsl LIGHT_CHROMA, AgX only)
         k.add(n(post, "hybrid_why_light_chroma", "1.0", Lang.t("Тон: насыщенные оранжево-жёлтые цвета в светах (листва на солнце) держат насыщенность полутонов, оттенок сдвигается к AgX только там, где sRGB его не удержит; кожа, зелень, синие, лампы, небо и бледные цвета как раньше; 0 — выкл., как раньше",
                 "Tone: saturated orange-yellow colours in the light tones (sunlit leaves) keep their mid-tone saturation, the hue moves towards AgX's only where sRGB cannot hold it; skin, greens, blues, lamps, the sky and pale colours as before; 0 = off, as before")));
-        k.add(n(post, "hybrid_why_hr_knee", "0.5", Lang.t("Тон, света Bento выше 4x: колено плеча (x верх)", "Tone, Bento highlights above 4x: shoulder knee (x top)")));
-        k.add(n(post, "hybrid_why_hr_room", "0.4", Lang.t("Тон, света Bento выше 4x: запас плеча (x верх)", "Tone, Bento highlights above 4x: shoulder room (x top)")));
         k.add(n(post, "hybrid_why_hr_detail", "0.35", Lang.t("Тон, света Bento выше 4x: деталь светов", "Tone, Bento highlights above 4x: highlight detail")));
         k.add(n(post, "hybrid_grain_level", "0.0002", Lang.t("Шумодав: уровень оставляемого зерна", "Denoise: level of the grain left")));
         k.add(n(post, "hybrid_grain_min", "0.12", Lang.t("Шумодав: наименьшая доля возвращаемого зерна", "Denoise: least share of the grain put back")));
