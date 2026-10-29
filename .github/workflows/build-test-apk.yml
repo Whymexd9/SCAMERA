@@ -298,8 +298,11 @@ jobs:
           # The shipped (non-debuggable) variant shortens resource paths: resolve the real one.
           PREFS_PATH=$("$ANDROID_HOME/build-tools/36.0.0/aapt2" dump resources "$APK" | grep -A1 'xml/preferences$' | grep -o 'res/[^ ]*\.xml' | head -1)
           "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump xmltree "$APK" --file "$PREFS_PATH" > /tmp/apk-preferences.txt
-          grep -q 'scam_hybrid_screen' /tmp/apk-preferences.txt
-          grep -q 'advanced_screen' /tmp/apk-preferences.txt   # SIMPLE_UI §4: «Для опытных» (the shooting page is gone)
+          # P406: the root in the reference app's grouping - the image settings (the SHDR pages), modules, lab and logs
+          grep -q 'root_colour' /tmp/apk-preferences.txt
+          grep -q 'scam_hybrid_merge_screen' /tmp/apk-preferences.txt
+          grep -q 'root_lenses' /tmp/apk-preferences.txt
+          grep -q 'root_logs' /tmp/apk-preferences.txt
           grep -q 'output_settings_screen' /tmp/apk-preferences.txt
           # P129: SHDR is the only merge: no SCAM HDR screen, no route row
           if grep -q 'scam_hdr_screen\|pref_merge_route' /tmp/apk-preferences.txt; then
