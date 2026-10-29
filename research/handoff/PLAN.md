@@ -9045,3 +9045,18 @@ the circled building of scam_burst-20261029-102753; «Арк камера в э�
   burst) changes: 6 % of its Bento pixels (edges) defringed as before, the wall 255 / 234 / 133, ae 1.23 -> 1.09.
 - The tone alone (before the cause was found): the wall's texture after the Bento ceiling is x0.3 of the fusion's; a
   texture-keeping ceiling and a highlight shoulder in the fusion were tried on the host and not kept (a few codes only).
+
+### P398 - the lights cream, not white (owner, 2026-10-29, the ship's bridge: «свет почему-то не белый, а кремовый»; the stage
+dump 14:14:07 and the full JPEG pair): DONE (host), not tried on a phone
+- The cream pixels are recovered highlights (52 % clipped in the base frame): white frames, sills and a lamp lit by the sun
+  under the sky's white balance (7527 K): R / G 1.12 - 1.2, B / G 0.8 - 0.86 after the white balance; at the top of the tone
+  (OKLab L 0.94 - 0.98) chroma 0.017 against 0.0017 of the reference.
+- DONE: why/combine.glsl HL_NEUTRAL / hlNeutralU (WhyTone.hlNeutral, hybrid_why_hl_neutral, default 1; WhyCombine and
+  LiveWhyTone): over OKLab L 0.86 .. 0.97 a pale (C under 0.035 .. 0.07), non-blue (hue outside -170 .. -55) colour whose light
+  is unsaturated (satLight under 0.40 .. 0.60, P159) mixes toward its brightest display channel (path to white, never darker).
+  Sky, sea haze, saturated yellows / oranges / red LEDs / greens bit for bit; everything under L 0.86 bit for bit.
+  tools/check_hl_neutral.py (the sunlit white 1.2 : 1 : 0.8 at the top: chroma 0.029 -> 0.010; exposure and chroma sweeps
+  continuous), WhyHlNeutralTest; colour_output, vibrance_hl, light_chroma, yellow_hue, why_sky, vf_fused, viewfinder_look,
+  colour_look, tone_ops, why_highlights, why_headroom, highlight_landing, shader_fp16, highlight_recovery PASS.
+- Open from the same report: pink / purple fringes on the window edges and the ring antenna; the cranes behind the window
+  washed out (0.42 EV under the sky against the reference's 0.95).

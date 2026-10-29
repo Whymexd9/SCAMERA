@@ -225,6 +225,7 @@ public final class WhyCombine extends Node {
             // P393: a saturated colour's light tones under the AgX white keep its mid-tone chroma (0: the shader before, token for token)
             if (lightChroma > 0f) glProg.setDefine("LIGHT_CHROMA", 1);
             if (WhyTone.yellowHue() > 0f) glProg.setDefine("YELLOW_HUE", 1);   // P395
+            if (WhyTone.hlNeutral() > 0f) glProg.setDefine("HL_NEUTRAL", 1);   // P398
             if (WhyTone.edgeHold() > 0f && !st.inputReleased) glProg.setDefine("EDGE_HOLD", 1);   // P394 (the full-size merge)
             skyLog = st.sky == null ? "" : " sky=" + Math.round(100f * st.skyMask.coverage) + "%" + (st.skyMask.keep < 1f
                     ? " backlit (level x" + Math.round(100f * st.skyMask.keep) / 100f + ")" : "");
@@ -327,6 +328,7 @@ public final class WhyCombine extends Node {
             glProg.setVar("vibHlU", WhyTone.vibranceHl());
             glProg.setVar("vibHlShapeU", WhyTone.vibranceHlShape());   // P393: no cast doubled on pale mid-light tones
             if (WhyTone.yellowHue() > 0f) glProg.setVar("yellowHueU", WhyTone.yellowHue());   // P395: the orange-yellows towards yellow
+            if (WhyTone.hlNeutral() > 0f) glProg.setVar("hlNeutralU", WhyTone.hlNeutral());   // P398: pale light lands on white
             glProg.setVar("chromaDnU", WhyFusion.whyDenoise(basePipeline.mParameters) ? WhyTone.value("chroma_denoise", 0f) : 0f);
             glProg.setVar("clarityU", WhyTone.value("clarity", 0f));
             glProg.setVar("flatProtectU", WhyTone.value("flat_protect", 0f));

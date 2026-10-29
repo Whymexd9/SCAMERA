@@ -112,6 +112,9 @@ precision highp int;
 // P395 (owner, 2026-10-29: the «Лента» facade orange-ochre beside ArkCam's yellow): 1 = the saturated orange-yellow scene hues
 // turned towards yellow (yellowHueU; 0 = the shader before)
 #define YELLOW_HUE 0
+// P398 (owner, 2026-10-29, the ship's bridge: «света почему-то получаются кремовые»): 1 = a pale colour lands on white at the top of
+// the tone (hlNeutralU; 0 = the shader before)
+#define HL_NEUTRAL 0
 #import interpolation
 uniform sampler2D InputBuffer;      // full-size white-balanced linear camera RGB (the merge after denoising)
 uniform sampler2D GainMap;          // lens shading gains
@@ -164,6 +167,9 @@ uniform float hrRoomU;              // shoulder headroom x the top; <= 0 -> 0.4 
 uniform float hrDetailU;            // highlight detail: share of the full-size log contrast kept in OKLab L (0 = off)
 #endif
 uniform float hlWhiteU;             // path to white of saturated light entering the shoulder (0 = off)
+#if HL_NEUTRAL == 1
+uniform float hlNeutralU;          // P398: the share of a pale light tone's chroma taken out towards white (0 / unset = off)
+#endif
 #if YELLOW_HUE == 1
 uniform float yellowHueU;           // P395: the orange-yellow scene hues turned towards yellow (0 / unset = off, 1 = up to 8 deg)
 #endif
@@ -1590,10 +1596,34 @@ void main() {
     // on the dark side the delta pulls L far down: the same a, b at a low L read as a saturated purple/green line. Scaling
     // a, b with L there (a uniform linear scale of the colour) keeps the hue and the relative chroma instead.
     if (deltaChromaU > 0.0 && post.x < lBefore) post.yz *= mix(1.0, post.x / max(lBefore, 0.0001), clamp(deltaChromaU, 0.0, 1.0));
+#if HL_NEUTRAL == 1
+    // P398 (owner, 2026-10-29, the ship's bridge against the reference app: «света почему-то получаются кремовые»): white frames,
+    // sills and a lamp lit by the sun by the windows are recovered light (half of them clipped in the base frames, the
+    // ultrashort's colour) and keep the sun's warmth against the sky's white balance (R / G 1.2, B / G 0.8 after it); the tone
+    // carried it up to the white, cream (L 0.94 - 0.98, C 0.016, hue 86). A pale colour (chroma under 0.035 .. 0.07) goes towards
+    // white from L 0.86 to 0.97 - the path to white the saturated light already has (hlWhiteU) - at its brightest channel (white,
+    // never grey: a blown red LED at the top went to 244 / 219 / 215 when only its chroma was taken); blue near-whites (sky, sea,
+    // haze: OKLab hue -150 .. -75 deg) and every saturated colour keep theirs - by the light itself, its saturation before the tone
+    // (satLight 0.40 .. 0.60: the sunlit white 0.2 - 0.35; a blown orange, a red LED, a yellow facade 0.9 keep their colour, P159);
+    // below L 0.86 nothing
+    float neutralW = 0.0;
+    if (hlNeutralU > 0.0) {
+        float cN = length(post.yz);
+        if (cN > 0.000001) {
+            float hN = degrees(atan(post.z, post.y));
+            float blueN = smoothstep(-170.0, -150.0, hN) * (1.0 - smoothstep(-75.0, -55.0, hN));
+            neutralW = clamp(hlNeutralU, 0.0, 1.0) * smoothstep(0.86, 0.97, post.x) * (1.0 - smoothstep(0.035, 0.07, cN)) * (1.0 - blueN)
+                       * (1.0 - smoothstep(0.40, 0.60, satLight));
+        }
+    }
+#endif
 #if P3_OUT == 1
     graded = signedW > 0.0 ? fromOklabInGamutP3Soft(post, signedW) : fromOklabInGamutP3(post);
 #else
     graded = signedW > 0.0 ? fromOklabInGamutSoft(post, signedW) : fromOklabInGamut(post);
+#endif
+#if HL_NEUTRAL == 1
+    if (neutralW > 0.0) graded = mix(graded, vec3(max(graded.r, max(graded.g, graded.b))), neutralW);   // P398
 #endif
 
     // === display: power 1/gamma, film toe [:1805-1825], dither [:1836-1843] ===

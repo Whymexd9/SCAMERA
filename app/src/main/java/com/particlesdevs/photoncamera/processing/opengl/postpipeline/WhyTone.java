@@ -393,6 +393,15 @@ public final class WhyTone {
         return Math.max(0f, Math.min(1f, value("yellow_hue", 1f)));
     }
 
+    /**
+     * P398 (owner, 2026-10-29, the ship's bridge: «света почему-то получаются кремовые»): why/combine hlNeutralU - a pale colour
+     * (chroma under 0.035 .. 0.07, not a blue near-white) goes towards white from OKLab L 0.86 to 0.97, the photo and the RAW
+     * viewfinder alike. scam_dev hybrid_why_hl_neutral 0..1 (0 = off, as before).
+     */
+    static float hlNeutral() {
+        return Math.max(0f, Math.min(1f, value("hl_neutral", 1f)));
+    }
+
     static float vibranceHl() {
         return Math.max(0f, value("vibrance_hl", 1.0f));
     }

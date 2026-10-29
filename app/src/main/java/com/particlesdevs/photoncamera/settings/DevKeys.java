@@ -336,6 +336,9 @@ public final class DevKeys {
         // P395: the orange-yellows towards yellow
         k.add(n(post, "hybrid_why_yellow_hue", "1.0", Lang.t("Цвет: насыщенные жёлто-оранжевые (фасады, жёлтая листва, машины) поворачиваются к жёлтому до 8°, как у ArkCam; кожа, оранжевые, зелень и бледные стены как раньше; 0 — выкл.",
                 "Colour: saturated orange-yellows (facades, yellow foliage, cars) turn up to 8 deg towards yellow, as ArkCam's; skin, oranges, greens and pale walls as before; 0: off")));
+        // P398: pale light tones towards white
+        k.add(n(post, "hybrid_why_hl_neutral", "1.0", Lang.t("Цвет: бледные цвета у самого белого (освещённые солнцем белые рамы, стены, плафоны) уходят в белый, а не в кремовый; голубое небо, море и насыщенные цвета как раньше; 0 — выкл.",
+                "Colour: pale colours at the very top (sunlit white frames, walls, lamps) go to white, not cream; blue sky, sea and saturated colours as before; 0: off")));
         // P394: the sharpening's overshoot held and the pixel steps smoothed along strong edges
         k.add(n(post, "hybrid_why_edge_hold", "1.0", Lang.t("Тон: на резких границах (рама окна, край лампы на фоне света) резкость сглаживается вдоль границы и не выходит за яркость соседей — без тёмной обводки и лесенки; текстура как раньше; 0 — выкл.",
                 "Tone: at strong edges (a window frame, a lamp's rim against light) the sharpening is smoothed along the edge and held within its neighbours' light - no dark outline, no pixel steps; texture as before; 0: off")));
