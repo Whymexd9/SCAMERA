@@ -270,7 +270,8 @@ public class ShadeUiTest {
         assertFalse(view.shownKeys().contains("pref_show_grid_key"));
         String counter = ((android.widget.TextView) view.findViewWithTag("shade_catalog_count")).getText().toString();
         assertTrue(counter, counter.trim().endsWith(" 7"));   // P167: «in the panel: 7», no «of 12»
-        int width = dp(360), height = dp(800);
+        // P406: the pyramid denoise's luma rows lead the noise page now; the NLM row is further down the results
+        int width = dp(360), height = dp(1400);
         view.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY));
         view.layout(0, 0, width, height);
         View row = view.findViewWithTag("catalog_row_pref_scam_hybrid_post_luma");

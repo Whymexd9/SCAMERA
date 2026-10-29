@@ -45,7 +45,7 @@
     <string name="prefs_scam_hybrid_noise_readout_title">Склейка: шум считывания</string>
     <string name="prefs_scam_hybrid_noise_readout_summary">Поправка шума склейки в тёмных местах (у шумодава своя, ρr). Больше — тени глаже, но возможны призраки; меньше — резче и шумнее.</string>
     <string name="prefs_scam_hybrid_merge_screen_title">Склейка</string>
-    <string name="prefs_scam_hybrid_merge_screen_summary">Как кадры совмещаются и склеиваются в один</string>
+    <string name="prefs_scam_hybrid_merge_screen_summary">Кадры, выравнивание, отсев движения, ядро склейки</string>
     <string name="prefs_scam_hybrid_cre_source_title">Выравнивание (CRE)</string>
     <string name="prefs_scam_hybrid_cre_source_summary">%s. Какой модуль совмещения кадров брать: системный (только vivo) или встроенный в приложение.</string>
     <string name="prefs_scam_hybrid_local_align_title">Локальное выравнивание F6</string>
@@ -158,8 +158,8 @@
     <string name="prefs_scam_hybrid_mochi_screen_summary">Подгонка цвета и яркости светлых кадров к основному</string>
     <string name="prefs_scam_hybrid_mochi_title">Фотометрическая склейка: режим</string>
     <string name="prefs_scam_hybrid_mochi_summary">%s. Подгоняет цвет и яркость светлых кадров к основному перед склейкой, чтобы не было цветовых сдвигов.</string>
-    <string name="prefs_scam_hybrid_photo_screen_title">Шумоподавление: подробно</string>
-    <string name="prefs_scam_hybrid_photo_screen_summary">Как убирается шум после склейки</string>
+    <string name="prefs_scam_hybrid_photo_screen_title">Шумоподавление</string>
+    <string name="prefs_scam_hybrid_photo_screen_summary">Пирамидальный шумодав и шумодав склейки</string>
     <string name="prefs_scam_hybrid_denoise_title">Все шумодавы</string>
     <string name="prefs_scam_hybrid_denoise_summary">Все шумодавы SHDR. Выключено — остаётся только склейка кадров: снимок зернистее, но детальнее.</string>
     <string name="prefs_scam_hybrid_dn_engine_title">Способ шумодава</string>
@@ -187,7 +187,7 @@
     <string name="prefs_scam_hybrid_nr_mult_screen_title">Множители</string>
     <string name="prefs_scam_hybrid_nr_mult_screen_summary">Множители силы многомасштабного шумодава по сценам и для цвета; общая сила шумодава яркости — «Шумоподавление» в группе «Снимок»</string>
     <string name="prefs_scam_hybrid_dn_luma_mult_summary">Насколько сглаживается шум яркости (зерно). Больше — глаже, меньше — больше зерна и деталей; 0 — выкл. Подробно — «Шумоподавление: подробно» (Для опытных › SHDR).</string>
-    <string name="prefs_scam_hybrid_dn_luma_mult_title">Шумоподавление</string>
+    <string name="prefs_scam_hybrid_dn_luma_mult_title">Сила шумоподавления</string>
     <string name="prefs_scam_hybrid_dn_chroma_mult_title">Многомасштабный шумодав: цвет</string>
     <string name="prefs_scam_hybrid_dn_sabre_luma_mult_summary">Сила шумодава яркости ночью, в полумраке и при обычном свете. Больше — глаже, меньше — детальнее.</string>
     <string name="prefs_scam_hybrid_dn_luma_gid14_mult_summary">Сила шумодава яркости в сумерках и при ярком свете. Больше — глаже, меньше — детальнее.</string>
@@ -255,12 +255,12 @@
     <string name="prefs_scam_hybrid_dn_chroma_t4_snr_title">t4: SNR точки</string>
     <string name="prefs_scam_hybrid_dn_chroma_t4_snr_summary">Точка «Полумрак»: SNR, где она действует. Больше — её значения идут на светлые кадры, меньше — на тёмные.</string>
     <string name="prefs_scam_hybrid_dn_chroma_t4_outlier_summary">Полумрак: охват сглаживания цвета, 5 целых 0–16. Больше — глаже, но цвет растекается; меньше — чётче.</string>
-    <string name="prefs_scam_hybrid_why_sharp_screen_title">Резкость: подробно</string>
+    <string name="prefs_scam_hybrid_why_sharp_screen_title">Резкость</string>
     <string name="prefs_scam_hybrid_why_sharp_screen_summary">Резкость Why и её настройки.</string>
     <string name="prefs_scam_hybrid_sharp_category_title">Резкость Why</string>
     <string name="prefs_scam_hybrid_why_sharp_note_title">О резкости Why</string>
     <string name="prefs_scam_hybrid_why_sharp_note_summary">Единственная резкость снимка: резкость Why по яркости до тона. Её общая сила — «Резкость» в группе «Снимок»; строки ниже ослабляют или усиливают её.</string>
-    <string name="prefs_scam_hybrid_why_sharp_gain_title">Резкость</string>
+    <string name="prefs_scam_hybrid_why_sharp_gain_title">Сила резкости</string>
     <string name="prefs_scam_hybrid_why_sharp_gain_summary">Сколько мелкой детали идёт в снимок. Больше — резче и чётче, меньше — мягче; 0 — без детали. Тонкая настройка — «Резкость: подробно» (Для опытных › SHDR).</string>
     <string name="prefs_scam_hybrid_why_sharp_domain_title">Домен резкости</string>
     <string name="prefs_scam_hybrid_why_sharp_domain_summary">%s. По какой яркости считается резкость Why. «После экспозиции» — в тёмных сценах слабее на сильных краях.</string>
@@ -404,7 +404,7 @@
     <string name="prefs_scam_hybrid_why_ef_coarse_summary">Короткая сторона самого грубого уровня пирамиды Лапласа слияния, px. Больше — тон подстраивается под мелкие зоны, картинка площе; меньше — под крупные, больше общего контраста.</string>
     <string name="prefs_scam_hybrid_why_texture_title">Текстура в тоне Why</string>
     <string name="prefs_scam_hybrid_why_texture_summary">Добавляет локальный контраст SCAMERA после тона Why: текстуры выразительнее.</string>
-    <string name="prefs_scam_hybrid_why_artifacts_category_title">Артефакты и восстановление</string>
+    <string name="prefs_scam_hybrid_why_artifacts_category_title">Цвет и детали</string>
     <string name="prefs_scam_hybrid_highlight_recovery_title">Восстановление светов по каналам, %</string>
     <string name="prefs_scam_hybrid_highlight_recovery_summary">Восстановление цвета выбитых светов, %. Больше — сильнее, меньше — слабее; 0 — выкл.</string>
     <string name="prefs_scam_hybrid_highlight_chroma_title">Света: порог доверия цвету окружения</string>
@@ -632,7 +632,7 @@
     <string name="prefs_scam_hybrid_dn_t5_revert_title">t5: возврат зерна b0…b4</string>
     <string name="prefs_scam_hybrid_dn_t5_outlier_title">t5: выбросы b0…b4</string>
     <!-- P134: «Цвет» -->
-    <string name="prefs_colour_wb_category_title">Баланс белого</string>
+    <string name="prefs_colour_wb_category_title">Адаптация цвета (баланс белого)</string>
     <string name="prefs_colour_warmth_title">Тепло</string>
     <string name="prefs_colour_warmth_summary">Каждый снимок теплее или холоднее поверх автобаланса белого. Больше — теплее, меньше — холоднее; 0 — как есть.</string>
     <string name="prefs_colour_tint_title">Оттенок</string>
@@ -641,12 +641,12 @@
     <string name="prefs_colour_keep_warm_summary">Под лампами накаливания и на закате часть тепла остаётся, а не убирается автобалансом. 0 — свет полностью нейтральный.</string>
     <string name="prefs_colour_keep_cool_title">Сохранить синеву</string>
     <string name="prefs_colour_keep_cool_summary">В тени и в пасмурную погоду часть синевы остаётся. 0 — свет полностью нейтральный.</string>
-    <string name="prefs_colour_sat_category_title">Сочность цветов</string>
-    <string name="prefs_colour_vib_shadows_title">Сочность теней</string>
+    <string name="prefs_colour_sat_category_title">Сочность (Vibrance)</string>
+    <string name="prefs_colour_vib_shadows_title">Сочность бледных теней</string>
     <string name="prefs_colour_vib_shadows_summary">Блёклые цвета в тенях сочнее или спокойнее. Больше — сочнее, меньше — спокойнее, тени нейтральнее; 0 — выкл.</string>
-    <string name="prefs_colour_vib_highlights_title">Сочность светов</string>
+    <string name="prefs_colour_vib_highlights_title">Сочность бледных светов</string>
     <string name="prefs_colour_vib_highlights_summary">Блёклые цвета в светлых участках сочнее или спокойнее. Больше — сочнее, меньше — спокойнее; 0 — выкл.</string>
-    <string name="prefs_colour_skin_protect_title">Защита кожи</string>
+    <string name="prefs_colour_skin_protect_title">Защита кожи в сочности</string>
     <string name="prefs_colour_skin_protect_summary">Лица сохраняют свой цвет, когда сочность, насыщенность, микшер или цветокоррекция добавляют цвета. Больше — сильнее; 0 — выкл.</string>
     <string name="prefs_colour_skin_hue_title">Тон кожи</string>
     <string name="prefs_colour_skin_hue_summary">Кожа краснее или золотистее, остальные цвета не меняются. Больше — золотистее, меньше — краснее; 0 — как есть.</string>
@@ -762,14 +762,14 @@
     <string name="prefs_advanced_screen_summary">Кадры склейки, цвет камеры, RAW, видоискатель, диагностика</string>
     <string name="prefs_adv_cameras_title">Камера и RAW</string>
     <string name="prefs_adv_system_title">Система</string>
-    <string name="prefs_root_photo_title">Файл и размер</string>
+    <string name="prefs_root_photo_title">Сохранение и форматы фото</string>
     <string name="prefs_file_format_title">Формат файла</string>
     <string name="prefs_file_format_summary">JPEG подходит почти всегда</string>
     <string name="prefs_photo_size_screen_title">Размер фото</string>
     <string name="prefs_photo_size_screen_summary">Сколько деталей в снимке</string>
-    <string name="prefs_root_shoot_title">Съёмка</string>
+    <string name="prefs_root_shoot_title">Основные настройки</string>
     <string name="prefs_root_view_title">Экран камеры</string>
-    <string name="prefs_root_colour_title">Снимок</string>
+    <string name="prefs_root_colour_title">Настройки изображения</string>
     <string name="prefs_colour_fine_title">Тонкая настройка цвета</string>
     <string name="prefs_colour_fine_summary">Оттенок, сочность, кожа, микшер, цветокоррекция</string>
     <string name="prefs_root_app_title">Приложение</string>
@@ -809,7 +809,7 @@
     <string name="shade_t_ettr">ETTR</string>
     <!-- 2026-10-27 settings layout (owner: settings anyone can set up alone) -->
     <string name="prefs_photo_style_screen_title">Стиль и плёнка</string>
-    <string name="prefs_colour_skin_category_title">Кожа</string>
+    <string name="prefs_colour_skin_category_title">Тона кожи (Skin)</string>
     <string name="prefs_focus_screen_title">Фокус</string>
     <string name="prefs_photo_size_after_merge_title">Для опытных: после склейки</string>
     <string name="prefs_wide169_title">Кадр 16:9</string>
@@ -937,7 +937,7 @@
     <string name="prefs_scam_hybrid_why_classic_weight_center_title">Целевая яркость слияния слоёв</string>
     <string name="prefs_scam_hybrid_why_classic_weight_center_summary">Какая яркость каждого слоя считается хорошей. Больше — светлее, меньше — темнее. Действует при классической раскладке.</string>
     <string name="prefs_scam_hybrid_hdr_screen_title">Настройки HDR</string>
-    <string name="prefs_scam_hybrid_hdr_screen_summary">Плечо светов выше белого и шумодав коротких кадров</string>
+    <string name="prefs_scam_hybrid_hdr_screen_summary">Плечо светов, кадры светов и теней</string>
     <string name="prefs_scam_hybrid_hdr_shoulder_category_title">Плечо светов выше белого</string>
     <string name="prefs_scam_hybrid_hdr_frames_category_title">Короткие кадры</string>
     <string name="prefs_scam_hybrid_why_hr_strength_title">Сила удержания цвета в светах</string>
@@ -946,13 +946,13 @@
     <string name="prefs_scam_hybrid_why_hr_knee_summary">С какой доли верха кривой начинается плечо. Меньше — сжатие раньше и мягче, больше — света ярче до самого верха.</string>
     <string name="prefs_scam_hybrid_why_hr_room_title">Запас яркости огней (headroom)</string>
     <string name="prefs_scam_hybrid_why_hr_room_summary">Сколько места над порогом остаётся для самых ярких источников. Больше — солнце и лампы светлее, меньше — плотнее.</string>
-    <string name="prefs_scam_hybrid_artifacts_screen_title">Света и аберрации</string>
+    <string name="prefs_scam_hybrid_artifacts_screen_title">Хроматические аберрации и света</string>
     <string name="prefs_scam_hybrid_artifacts_screen_summary">Восстановление пересветов, кайма и полосы у ярких краёв</string>
     <string name="prefs_scam_hybrid_why_cct_sat_title">Общая насыщенность матрицы</string>
     <string name="prefs_scam_hybrid_why_cct_sat_summary">Насыщенность цветовой матрицы уже при чтении RAW, яркость сохраняется. Больше — все цвета сочнее, меньше — приглушённее.</string>
     <string name="prefs_scam_hybrid_ms_screen_title">Пирамидальный шумодав</string>
     <string name="prefs_scam_hybrid_ms_screen_summary">Дополнительная многоуровневая чистка зерна и цветных пятен после склейки</string>
-    <string name="prefs_scam_hybrid_ms_general_category_title">Общие</string>
+    <string name="prefs_scam_hybrid_ms_general_category_title">Общие настройки</string>
     <string name="prefs_scam_hybrid_ms_luma_category_title">Яркостный шум</string>
     <string name="prefs_scam_hybrid_ms_chroma_category_title">Цветовой шум</string>
     <string name="prefs_scam_hybrid_why_ms_denoise_title">Пирамидальный шумодав</string>
@@ -986,11 +986,11 @@
     <string name="prefs_scam_hybrid_why_sharp_sobel_thresh_summary">Градиент (шкала 0..255), с которого край получает усиление. Больше — только сильные края, фактура и шум не трогаются.</string>
     <string name="prefs_scam_hybrid_why_sharp_edge_thinning_title">Утончение краёв</string>
     <string name="prefs_scam_hybrid_why_sharp_edge_thinning_summary">Тянет пиксели края к ближней стороне перепада: линии тоньше и чётче. Минус — края мягче. 0 — выкл.</string>
-    <string name="prefs_scam_hybrid_why_sharp_rl1_damping_title">Демпфирование (этап 1)</string>
+    <string name="prefs_scam_hybrid_why_sharp_rl1_damping_title">RL 1: демпфирование</string>
     <string name="prefs_scam_hybrid_why_sharp_rl1_damping_summary">Сдерживает деконволюцию там, где картинка уже резкая (член полной вариации): меньше колец и роста шума. 0 — выкл.</string>
-    <string name="prefs_scam_hybrid_why_sharp_rl2_damping_title">Демпфирование (этап 2)</string>
+    <string name="prefs_scam_hybrid_why_sharp_rl2_damping_title">RL 2: демпфирование</string>
     <string name="prefs_scam_hybrid_why_sharp_rl2_damping_summary">Сдерживает деконволюцию там, где картинка уже резкая (член полной вариации): меньше колец и роста шума. 0 — выкл.</string>
-    <string name="prefs_scam_hybrid_why_sharp_rl3_damping_title">Демпфирование (этап 3)</string>
+    <string name="prefs_scam_hybrid_why_sharp_rl3_damping_title">RL 3: демпфирование</string>
     <string name="prefs_scam_hybrid_why_sharp_rl3_damping_summary">Сдерживает деконволюцию там, где картинка уже резкая (член полной вариации): меньше колец и роста шума. 0 — выкл.</string>
     <string name="prefs_scam_hybrid_why_curve_lift_title">Поднять центр</string>
     <string name="prefs_scam_hybrid_why_curve_lift_summary">Поднимает середину своей кривой, концы на месте.</string>
@@ -1014,9 +1014,9 @@
     <string name="prefs_scam_hybrid_why_vibrance_saturated_summary">Добавочная насыщенность уже насыщенных цветов; кожа сдерживается.</string>
     <string name="prefs_scam_hybrid_why_vibrance_mid_title">Сочность полутонов</string>
     <string name="prefs_scam_hybrid_why_vibrance_mid_summary">Насыщенность полутонов; кожа сдерживается. Минус — приглушённее.</string>
-    <string name="prefs_scam_hybrid_why_vibrance_shadows_title">Сочность теней</string>
+    <string name="prefs_scam_hybrid_why_vibrance_shadows_title">Сочность в тенях</string>
     <string name="prefs_scam_hybrid_why_vibrance_shadows_summary">Насыщенность теней; кожа сдерживается. Минус — спокойнее, меньше цветного шума.</string>
-    <string name="prefs_scam_hybrid_why_skin_protect_title">Сила защиты кожи</string>
+    <string name="prefs_scam_hybrid_why_skin_protect_title">Защита кожи: яркие, полутона, тени</string>
     <string name="prefs_scam_hybrid_why_skin_protect_summary">Насколько кожа сдерживается от сочности ярких тонов, полутонов и теней. 0 — без защиты.</string>
     <string name="prefs_scam_hybrid_why_skin_hue_center_title">Целевой тон кожи</string>
     <string name="prefs_scam_hybrid_why_skin_hue_center_summary">Оттенок (градусы), вокруг которого строится маска кожи. Меньше — краснее, больше — желтее.</string>
@@ -1030,8 +1030,45 @@
     <string name="prefs_scam_hybrid_why_cct_gain_g_summary">Усиление зелёного канала в цветовой матрице.</string>
     <string name="prefs_scam_hybrid_why_cct_gain_b_title">Синий в матрице</string>
     <string name="prefs_scam_hybrid_why_cct_gain_b_summary">Усиление синего канала в цветовой матрице.</string>
-    <string name="prefs_scam_hybrid_why_sobel_category_title">Контуры: Собель и утончение</string>
+    <string name="prefs_scam_hybrid_why_sobel_category_title">Контурный фильтр (Sobel)</string>
     <string name="prefs_scam_hybrid_why_curve_mod_category_title">Модификаторы кривой</string>
     <string name="prefs_scam_hybrid_why_gamma_type_title">Стандарт гаммы</string>
     <string name="prefs_scam_hybrid_why_gamma_type_summary">%s. Чистая степень — гамма выше как есть; sRGB и Rec.709 — кривые стандартов с линейным участком в тенях.</string>
+    <!-- P406: SHDR in the reference app's grouping -->
+    <string name="prefs_shdr_colour_title">Цвет</string>
+    <string name="prefs_shdr_colour_summary">Сочность, кожа, матрица, баланс белого, микшер</string>
+    <string name="prefs_colour_ccm_category_title">Матрица цветокоррекции (CCM)</string>
+    <string name="prefs_scam_hybrid_nr_merge_category_title">Шумодав склейки</string>
+    <string name="prefs_scam_hybrid_merge_frames_category_title">Кадры серии</string>
+    <string name="prefs_scam_hybrid_merge_align_category_title">Выравнивание</string>
+    <string name="prefs_scam_hybrid_merge_reject_category_title">Слияние и отсев движения</string>
+    <string name="prefs_scam_hybrid_merge_kernel_category_title">Ядро склейки</string>
+    <string name="prefs_scam_hybrid_merge_quad_category_title">Quad Bayer и мозаика</string>
+    <string name="prefs_scam_hybrid_merge_final_category_title">Финальная сборка</string>
+    <string name="prefs_scam_hybrid_defringe_category_title">Подавление каймы (Defringe)</string>
+    <string name="prefs_scam_hybrid_recovery_category_title">Восстановление светов</string>
+    <!-- P406: the settings root in the reference app's grouping -->
+    <string name="prefs_root_lenses_title">Модули камеры и линзы</string>
+    <string name="prefs_root_lab_title">Лаборатория</string>
+    <string name="prefs_root_logs_title">Логи</string>
+    <string name="prefs_colour_expert_screen_summary">Источник цвета, DCP-профиль, баланс белого мозаики, калибровка</string>
+    <string name="prefs_viewfinder_screen_title">Видоискатель</string>
+    <string name="prefs_viewfinder_screen_summary">Углы, сетка, горизонт, информация, RAW-видоискатель</string>
+    <string name="prefs_shooting_screen_title">Съёмка</string>
+    <string name="prefs_shooting_screen_summary">Режим «Движение», ETTR, фокус</string>
+    <string name="prefs_appearance_screen_title">Оформление</string>
+    <string name="prefs_appearance_screen_summary">Акцент, прозрачность шторки, расположение настроек</string>
+    <!-- P408: colour matrix and Quad / Tetra white balance as in the reference app -->
+    <string name="prefs_scam_hybrid_why_ccm_profile_title">Профиль матрицы цвета</string>
+    <string name="prefs_scam_hybrid_why_ccm_profile_summary">%s. Готовая матрица сенсора вместо системной, отдельно для модуля и съёмки 50/200 Мп.</string>
+    <string name="prefs_scam_hybrid_why_ccm_override_title">Своя матрица цвета 3×3</string>
+    <string name="prefs_scam_hybrid_why_ccm_override_summary">Цвет считается по матрице ниже, если не выбран профиль. Строки сводятся к 1, серый остаётся серым.</string>
+    <string name="prefs_scam_hybrid_why_ccm_matrix_title">Матрица 3×3</string>
+    <string name="prefs_scam_hybrid_why_ccm_matrix_summary">Девять чисел по строкам через запятую. 1, 0, 0, 0, 1, 0, 0, 0, 1 — без изменений.</string>
+    <string name="prefs_scam_hybrid_why_dynamic_cct_title">Dynamic CCT</string>
+    <string name="prefs_scam_hybrid_why_dynamic_cct_summary">На высоких ISO матрица смягчается: меньше цветного шума, цвета чуть спокойнее.</string>
+    <string name="prefs_scam_hybrid_why_dynamic_cct_strength_title">Сила Dynamic CCT</string>
+    <string name="prefs_scam_hybrid_why_dynamic_cct_strength_summary">Насколько смягчать матрицу к ISO 6400. 0 — выкл., 1 — до чистого баланса белого.</string>
+    <string name="prefs_scam_hybrid_mosaic_wb_mode_title">Баланс белого Quad / Tetra</string>
+    <string name="prefs_scam_hybrid_mosaic_wb_mode_summary">%s. Откуда снимок 50/200 Мп берёт баланс белого: видоискатель в момент нажатия или своя оценка кадра.</string>
 </resources>

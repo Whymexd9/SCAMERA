@@ -1286,6 +1286,19 @@ void main() {
     // has its colour already stays (the 3.7x sunset's glow at chroma 34 went to 66, red-orange, under a plain x 2.2; LMC 9.6 /
     // ArkCam 33 - 38), none on a neutral (its hue is noise below chroma 0.004). Host replay: the 1x sky 8 / 22 -> ~20 / ~33,
     // the 3.7x glow 34 -> ~42.
+#if TONE_OP == 1
+    // P407 (owner, 2026-10-29, OPPO Find X8 Ultra beside ArkCam: wallpaper, board and speakers too yellow): P341's term made up
+    // AgX's shoulder loss; the per-channel curves keep a colour's chroma (the own curve raises it), so under them the light tones
+    // take the reference's own term (v2.07 tonemap_final 4.2: x (1 + str) from OKLab L 0.60 .. 0.80 to 0.88 .. 0.98), vibHlU 1 its
+    // config's strength 0.25. Host model of the shot: wallpaper / board sRGB 168 150 121 / 167 142 92 -> 164 151 130 / 159 143 115,
+    // ArkCam 162 150 129 / 160 144 118.
+    // P393's cast gate kept (a white-balance cast on a near-white not raised; the reference raises it x1.25).
+    if (vibHlU > 0.0) {
+        vec4 hlShape = vibHlShape();
+        lab.yz *= 1.0 + 0.25 * vibHlU * smoothstep(0.60, 0.80, lab.x) * (1.0 - smoothstep(0.88, 0.98, lab.x))
+                  * smoothstep(hlShape.z, hlShape.w, length(lab.yz));
+    }
+#else
 #if SKY == 1
     // P378 (C1): in the sky the neutral gate is 0.015 .. 0.03 - a cloud tinted at chroma 0.004 - 0.012 (the white balance's cast)
     // took x2.1 - 2.4 of it and read cream / lavender (cloud C* 4.55 against the reference's 2.65); a blue gap is far above it
@@ -1309,6 +1322,7 @@ void main() {
         vec4 hlShape = vibHlShape();
         lab.yz *= 1.0 + 1.6 * vibHlU * vibHlRamp(hlShape, lab.x, c0) * smoothstep(hlShape.z, hlShape.w, c0) * max(1.0 - c0 / 0.10, 0.0);
     }
+#endif
 #endif
 #if COLOUR_LOOK == 1
     float skinW = 0.0;

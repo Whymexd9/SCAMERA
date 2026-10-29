@@ -32,7 +32,7 @@ final class ModulePageFilter {
      * name only; the app's and the about rows are shared. P384: the module cards and the Camera ID rows are every module's, not one
      * profile's.
      */
-    static final List<String> NOT_MODULE = Collections.unmodifiableList(Arrays.asList("adv_system", "root_app", "root_about",
+    static final List<String> NOT_MODULE = Collections.unmodifiableList(Arrays.asList("root_logs", "root_lab", "root_about",
             ModuleRows.GROUP, ModuleRows.IDS));
 
     private ModulePageFilter() { }

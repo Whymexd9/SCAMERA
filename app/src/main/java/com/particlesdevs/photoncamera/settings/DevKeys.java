@@ -337,8 +337,8 @@ public final class DevKeys {
         k.add(n(post, "hybrid_why_fusion_edge_floor", "0.0078125", Lang.t("Тон: порог света (яркость x AE), ниже которого глубокие тени считаются одним уровнем (без доли на их шуме)", "Tone: the light floor (luminance x AE) under which the deep shadows count as one level (no share on their noise)")));
         // P391: the edge-aware bands of the WHY pyramid, its continuous depth, the noise-bound deep floor and band gain
         // P395: the orange-yellows towards yellow
-        k.add(n(post, "hybrid_why_yellow_hue", "1.0", Lang.t("Цвет: насыщенные жёлто-оранжевые (фасады, жёлтая листва, машины) поворачиваются к жёлтому до 8°, как у ArkCam; кожа, оранжевые, зелень и бледные стены как раньше; 0 — выкл.",
-                "Colour: saturated orange-yellows (facades, yellow foliage, cars) turn up to 8 deg towards yellow, as ArkCam's; skin, oranges, greens and pale walls as before; 0: off")));
+        k.add(n(post, "hybrid_why_yellow_hue", "1.0", Lang.t("Цвет (vivo): насыщенные жёлто-оранжевые (фасады, жёлтая листва, машины) поворачиваются к жёлтому до 8°, как у ArkCam; кожа, оранжевые, зелень и бледные стены как раньше; 0 — выкл. На других телефонах по умолчанию 0",
+                "Colour (vivo): saturated orange-yellows (facades, yellow foliage, cars) turn up to 8 deg towards yellow, as ArkCam's; skin, oranges, greens and pale walls as before; 0: off. Other phones: 0 by default")));
         // P398: pale light tones towards white
         k.add(n(post, "hybrid_why_hl_neutral", "1.0", Lang.t("Цвет: бледные цвета у самого белого (освещённые солнцем белые рамы, стены, плафоны) уходят в белый, а не в кремовый; голубое небо, море и насыщенные цвета как раньше; 0 — выкл.",
                 "Colour: pale colours at the very top (sunlit white frames, walls, lamps) go to white, not cream; blue sky, sea and saturated colours as before; 0: off")));

@@ -764,7 +764,7 @@ public class ModuleRowsTest {
             tap(root.findPreference("module_row_profile_back1"));
             SettingsActivity.SettingsFragment page = shown(activity);
             assertEquals("back1", page.moduleProfile());
-            shotAt(page, "root_expert", "p384-profile-root-ru");
+            shotAt(page, "root_colour", "p384-profile-root-ru");
             activity.getOnBackPressedDispatcher().onBackPressed();
             root = root(activity);
             tap(root.findPreference("module_copy_settings"));

@@ -134,6 +134,8 @@ public class Parameters {
     /** P370 (B1): the colour routes ReCalcColor can take (README colourSource=). */
     public enum ColourSource {
         /** the active DCP profile */ DCP,
+        /** P408: a colour matrix profile of the reference app's registry (CcmPresets) */ CCM_PRESET,
+        /** P408: the colour matrix set by hand */ CCM_OVERRIDE,
         /** the OPPO PHY110 tuned forward matrix per CCT */ OPPO_TUNED,
         /** the camera's plain-session matrix at the neutral (PlainColourMemory) */ PLAIN_TABLE,
         /** the result's COLOR_CORRECTION_TRANSFORM (rows normalised) */ ISP_CST,
@@ -1482,6 +1484,21 @@ public class Parameters {
             CCT.matrix = proPhotoToSRGB;
             route = ColourSource.DCP;
             why = "";
+        } else {
+            // P408 (the reference app's order under its DCP profile): a profile of its matrix registry, else the matrix set by hand,
+            // white-balanced camera RGB -> linear sRGB with the rows to 1 (a grey stays grey), per module / FULLRES profile
+            final int presetId = ccmPresetId();
+            float[] own = presetId > 0 ? com.particlesdevs.photoncamera.processing.color.CcmPresets.matrix(presetId) : null;
+            final boolean preset = own != null;
+            if (own == null && ccmOverride()) own = com.particlesdevs.photoncamera.processing.color.CcmPresets.parse(ccmMatrixText());
+            if (own != null && normalize(own)) {
+                for (int i = 0; i < 9; i++) sensorToProPhoto[i] = i % 4 == 0 ? 1f / whitePoint[i / 3] : 0f;
+                proPhotoToSRGB = own;
+                CCT = new ColorCorrectionTransform();
+                CCT.matrix = proPhotoToSRGB;
+                route = preset ? ColourSource.CCM_PRESET : ColourSource.CCM_OVERRIDE;
+                why = preset ? "profile " + presetId : "";
+            }
         }
         colourSource = route.name();
         colourSourceWhy = why == null ? "" : why;
@@ -1526,6 +1543,36 @@ public class Parameters {
             Log.i(TAG, "mosaic colour matrix: " + mosaicMatrixSource + String.format(java.util.Locale.ROOT, ", scene %.0f K", sceneCct));
         }
     }
+
+    /** P408: «Профиль матрицы» (pref_scam_hybrid_why_ccm_profile; 0 the system matrix, the shot's own route). */
+    static int ccmPresetId() {
+        try {
+            return Integer.parseInt(PreferenceKeys.hybridString("why_ccm_profile", "0"));
+        } catch (RuntimeException e) {
+            return 0;
+        }
+    }
+
+    /** P408: «Своя матрица 3x3» on (pref_scam_hybrid_why_ccm_override). */
+    static boolean ccmOverride() {
+        try {
+            return PreferenceKeys.hybridSwitch("why_ccm_override", false);
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
+    /** P408: the matrix set by hand (pref_scam_hybrid_why_ccm_matrix, nine numbers by rows). */
+    static String ccmMatrixText() {
+        try {
+            return PreferenceKeys.hybridString("why_ccm_matrix", CCM_IDENTITY);
+        } catch (RuntimeException e) {
+            return CCM_IDENTITY;
+        }
+    }
+
+    /** P408: the hand-set matrix's default and reset value (the reference's «Сбросить матрицу к стандарту D65»: no change). */
+    public static final String CCM_IDENTITY = "1, 0, 0, 0, 1, 0, 0, 0, 1";
 
     /** P370 (A1): |Duv| above which the DNG white estimate is the matrices' artefact (real X200U shot 0.012; the artefact 0.054-0.057). */
     static final float DUV_GUARD = 0.025f;

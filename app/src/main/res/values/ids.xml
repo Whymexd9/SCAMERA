@@ -16,4 +16,7 @@
     <item name="settings_rise" type="id"/>
     <!-- P385: the card background of a row of «Расположение» (its outline turns accent while it is dragged) -->
     <item name="settings_layout_card" type="id"/>
+    <!-- P406: a row's whole summary (SettingsStyle.twoLines shows what fits in two lines; the long press shows it all) -->
+    <item name="settings_full_summary" type="id"/>
+    <item name="settings_two_lines" type="id"/>
 </resources>

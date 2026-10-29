@@ -76,11 +76,13 @@ public class HybridSettingsTest {
      */
     @Test public void shdrSectionAndItsKeysWhereverTheyAre() {
         PreferenceScreen root=inflate();
-        PreferenceScreen hybrid=root.findPreference("scam_hybrid_screen");
-        assertNotNull(hybrid);assertEquals("SHDR",hybrid.getTitle().toString());
+        // P406: no SHDR wrapper page - «Настройки изображения» holds the processing pages, as the reference app's categories
+        assertNull(root.findPreference("scam_hybrid_screen"));
+        PreferenceGroup hybrid=root.findPreference("root_colour");
+        assertNotNull(hybrid);
         for(String screen:new String[]{"scam_hybrid_photo_screen","scam_hybrid_why_sharp_screen","scam_hybrid_why_tone_screen",
-                "scam_hybrid_capture_screen","scam_hybrid_merge_screen","scam_hybrid_nr_snr_screen","scam_hybrid_nr_mult_screen",
-                "scam_hybrid_nr_safe_screen","scam_hybrid_rejection_screen","scam_hybrid_why_rl_screen"})
+                "scam_hybrid_hdr_screen","scam_hybrid_merge_screen","scam_hybrid_nr_snr_screen","scam_hybrid_nr_mult_screen",
+                "scam_hybrid_nr_safe_screen","scam_hybrid_mosaic_screen","scam_hybrid_why_rl_screen","photo_processing_screen"})
             assertTrue(screen,hybrid.findPreference(screen) instanceof PreferenceScreen);
         // P175: the neural remosaic page is gone
         assertNull(root.findPreference("shdr_neural_remosaic_screen"));
@@ -125,7 +127,8 @@ public class HybridSettingsTest {
     }
 
     @Test public void listSummariesFormatWithTheirEntries() {
-        PreferenceScreen hybrid=inflate().findPreference("scam_hybrid_screen");
+        // P406: the processing pages are rows of «Настройки изображения», as the reference app's categories
+        PreferenceGroup hybrid=inflate().findPreference("root_colour");
         List<Preference> inside=new ArrayList<>();collect(hybrid,inside);
         int lists=0;
         for(Preference p:inside) if(p instanceof ListPreference&&p.getKey().startsWith(PreferenceKeys.HYBRID_PREFIX)){
@@ -277,7 +280,7 @@ public class HybridSettingsTest {
         assertTrue(tuning,tuning.contains("hotSigma 0.0\n"));
         assertTrue(tuning,tuning.contains("cellClip 0\n"));assertTrue(tuning,tuning.contains("bentoScam 0\n"));
         // XML default = the app default (setDefaultValues writes it into every user's preferences): «Всегда» = "1".
-        PreferenceScreen settings=inflate(),hybrid=settings.findPreference("scam_hybrid_screen");
+        PreferenceScreen settings=inflate();PreferenceGroup hybrid=settings.findPreference("root_colour");
         assertEquals("2",((ListPreference)hybrid.findPreference("pref_scam_hybrid_sabre61")).getEntryValues()[2].toString());
         prefs.edit().clear().commit();
         inflate();
@@ -534,11 +537,11 @@ public class HybridSettingsTest {
     }
 
     @Test @Config(qualifiers="ru-w400dp-h880dp-mdpi") public void mochiKeysReachTheTuningFileAndDefaultAlways() {
-        mochiKeysReachTheTuningFileAndDefaultAlways("Фотометрическая склейка");
+        mochiKeysReachTheTuningFileAndDefaultAlways("Финальная сборка");
     }
 
     @Test public void mochiKeysReachTheTuningFileAndDefaultAlwaysInEnglish() {
-        mochiKeysReachTheTuningFileAndDefaultAlways("Photometric merge");
+        mochiKeysReachTheTuningFileAndDefaultAlways("Final assembly");
     }
 
     private void mochiKeysReachTheTuningFileAndDefaultAlways(String pageTitle) {
@@ -562,9 +565,9 @@ public class HybridSettingsTest {
         tuning=PreferenceKeys.hybridTuningText();
         assertTrue(tuning,tuning.contains("mochi 2.0\n"));
 
-        // the page: «Hybrid -> Склейка -> Фотометрия Mochi», XML default = the app default (always: 2)
+        // the row: «SHDR -> Склейка -> Финальная сборка» (P406, as the reference app), XML default = the app default (always: 2)
         PreferenceScreen settings=inflate(),merge=settings.findPreference("scam_hybrid_merge_screen");
-        PreferenceScreen page=merge.findPreference("scam_hybrid_mochi_screen");
+        PreferenceGroup page=merge.findPreference("scam_hybrid_merge_final_category");
         assertNotNull(page);assertEquals(pageTitle,page.getTitle().toString());
         ListPreference mode=page.findPreference("pref_scam_hybrid_mochi");
         assertNotNull(mode);
@@ -713,9 +716,9 @@ public class HybridSettingsTest {
         prefs.edit().clear().commit();
         PreferenceScreen settings=inflate();
         assertNull(settings.findPreference("scam_hybrid_jsr_screen"));
-        // 2026-10-27: Auto 2× is a fine setting of the size after the merge («Для опытных › Другие тонкие настройки»)
-        PreferenceScreen advanced=settings.findPreference("advanced_screen");
-        assertNotNull("in «Другие тонкие настройки › Сетка 2× и уменьшение»",advanced.findPreference("pref_scam_hybrid_auto2x"));
+        // 2026-10-27: Auto 2× is a fine setting of the size after the merge; P406: on «Размер фото» («Сохранение и форматы фото»)
+        PreferenceScreen advanced=settings.findPreference("photo_size_screen");
+        assertNotNull("in «Размер фото › Сетка 2× и уменьшение»",advanced.findPreference("pref_scam_hybrid_auto2x"));
         assertEquals("adv_output",((Preference)settings.findPreference("pref_scam_hybrid_auto2x")).getParent().getKey());
         assertTrue(prefs.getBoolean("pref_scam_hybrid_auto2x",false));
         String tuning=PreferenceKeys.hybridTuningText();
@@ -1118,6 +1121,19 @@ public class HybridSettingsTest {
         prefs.edit().putBoolean("pref_scam_hybrid_why_curve_on",false).commit();
         SettingsMigration.migrateScamHybrid(prefs,false);
         assertFalse("turned off after the move: stays",prefs.getBoolean("pref_scam_hybrid_why_curve_on",true));
+        // P407: P405's matrix saturation 1.25 moves to 1.1 once (a former 1.0 went straight to 1.1 above); set again afterwards it stays
+        prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putInt("pref_scam_hybrid_defaults_rev",7)
+                .putInt(SettingsMigration.CONFIG_DEFAULTS_REV,1).putString("pref_scam_hybrid_why_cct_sat","1.25").commit();
+        assertTrue(SettingsMigration.migrateScamHybrid(prefs,false));
+        assertEquals("1.1",prefs.getString("pref_scam_hybrid_why_cct_sat",""));
+        assertEquals(1,prefs.getInt(SettingsMigration.CCT_SAT_REV,0));
+        prefs.edit().putString("pref_scam_hybrid_why_cct_sat","1.25").commit();
+        SettingsMigration.migrateScamHybrid(prefs,false);
+        assertEquals("set again: stays","1.25",prefs.getString("pref_scam_hybrid_why_cct_sat",""));
+        prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putInt("pref_scam_hybrid_defaults_rev",7)
+                .putString("pref_scam_hybrid_why_cct_sat","1").commit();
+        SettingsMigration.migrateScamHybrid(prefs,false);
+        assertEquals("the former 1.0","1.1",prefs.getString("pref_scam_hybrid_why_cct_sat",""));
     }
 
     @Test public void cellClipFormerDefaultMovesOffOnce() {

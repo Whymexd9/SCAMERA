@@ -112,9 +112,9 @@ public class ScamDiagnosticsReadmeTest {
                 WhyTone.colourMatrixOf(p, null));
         final float[] chain = parse(readme, "cameraToLinearSRGB");
         assertNotNull(readme, chain);
-        // the ISP route's camera -> sRGB product, then the default matrix saturation (P405: 1.25, Y kept) of the look on the left
+        // the ISP route's camera -> sRGB product, then the default matrix saturation (P407: 1.1, Y kept) of the look on the left
         final float[] isp = {2.852f, -0.484f, -0.187f, -0.242f, 1.344f, -0.505f, 0.113f, -0.543f, 3.542f};
-        final float[] sat = WhyTone.cctSat(1.25f, null), want = mul3(sat, isp);
+        final float[] sat = WhyTone.cctSat(WhyTone.CCT_SAT, null), want = mul3(sat, isp);
         for (int i = 0; i < 9; i++) assertEquals("element " + i, want[i], chain[i], 3e-3f);
         final float[] n = p.whitePoint;
         for (int r = 0; r < 3; r++) assertEquals("row " + r + " maps the neutral to white", 1f,
@@ -140,7 +140,7 @@ public class ScamDiagnosticsReadmeTest {
         p.ReCalcColor(false, result(X8U_CST, 0.54785156f, 0.41796875f));
         final float[] white = {1.1f, -0.05f, -0.05f, 0f, 1f, 0f, -0.02f, -0.02f, 1.04f};
         final float[] up = WhyTone.colourMatrixOf(p, white);
-        final float[] look = WhyTone.withCctSat(white);   // P405: the default matrix saturation 1.25 on the white matrix
+        final float[] look = WhyTone.withCctSat(white);   // P407: the default matrix saturation 1.1 on the white matrix
         for (int r = 0; r < 3; r++)
             for (int c = 0; c < 3; c++) {
                 float s = 0f;

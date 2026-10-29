@@ -1204,7 +1204,16 @@ public class ScamProcessor extends ProcessorBase {
         // P212g (W6 = M6): the vivo native routes, whose HAL 3A runs, keep the HAL's neutral when it is converged and on the camera's
         // curve, and P208's still-only route takes its normal-mode viewfinder's neutral at the press (MosaicNeutralResolver); ownNeutral
         // stays false, so the ISP's matrix (or the plain-session table) renders it. Our estimate above is logged only then.
-        final com.particlesdevs.photoncamera.processing.color.MosaicNeutralResolver.Press press = p.mosaicWbAtPress;
+        com.particlesdevs.photoncamera.processing.color.MosaicNeutralResolver.Press press = p.mosaicWbAtPress;
+        // P408: the reference app's rule reads the live stream's white balance - not where the ISP runs no 3A (P366's frozen gains):
+        // that burst takes the teacher / P121 below
+        if (press != null && press.route == com.particlesdevs.photoncamera.processing.color.MosaicNeutralResolver.ROUTE_ARK) {
+            final String idle = com.particlesdevs.photoncamera.processing.color.MosaicNeutralResolver.ispIdle(frameResults(frames));
+            if (idle != null) {
+                Log.i("SCAM_HDR", "mosaic white balance: the reference app's rule not used (" + idle + ")");
+                press = null;
+            }
+        }
         if (press != null && press.route != com.particlesdevs.photoncamera.processing.color.MosaicNeutralResolver.ROUTE_NONE) {
             final Integer awbState = meta == null ? null : meta.get(CaptureResult.CONTROL_AWB_STATE);
             final float[] hal = p.whitePoint.clone();

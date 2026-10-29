@@ -369,6 +369,48 @@ public final class SettingsStyle {
         return Math.max(Math.round(48 * density), Math.round(VALUE_SHARE * text));
     }
 
+    /**
+     * P406 (owner, 2026-10-29: «описание у всех параметров должно быть не больше двух строк, расширенное описание у нас
+     * показывается по зажатию по параметру»): a row's summary shows at most two lines - its whole sentences that fit, else its
+     * start with «…»; the long press (SettingHelp) shows the whole text. Fitted again whenever the row's width changes.
+     */
+    static void twoLines(TextView summary) {
+        summary.setMaxLines(2);
+        summary.setEllipsize(TextUtils.TruncateAt.END);
+        summary.setTag(R.id.settings_full_summary, summary.getText());
+        if (summary.getTag(R.id.settings_two_lines) == null) {
+            summary.setTag(R.id.settings_two_lines, Boolean.TRUE);
+            summary.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> fitTwoLines((TextView) v));
+        }
+        fitTwoLines(summary);
+    }
+
+    private static void fitTwoLines(TextView summary) {
+        final Object full = summary.getTag(R.id.settings_full_summary);
+        final int width = summary.getWidth() - summary.getTotalPaddingLeft() - summary.getTotalPaddingRight();
+        if (!(full instanceof CharSequence) || width <= 0) return;
+        final CharSequence fit = twoLineText((CharSequence) full, summary.getPaint(), width);
+        if (!TextUtils.equals(fit, summary.getText())) summary.setText(fit);
+    }
+
+    /** {@code text} if it takes at most two lines of {@code width} px, else its longest run of whole sentences that does; null: none. */
+    static CharSequence twoLineText(CharSequence text, android.text.TextPaint paint, int width) {
+        if (lines(text, paint, width) <= 2) return text;
+        final String s = text.toString();
+        final java.util.regex.Matcher m = java.util.regex.Pattern.compile("[.!?…;](?=\\s)").matcher(s);
+        String best = null;
+        while (m.find()) {
+            final String head = s.substring(0, m.end());
+            if (lines(head, paint, width) > 2) break;
+            best = head.endsWith(";") ? head.substring(0, head.length() - 1) + "…" : head;
+        }
+        return best != null ? best : text;
+    }
+
+    private static int lines(CharSequence text, android.text.TextPaint paint, int width) {
+        return android.text.StaticLayout.Builder.obtain(text, 0, text.length(), paint, width).build().getLineCount();
+    }
+
     /** A value whose one line is wider than {@code share} pixels goes under the title (on the right it squeezed the text). */
     static boolean valueBelow(float valueWidth, int share) {
         return valueWidth > share;
@@ -465,6 +507,7 @@ public final class SettingsStyle {
                 else if (s.startsWith(v + "\n")) summary.setText(s.substring(v.length() + 1));   // P384: "%s\n…" summaries
             }
         }
+        if (summary != null) twoLines(summary);
         View widget = holder.findViewById(androidx.preference.R.id.switchWidget);
         if (widget instanceof SwitchCompat) {
             SwitchCompat sw = (SwitchCompat) widget;

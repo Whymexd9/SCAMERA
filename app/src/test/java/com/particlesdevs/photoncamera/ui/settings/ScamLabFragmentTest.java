@@ -97,11 +97,19 @@ public class ScamLabFragmentTest {
     }
 
     @Test public void everyProcessingPageAndRowIsOffered() {
-        final PreferenceGroup shdr = (PreferenceGroup) tree.findPreference("scam_hybrid_screen");
+        final PreferenceGroup shdr = (PreferenceGroup) tree.findPreference("root_colour");
         final List<String> groups = Arrays.asList(ScamLabFragment.GROUPS);
-        // every SHDR page, «Кадры светов и теней» too (the burst keeps those frames, the worker merges them again)
-        for (int i = 0; i < shdr.getPreferenceCount(); i++)
-            assertTrue(shdr.getPreference(i).getKey(), groups.contains(shdr.getPreference(i).getKey()));
+        // every processing page of «Настройки изображения» (P406), the frames' «Настройки HDR» too (the burst keeps those frames, the
+        // worker merges them again); the style page's rows come with the group «Настройки изображения» itself
+        int pages = 0;
+        for (int i = 0; i < shdr.getPreferenceCount(); i++) {
+            final Preference p = shdr.getPreference(i);
+            if (!(p instanceof androidx.preference.PreferenceScreen) || p.getKey().equals("photo_style_screen") || p.getKey().equals("backup_settings_screen")) continue;
+            assertTrue(p.getKey(), groups.contains(p.getKey()));
+            pages++;
+        }
+        assertEquals(10, pages);
+        assertTrue(groups.contains("root_colour"));
         final Set<String> offered = offered();
         for (String key : new String[]{
                 // «Кадры светов и теней»

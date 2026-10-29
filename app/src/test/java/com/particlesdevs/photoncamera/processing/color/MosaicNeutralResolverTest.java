@@ -181,4 +181,41 @@ public class MosaicNeutralResolverTest {
                 new Rational(Math.round(r * 1024), 1024), new Rational(1, 1), new Rational(Math.round(b * 1024), 1024)});
         return c;
     }
+
+    /**
+     * P408: the reference app's Quad / Tetra white balance (CameraManager$3.onCaptureCompleted, lastWbGains at the press): the live
+     * stream's newest result - its gains unless they are the identity, then its neutral point - without an AWB or curve gate.
+     */
+    @Test public void theReferenceAppsRule() {
+        // gains R 2.0, G 1.0 / 1.02, B 1.6 -> neutral 1.01 / 2.0, 1.01 / 1.6
+        final float[] g = MosaicNeutralResolver.arkNeutral(new float[]{2f, 1f, 1.02f, 1.6f}, new float[]{0.3f, 1f, 0.9f});
+        assertEquals(0.505f, g[0], 1e-5f);
+        assertEquals(1.01f / 1.6f, g[2], 1e-5f);
+        // identity gains (a remosaic stream's): the neutral point
+        final float[] n = MosaicNeutralResolver.arkNeutral(new float[]{1f, 1f, 1.005f, 1f}, new float[]{0.45f, 1f, 0.62f});
+        assertEquals(0.45f, n[0], 1e-6f);
+        assertEquals(0.62f, n[2], 1e-6f);
+        assertNull("identity gains and a grey neutral: none", MosaicNeutralResolver.arkNeutral(new float[]{1f, 1f, 1f, 1f}, new float[]{1f, 1f, 1f}));
+        assertNull(MosaicNeutralResolver.arkNeutral(null, new float[]{0.03f, 1f, 0.6f}));
+        // the ring: the newest result of the camera in the last second, not converged ones only
+        final MosaicNeutralResolver.Ring ring = new MosaicNeutralResolver.Ring();
+        ring.offer("0", 1000L, 0.40f, 0.70f, true, 0.40f, 0.70f);
+        ring.offer("0", 1500L, Float.NaN, Float.NaN, false, 0.48f, 0.60f);
+        ring.offer("2", 1600L, 0.30f, 0.80f, true, 0.30f, 0.80f);
+        final MosaicNeutralResolver.Press p = ring.ark("0", 1700L);
+        assertEquals(MosaicNeutralResolver.ROUTE_ARK, p.route);
+        assertEquals(0.48f, p.viewfinder[0], 0f);
+        assertEquals(0.60f, p.viewfinder[2], 0f);
+        assertNull("older than a second: none", ring.ark("0", 3000L).viewfinder);
+        assertEquals("the still-only median keeps the converged results only", 1, ring.stillOnly("0", 1700L).results);
+        final MosaicNeutralResolver.Decision d = MosaicNeutralResolver.decide(p, new float[]{0.3f, 1f, 0.9f}, null, Float.NaN);
+        assertNotNull(d);
+        assertEquals(0.48f, d.neutral[0], 0f);
+        // without a viewfinder result: the shot's HAL neutral, no AWB-state or curve gate
+        final MosaicNeutralResolver.Decision h = MosaicNeutralResolver.decide(MosaicNeutralResolver.Press.ark(null),
+                new float[]{0.45f, 0.9f, 0.54f}, CaptureResult.CONTROL_AWB_STATE_SEARCHING, Float.NaN);
+        assertNotNull(h);
+        assertEquals(0.5f, h.neutral[0], 1e-6f);
+        assertEquals(0.6f, h.neutral[2], 1e-6f);
+    }
 }

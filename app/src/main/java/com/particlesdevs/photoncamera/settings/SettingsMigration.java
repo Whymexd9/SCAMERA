@@ -819,6 +819,16 @@ public final class SettingsMigration {
             e.putInt(CONFIG_DEFAULTS_REV, 1);
             markOnly = true;
         }
+        // P407: the matrix saturation's default 1.25 (P405) -> 1.1 (the reference's chroma on the ISP matrix), a stored 1.25 once
+        if (!values.containsKey(CCT_SAT_REV)) {
+            final Object v = values.get(ScamHybridKeys.PREFIX + "why_cct_sat");
+            if (v != null && isNumber(v, 1.25f)) {
+                ModuleProfiles.put(e, ScamHybridKeys.PREFIX + "why_cct_sat", v instanceof String ? PreferenceNumber.format(1.1f, true) : (Object) 1.1f);
+                changed = true;
+            }
+            e.putInt(CCT_SAT_REV, 1);
+            markOnly = true;
+        }
         // P164: the multiscale finish denoise's stored engine value has its own name; any value but "nlm" is that engine
         final Object engine = values.get(ScamHybridKeys.PREFIX + "dn_engine");
         if (engine instanceof String && !"nlm".equals(engine) && !"multiscale".equals(engine)) {
@@ -865,6 +875,9 @@ public final class SettingsMigration {
     /** P394: marker of the one-time move of a stored «Клип ячейки 2×2 целиком» (on, the former default) to off. */
     static final String CELL_CLIP_REV = "pref_scam_hybrid_cell_clip_rev";
 
+    /** P407: marker of the one-time move of the matrix saturation 1.25 to 1.1. */
+    static final String CCT_SAT_REV = "pref_scam_hybrid_cct_sat_rev";
+
     /** P405: marker of the one-time move of the former defaults to the owner's reference config of 2026-10-29. */
     static final String CONFIG_DEFAULTS_REV = "pref_scam_hybrid_config_defaults_rev";
     /** P405: {key after pref_scam_hybrid_, the former default, the reference config's}. */
@@ -880,7 +893,7 @@ public final class SettingsMigration {
             {"why_ms_denoise", false, true}, {"why_ms_luma", 1f, 0.2f}, {"why_ms_luma_l0", 1f, 0.4f}, {"why_ms_luma_l1", 1f, 0.1f},
             {"why_ms_luma_l2", 1f, 0.35f}, {"why_ms_chroma", 2f, 0.5f}, {"why_ms_chroma_l0", 1f, 0.2f}, {"why_ms_chroma_l1", 1f, 0.4f},
             {"why_ms_chroma_l2", 1f, 0.6f}, {"why_ms_model_scale", 1f, 1.5f}, {"why_hr_strength", 1f, 0.6f}, {"why_hr_knee", 0.5f, 0.6f},
-            {"why_hr_room", 0.4f, 0.35f}, {"why_vibrance_sky", 0.4f, 0.25f}, {"why_vibrance_green", 0.2f, 0.05f}, {"why_cct_sat", 1f, 1.25f},
+            {"why_hr_room", 0.4f, 0.35f}, {"why_vibrance_sky", 0.4f, 0.25f}, {"why_vibrance_green", 0.2f, 0.05f}, {"why_cct_sat", 1f, 1.1f},
             {"why_sharp_usm_radius", 0.5f, 0.1f}, {"why_sharp_usm_amount", 1f, 0.5f}, {"why_sharp_usm_thresh", 50f, 0f},
             {"why_sharp_gf_lc", 0.25f, 0f}, {"why_sharp_rl3_amount", 1f, 1.5f}, {"dezipper", 0f, 4.5f}};
 
