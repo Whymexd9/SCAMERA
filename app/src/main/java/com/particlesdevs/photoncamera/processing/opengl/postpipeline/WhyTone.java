@@ -443,11 +443,11 @@ public final class WhyTone {
     }
 
     /**
-     * P400 (owner, 2026-10-29, the ship's bridge: the crane and the tower behind the window washed out, «такую проблему мы уже решали
-     * очень давно»): how much fused luma a daylit window's mid-tones under its sky give up in a room (why/lpyr WINDOW; 0 = off).
+     * P401 (owner, 2026-10-29: the cranes and the clouds behind a window as build 31091 drew them, «при этом у нас остаётся пирамида
+     * Лапласа»): the share of build 31091's fusion a daylit window takes in a room (why/lpyr WINDOW; 0 = off, 1 = all of it).
      */
-    static float windowDepth() {
-        return Math.max(0f, Math.min(0.3f, value("window_depth", 0.10f)));
+    static float windowShare() {
+        return Math.max(0f, Math.min(1f, value("window_31091", 1f)));
     }
 
     /** Window burst: why/combine MACRO_TOE - the macro contrast below its pivot as a power, no black offset (scam_dev macro_toe 0: off). */

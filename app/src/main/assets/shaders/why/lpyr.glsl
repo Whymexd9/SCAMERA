@@ -50,14 +50,15 @@ precision highp sampler2D;
 // the lowest band's reconstruction is moved by 1 - f towards the base of one level less (f = 0: one level less, exactly).
 // 0: the shader before P391, token for token.
 #define EDGE_BANDS 0
-// P400 WINDOW 1 (owner, 2026-10-29, the ship's bridge: «на кранах видно, такую проблему мы уже решали очень давно» - the crane and the
-// tower behind the window 0.4 - 0.55 EV under the sky where the scene has 2.3 - 3.1 EV and the reference app ~1 EV): with Bento
-// headroom the fusion's curve lands everything from ~0.4 to ~3.5 x white on 0.86 - 0.96 (P291's centre 0.75 keeps the clipped
-// layers' weight), and the room's mid-tones leave the curve no room below that. In a room (the frame's median under daylight, set by
-// WhyFusion) a pixel inside a daylit area - the log light's Gaussian of the window level, winU.yz: EV 10.5 .. 12 - in the mid-tones
-// (I 0.12 .. 0.3 in, 1 .. 2.5 out: the room, a backlit face and the blown sky keep theirs) takes winU.x off the fused luma. Smooth
-// in both: no step, no ring (a «darker than the brightest light round it» term drew blotches on a blue sky beside a blown window).
-// 0: the shader before P400, token for token.
+// P400 / P401 WINDOW 1 (owner, 2026-10-29, the ship's bridge: «на кранах видно, такую проблему мы уже решали очень давно»; «изучи что
+// было на версии 31091», «делай. При этом у нас остаётся пирамида Лапласа»): build 31091 fused with the kernel's weights (centre
+// 0.6, highlight layer 0.8) and a darkest exposure of 2^-1.5 effH: a window's clouds, sun, crane and tower kept their contrast, the
+// frame ~0.45 EV darker, a dark ring round a lamp. P291 (headroom weights: centre 0.75, highlight layer 0.4, white lit paper, no
+// ring) and P340 (the darkest exposure down to the ceiling) put everything from ~0.4 to ~8 x white on 0.86 .. 0.99. In a room (the
+// frame's median under daylight, set by WhyFusion) a pixel inside a daylit area - the log light's Gaussian at the window level,
+// winU.yz: EV 10.5 .. 12 - above the mid-tones (I 0.12 .. 0.3: the room and a backlit face keep theirs) takes winU.x of Fused31:
+// this pyramid drawn with build 31091's weights and darkest exposure and P291's monotonic envelope (no ring). The room, lamp-lit
+// paper and every scene outside keep the fusion as it is. 0: the shader before P400, token for token.
 #define WINDOW 0
 uniform sampler2D InputBuffer;  // MODE 0, 1, 5: whyLow (after bracket_dn), linear Rec.709; MODE 2: the level to reduce
 uniform sampler2D LevelL;       // MODE 3, 4: lumas L of this level (RGBA)
@@ -96,9 +97,10 @@ uniform vec3 bandNoiseU;        // MODE 8, 9: k N_l, the noise sigmas of D taken
                                 // noise); x <= 0 / unset: none
 #endif
 #if WINDOW == 1
-uniform vec4 winU;              // x: the strength (fused luma), y, z: the window's log light ramp (log2(I + bandEdgeU.z)), w: unused
+uniform vec4 winU;              // x: Fused31's share, y, z: the window's log light ramp (log2(I + bandEdgeU.z)), w: unused
 uniform float winScaleU;        // the node spacing of WinMean in whyLow px
 uniform sampler2D WinMean;      // the log light's Gaussian at the window level (MODE 7's pyramid, .r)
+uniform sampler2D Fused31;      // the fused luma of build 31091's weights and darkest exposure (this shader's MODE 5, .r)
 #endif
 #import why_fusion
 out vec4 Output;
@@ -352,8 +354,8 @@ void main() {
 #if WINDOW == 1
     if (winU.x > 0.0 && I > 0.0) {
         float inWindow = smoothstep(winU.y, winU.z, nodeAt(WinMean, xy, winScaleU));
-        float mid = smoothstep(0.12, 0.3, I) * (1.0 - smoothstep(1.0, 2.5, I));
-        fusedL -= winU.x * inWindow * mid;
+        float share = clamp(winU.x, 0.0, 1.0) * inWindow * smoothstep(0.12, 0.3, I);
+        if (share > 0.0) fusedL = mix(fusedL, texelFetch(Fused31, xy, 0).r, share);
     }
 #endif
     Output = vec4(fusedL, 0.0, 0.0, 1.0);

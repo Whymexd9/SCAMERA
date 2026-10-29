@@ -9099,3 +9099,21 @@ dump 14:14:07 and the full JPEG pair): DONE (host), not tried on a phone
   on a blue sky beside a blown window at every radius.
 - tools/check_why_window.py (CI), WhyWindowTest; check_why_pyramid_bands (fuse(win=...)), _pyramid, _edge, _noise, _sky,
   _highlights, _headroom, shader_fp16 PASS.
+
+### P401 - a daylit window as build 31091 drew it (owner, 2026-10-29: «изучи что было на версии 31091 и проверь как будет на всех наших
+бурстах», then «делай. При этом у нас остаётся пирамида Лапласа»): DONE (host), not tried on a phone; replaces P400's constant
+- Build 31091 (ArkFusion / ArkAe, 2026-10-18/19): guided-filter fusion, exposures (2^-1.5 effH, 1, 2^effS <= 8, 2^2effS <= 16),
+  layer weights (0.8, 1, 0.7, 0.5), centre 0.6, no envelope. Since: P291 (31106, centre 0.75 / highlight layer 0.4 / envelope),
+  P333 / P391 (pyramid, edge bands), P340 / P341 (the darkest exposure capped at 2 / (ae hr)), the layout (em0, 1, sqrt em0,
+  2^1.5effS) with (0.8, 1, 0.1, 1).
+- Host, every burst kept here (the 14:14 / 14:22 / 14:24 bridge dumps, V2405A 01:43, X200U 23:43, the OPPO window, the 10:27
+  facade), 31091 whole against now: the frame 0.26 - 0.42 EV darker, the lamp's dark ring back, a window's clouds / sun / cranes
+  kept. 31091's weights in the pyramid's bands alone changed nothing (the clouds live in the base levels).
+- DONE: why/lpyr WINDOW now mixes Fused31 (the same pyramid drawn with build 31091's exposures, centre, layer weights and P291's
+  envelope: WhyFusion.exposures31, CENTER_31091, LAYERS_31091; a second pyramid pass only when the term is on) where P400 took
+  a constant off: the same gates (a room: median EV <= 10, off from 11.5; Bento headroom; the window level's mean light at EV
+  10.5 .. 12; the pixel above I 0.12 .. 0.3). WhyTone.windowShare (scam_dev hybrid_why_window_31091, default 1; replaces
+  hybrid_why_window_depth). Host: 14:22 the window's sky 0.91 -> 0.62, tower 0.70 -> 0.46, the room bit for bit; the OPPO window
+  its clouds and sun back; the lamp room and the PC case unchanged (no daylight).
+- tools/check_why_window.py (inside the window = Fused31 within 1e-6, the sky leaves white, room / backlit face / lamp-lit room bit
+  for bit, the 31091 constants mirrored), WhyWindowTest; check_why_pyramid(_bands, _edge), _noise, shader_fp16 PASS.
