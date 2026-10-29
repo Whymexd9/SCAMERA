@@ -471,4 +471,207 @@
         <item>1</item>
         <item>2</item>
     </string-array>
+    <!-- P408: the reference app's colour matrix profiles (CcmPresets) -->
+    <string-array name="scam_hybrid_why_ccm_profile_entries">
+        <item>System matrix (the shot\'s own)</item>
+        <item>IMX686 (Redmi K30 Pro)</item>
+        <item>HMX (Mi Note 10)</item>
+        <item>IMX682</item>
+        <item>Black and White</item>
+        <item>Default Fix</item>
+        <item>S5KGM2 (Redmi Note 9s)</item>
+        <item>CT Mod 2</item>
+        <item>S5KGW3 Mi11 Lite</item>
+        <item>HMX Mi10T Pro</item>
+        <item>Realme 5 pro</item>
+        <item>HMX Mi Note 10 NEW</item>
+        <item>IMX582 Mi9T</item>
+        <item>IMX06a_Main (Vivo X100U)</item>
+        <item>S5KHP9SP_Tele (Vivo X100U)</item>
+        <item>IMX882_UW (Vivo X100U)</item>
+        <item>S5KJN1_Front (Vivo X100U)</item>
+        <item>IMX989_Main (OPPO X6 Pro)</item>
+        <item>IMX890_Tele (OPPO X6 Pro)</item>
+        <item>IMX890_UW (OPPO X6 Pro)</item>
+        <item>IMX709_Front (OPPO X6 Pro)</item>
+        <item>IMX06A_Main (OPPO X7U)</item>
+        <item>IMX890_Tele (OPPO X7U)</item>
+        <item>IMX882_UW (OPPO X7U)</item>
+        <item>IMX858_Tele2 (OPPO X7U)</item>
+        <item>IMX709_Front (OPPO X7U)</item>
+        <item>IMX06c_Main (Vivo X200U)</item>
+        <item>S5KHP9SP_Tele (Vivo X200U)</item>
+        <item>IMX06c_UW (Vivo X200U)</item>
+        <item>S5KJN1_Front (Vivo X200U)</item>
+        <item>IMX921_Main (IQOO NEO 10)</item>
+        <item>OV08D10_UW (IQOO NEO 10)</item>
+        <item>S5K3P9SP_Front (IQOO NEO 10)</item>
+        <item>IMX989_Main (13Ultra)</item>
+        <item>IMX858_Tele3x (13Ultra)</item>
+        <item>IMX858_UW (13Ultra)</item>
+        <item>IMX858_Tele5x (13Ultra)</item>
+        <item>OV32C_Front (13Ultra)</item>
+        <item>OV50A_Main (Moto Edge 30)</item>
+        <item>S5KJN1_UW (Moto Edge 30)</item>
+        <item>OV32B40_Front (Moto Edge 30)</item>
+        <item>S5KHMX_Main (Mi10TPro)</item>
+        <item>S5K5E9YX_Macro (Mi10TPro)</item>
+        <item>OV13B10_UW (Mi10TPro)</item>
+        <item>S5K3T2_Front (Mi10TPro)</item>
+        <item>S5KHMX_Main (Mi10Pro)</item>
+        <item>S5K2l7_Tele2x (Mi10Pro)</item>
+        <item>IMX350_UW (Mi10Pro)</item>
+        <item>OV08A10_Tele4x (Mi10Pro)</item>
+        <item>S5K3T2_Front (Mi10Pro)</item>
+        <item>S5KGN2_Main (11Ultra)</item>
+        <item>IMX586_Tele (11Ultra)</item>
+        <item>IMX586_UW (11Ultra)</item>
+        <item>S5K3T2_Front (11Ultra)</item>
+        <item>IMX882_Main (Realme 12Pro)</item>
+        <item>IMX709_Tele (Realme 12Pro)</item>
+        <item>HI846W_UW (Realme 12Pro)</item>
+        <item>HI1634Q_Front (Realme 12Pro)</item>
+        <item>IMX890_Main (Realme 13Pro+)</item>
+        <item>IMX882_Tele (Realme 13Pro+)</item>
+        <item>SC820_UW (Realme 13Pro+)</item>
+        <item>IMX615_Front (Realme 13Pro+)</item>
+        <item>LYT-T808_Main (OnePlus 13)</item>
+        <item>LYT-600_Tele2 (OnePlus 13)</item>
+        <item>S5KJN5_UW (OnePlus 13)</item>
+        <item>IMX615_Front (OnePlus 13)</item>
+        <item>IMX906_Main (OnePlus 15)</item>
+        <item>S5KJN5_Tele (OnePlus 15)</item>
+        <item>OV50D40_UW (OnePlus 15)</item>
+        <item>IMX709_Front (OnePlus 15)</item>
+        <item>LYT900_Main (15Ultra)</item>
+        <item>IMX858_Tele3x (15Ultra)</item>
+        <item>S5KJN5_UW (15Ultra)</item>
+        <item>S5KHP9_Tele5x (15Ultra)</item>
+        <item>OV32B40_Front (15Ultra)</item>
+        <item>IMX896_Main (Realme 14Pro+)</item>
+        <item>IMX882_Tele (Realme 14Pro+)</item>
+        <item>SC201CS_UW (Realme 14Pro+)</item>
+        <item>IMX480_Front (Realme 14Pro+)</item>
+        <item>IMX682_Main (Poco X3NFC)</item>
+        <item>HI259_Macro (Poco X3NFC)</item>
+        <item>HI1337_UW (Poco X3NFC)</item>
+        <item>S5K3T2_Front (Poco X3NFC)</item>
+        <item>IMX582_Main (Poco X3Pro)</item>
+        <item>HI259_Macro (Poco X3Pro)</item>
+        <item>OV8856_UW (Poco X3Pro)</item>
+        <item>S5K3T2_Front (Poco X3Pro)</item>
+        <item>IMX890_Main (Realme 12Pro+)</item>
+        <item>OV64B_Tele (Realme 12Pro+)</item>
+        <item>HI846W_UW (Realme 12Pro+)</item>
+        <item>IMX615_Front (Realme 12Pro+)</item>
+        <item>IMX766_Main (Oppo Find X3Pro)</item>
+        <item>S5K3M5_Tele (Oppo Find X3Pro)</item>
+        <item>IMX766_UW (Oppo Find X3Pro)</item>
+        <item>IMX616_Front (Oppo Find X3Pro)</item>
+    </string-array>
+    <string-array name="scam_hybrid_why_ccm_profile_values" translatable="false">
+        <item>0</item>
+        <item>4</item>
+        <item>5</item>
+        <item>6</item>
+        <item>7</item>
+        <item>8</item>
+        <item>9</item>
+        <item>10</item>
+        <item>11</item>
+        <item>12</item>
+        <item>13</item>
+        <item>14</item>
+        <item>15</item>
+        <item>16</item>
+        <item>17</item>
+        <item>18</item>
+        <item>19</item>
+        <item>20</item>
+        <item>21</item>
+        <item>22</item>
+        <item>23</item>
+        <item>24</item>
+        <item>25</item>
+        <item>26</item>
+        <item>27</item>
+        <item>28</item>
+        <item>29</item>
+        <item>30</item>
+        <item>31</item>
+        <item>32</item>
+        <item>33</item>
+        <item>34</item>
+        <item>35</item>
+        <item>36</item>
+        <item>37</item>
+        <item>38</item>
+        <item>39</item>
+        <item>40</item>
+        <item>41</item>
+        <item>42</item>
+        <item>43</item>
+        <item>44</item>
+        <item>45</item>
+        <item>46</item>
+        <item>47</item>
+        <item>48</item>
+        <item>49</item>
+        <item>50</item>
+        <item>51</item>
+        <item>52</item>
+        <item>53</item>
+        <item>54</item>
+        <item>55</item>
+        <item>56</item>
+        <item>57</item>
+        <item>58</item>
+        <item>59</item>
+        <item>60</item>
+        <item>61</item>
+        <item>62</item>
+        <item>63</item>
+        <item>64</item>
+        <item>65</item>
+        <item>66</item>
+        <item>67</item>
+        <item>68</item>
+        <item>69</item>
+        <item>70</item>
+        <item>71</item>
+        <item>72</item>
+        <item>73</item>
+        <item>74</item>
+        <item>75</item>
+        <item>76</item>
+        <item>77</item>
+        <item>78</item>
+        <item>79</item>
+        <item>80</item>
+        <item>81</item>
+        <item>82</item>
+        <item>83</item>
+        <item>84</item>
+        <item>85</item>
+        <item>86</item>
+        <item>87</item>
+        <item>88</item>
+        <item>89</item>
+        <item>90</item>
+        <item>91</item>
+        <item>92</item>
+        <item>93</item>
+        <item>94</item>
+        <item>95</item>
+        <item>96</item>
+        <item>97</item>
+    </string-array>
+    <string-array name="scam_hybrid_mosaic_wb_mode_values" translatable="false">
+        <item>ark</item>
+        <item>own</item>
+    </string-array>
+    <string-array name="scam_hybrid_mosaic_wb_mode_entries">
+        <item>By the viewfinder</item>
+        <item>Own SCAMERA estimate</item>
+    </string-array>
 </resources>

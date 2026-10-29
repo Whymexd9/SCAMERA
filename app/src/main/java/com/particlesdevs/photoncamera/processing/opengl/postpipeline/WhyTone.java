@@ -409,9 +409,12 @@ public final class WhyTone {
      * P395 (owner, 2026-10-29: the yellow «Лента» facade and sunlit birches orange-ochre beside ArkCam's yellow): why/combine
      * yellowHueU - the saturated orange-yellow scene hues (OKLab 74 .. 88 deg, fading out at 64 / 100; C / L from 0.10) turned up to
      * 8 deg towards yellow, the photo and the RAW viewfinder alike. scam_dev hybrid_why_yellow_hue 0..1 (0 = off, as before).
+     * P407 (owner, 2026-10-29, OPPO Find X8 Ultra beside ArkCam: the yellow speakers lemon, the reference's ochre): a fault of vivo's
+     * matrix - the OPPO ISP matrix renders the speaker at CIELAB hue 83 against the reference's 82, the turn took it to 89 with its
+     * blue clipped. On by default on vivo only.
      */
     static float yellowHue() {
-        return Math.max(0f, Math.min(1f, value("yellow_hue", 1f)));
+        return Math.max(0f, Math.min(1f, value("yellow_hue", "vivo".equalsIgnoreCase(android.os.Build.MANUFACTURER) ? 1f : 0f)));
     }
 
     /**
@@ -729,18 +732,36 @@ public final class WhyTone {
      */
     static float[] colourMatrixOf(Parameters p, float[] white) {
         float[] m = intermediateToSRGB(p);
-        white = withCctSat(white);
-        return white != null ? ColourLook.mul(white, m) : m;
+        if (white != null) m = ColourLook.mul(white, m);
+        // P408: the reference app's Dynamic CCT on the white matrix after the colour matrix, before cct_sat and the R / G / B gains
+        if (dynamicCct()) m = com.particlesdevs.photoncamera.processing.color.CcmPresets.dynamicCct(m, p.iso, dynamicCctStrength());
+        final float[] look = withCctSat(null);
+        return look != null ? ColourLook.mul(look, m) : m;
+    }
+
+    /** P408: «Dynamic CCT» (pref_scam_hybrid_why_dynamic_cct; off by default as in the reference app). */
+    static boolean dynamicCct() {
+        return PreferenceKeys.hybridSwitch("why_dynamic_cct", false);
+    }
+
+    /** P408: its strength 0..1 (the reference app's 0.6). */
+    static float dynamicCctStrength() {
+        return Math.max(0f, Math.min(1f, value("dynamic_cct_strength", 0.6f)));
     }
 
     /**
      * P402: the reference app's cct_sat - the saturation of the colour matrix about the Rec.709 luminance (Y kept; 1 = none), on top
-     * of the «Цвет» white matrix {@code white} (null: none) of linear sRGB; null when both are neutral.
+     * of the «Цвет» white matrix {@code white} (null: none) of linear sRGB; null when both are neutral. P407: 1.1 by default - the
+     * reference config's 1.25 saturates its Adobe Standard profile; on the OPPO ISP matrix 1.1 gives the reference's chroma (owner's
+     * pair 2026-10-29: wallpaper / board / chest / curtain CIELAB C* 12.5 / 16.3 / 13.8 / 11.8 against 12.7 / 16.1 / 13.9 / 11.9).
      */
     public static float[] withCctSat(float[] white) {
         return cctGain(new float[]{gain("cct_gain_r"), gain("cct_gain_g"), gain("cct_gain_b")},
-                cctSat(Math.max(0f, Math.min(2f, value("cct_sat", 1.25f))), white));
+                cctSat(Math.max(0f, Math.min(2f, value("cct_sat", CCT_SAT))), white));
     }
+
+    /** P407: the default matrix saturation (pref_scam_hybrid_why_cct_sat). */
+    public static final float CCT_SAT = 1.1f;
 
     private static float gain(String key) {
         return Math.max(0.7f, Math.min(1.3f, value(key, 1f)));

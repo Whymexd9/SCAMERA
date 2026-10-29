@@ -9188,3 +9188,37 @@ dump 14:14:07 and the full JPEG pair): DONE (host), not tried on a phone
 - SettingsMigration CONFIG_DEFAULTS_REV: a stored former default moves once, a hand-set value stays (setDefaultValues wrote the
   old XML defaults on every install).
 - With the classic layout the room-window term (P401) and P291 / P310 do not run (as before in that layout).
+
+### P406 - the whole settings menu in the reference app's grouping, two-line summaries (owner, 2026-10-29: «Перегрупируй полностью всё меню
+настроек максимально схоже с Арк», «описание у всех параметров должно быть не больше двух строк»): DONE
+- Root: Модули камеры и линзы / Сохранение и форматы фото / Основные настройки (with Видоискатель, Съёмка, Оформление) / Настройки
+  изображения (style, the six sliders, the ten processing pages, profiles) / Лаборатория / Логи / О приложении.
+- SHDR pages regrouped further: «Цвет» (vibrance, skin, CCM, adaptation), the merge's categories, the denoise and HDR pages.
+- SettingsStyle.twoLines: a summary shows the whole sentences that fit two lines (else ellipsized); the long press shows it all.
+
+### P407 - yellow and pale warm colours over-saturated against the reference app (owner, 2026-10-29, OPPO Find X8 Ultra pair:
+wallpaper, speakers, board): DONE
+- Host model of the shot's chain (merged burst, ISP CST, the own curve) reproduced our JPEG (wall 163 146 117 / ours 161 142 114,
+  speaker B 0 / 5). Causes: P341's light-tone vibrance (x up to 2.6 for pale colour, made for AgX's shoulder loss) on the
+  per-channel curve; P395's yellow turn (a vivo matrix fault: OPPO renders the speaker at CIELAB h83, the reference 82, the turn 89);
+  cct_sat 1.25 of the reference config saturates its Adobe Standard DCP, on the ISP matrix 1.1 gives its chroma.
+- TONE_OP 1: the reference's light-tone term (x (1 + 0.25 vibHlU) over OKLab L 0.60 .. 0.98) with P393's cast gate; yellow_hue
+  on vivo only; cct_sat default 1.1 (a stored 1.25 moves once, CCT_SAT_REV). Model after: wall 160 146 123, board 155 137 107,
+  speaker 163 123 37 (reference 162 150 129, 160 144 118, 162 128 64); at cct_sat 1.1 the pale surfaces' C* match within 0.2.
+- check_vibrance_hl: the TONE_OP 1 gates restated for the reference's term (cast not raised, nothing below L 0.55, x1.25 band).
+
+### P408 - colour matrix and Quad / Tetra white balance as in the reference app (owner, 2026-10-29: «Перенеси логику работы с CCM из
+арк, особенно для Quad/Tetra», «логику работы баланса белого с Quad и Tetra перенеси так же с ARK»): DONE
+- CcmPresets: the reference's CameraCcmRegistry (94 LMC matrices, ids 4 .. 97, read from its dex). Parameters.ReCalcColor under the
+  DCP profile: «Профиль матрицы цвета» (id > 0), else «Своя матрица цвета 3×3» (nine numbers), rows to 1, WB-only sensorToProPhoto;
+  routes CCM_PRESET / CCM_OVERRIDE.
+- Dynamic CCT (applyDynamicCct): above ISO 400 the rows go to their sums on the diagonal by log16(ISO / 400) x strength (0.6),
+  on white matrix x CCM before cct_sat / gains (WhyTone.colourMatrixOf). Off by default as there; we apply it with any matrix
+  (the reference only with a registry profile).
+- All rows are module-local, so every FULLRES (Quad / Tetra 50 / 200 MP) profile holds its own, as the reference's fullResProfile.
+- WB (CameraManager$3.onCaptureCompleted, lastWbGains at the press): MosaicNeutralResolver.ROUTE_ARK, the default of «Баланс белого
+  Quad / Tetra» - the live stream's newest result of the last second (its gains, from its neutral point when they are the identity),
+  no AWB-state / curve gate; without one the shot's HAL neutral. Not where the ISP runs no 3A (P366's ispIdle): the teacher / P121.
+  «Своя оценка SCAMERA» keeps P121 / P212g / P366.
+- Not ported: the reference's per-device auto profile (X7U / X6 Pro only; ours has the OPPO tuned matrix there), its native
+  quad colour regularisation and speckle filter (native engine).

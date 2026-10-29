@@ -131,6 +131,7 @@ public final class SettingsNumericRules {
             case "pref_scam_hybrid_why_hr_knee": return new double[]{0.3,0.95,0};
             case "pref_scam_hybrid_why_hr_room": return new double[]{0.05,0.6,0};
             case "pref_scam_hybrid_why_cct_sat": return new double[]{0.5,2,0};
+            case "pref_scam_hybrid_why_dynamic_cct_strength": return new double[]{0,1,0};
             case "pref_scam_hybrid_why_classic_weight_ext_hl": case "pref_scam_hybrid_why_classic_weight_hl": case "pref_scam_hybrid_why_classic_weight_mid":
             case "pref_scam_hybrid_why_classic_weight_shadow": return new double[]{0,2,0};
             case "pref_scam_hybrid_why_ms_model_scale": return new double[]{0,1.5,0};

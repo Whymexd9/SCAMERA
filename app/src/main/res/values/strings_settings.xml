@@ -45,7 +45,7 @@
     <string name="prefs_scam_hybrid_noise_readout_title">Merge: read noise</string>
     <string name="prefs_scam_hybrid_noise_readout_summary">The merge\'s noise correction for dark areas (the denoise has its own, ρr). Higher: smoother shadows, ghosts possible; lower: sharper and noisier.</string>
     <string name="prefs_scam_hybrid_merge_screen_title">Merge</string>
-    <string name="prefs_scam_hybrid_merge_screen_summary">How the frames are aligned and merged into one</string>
+    <string name="prefs_scam_hybrid_merge_screen_summary">Frames, alignment, motion rejection, merge kernel</string>
     <string name="prefs_scam_hybrid_cre_source_title">Alignment (CRE)</string>
     <string name="prefs_scam_hybrid_cre_source_summary">%s. Which frame alignment module to use: the system one (vivo only) or the one bundled with the app.</string>
     <string name="prefs_scam_hybrid_local_align_title">Local alignment F6</string>
@@ -158,8 +158,8 @@
     <string name="prefs_scam_hybrid_mochi_screen_summary">Matching colour and brightness of bright frames to the main one</string>
     <string name="prefs_scam_hybrid_mochi_title">Photometric merge: mode</string>
     <string name="prefs_scam_hybrid_mochi_summary">%s. Matches colour and brightness of bright frames to the main one before merging, so colours do not shift.</string>
-    <string name="prefs_scam_hybrid_photo_screen_title">Noise reduction: details</string>
-    <string name="prefs_scam_hybrid_photo_screen_summary">How noise is removed after the merge</string>
+    <string name="prefs_scam_hybrid_photo_screen_title">Noise reduction</string>
+    <string name="prefs_scam_hybrid_photo_screen_summary">Pyramid denoise and the merge denoise</string>
     <string name="prefs_scam_hybrid_denoise_title">All denoisers</string>
     <string name="prefs_scam_hybrid_denoise_summary">All SHDR denoisers. Off: only the frame merge is left, so the shot is grainier but more detailed.</string>
     <string name="prefs_scam_hybrid_dn_engine_title">Denoise method</string>
@@ -187,7 +187,7 @@
     <string name="prefs_scam_hybrid_nr_mult_screen_title">Multipliers</string>
     <string name="prefs_scam_hybrid_nr_mult_screen_summary">Strength multipliers of the multiscale denoiser by scene and for colour; the overall luma strength is “Noise reduction” in the “Picture” group</string>
     <string name="prefs_scam_hybrid_dn_luma_mult_summary">How much the brightness noise (grain) is smoothed. Higher: smoother; lower: more grain and detail; 0: off. Details: “Noise reduction: details” (For experts › SHDR).</string>
-    <string name="prefs_scam_hybrid_dn_luma_mult_title">Noise reduction</string>
+    <string name="prefs_scam_hybrid_dn_luma_mult_title">Noise reduction strength</string>
     <string name="prefs_scam_hybrid_dn_chroma_mult_title">Multiscale denoise: chroma</string>
     <string name="prefs_scam_hybrid_dn_sabre_luma_mult_summary">Luma denoise strength at night, in dim and in normal light. Higher: smoother; lower: more detail.</string>
     <string name="prefs_scam_hybrid_dn_luma_gid14_mult_summary">Luma denoise strength at dusk and in bright light. Higher: smoother; lower: more detail.</string>
@@ -255,12 +255,12 @@
     <string name="prefs_scam_hybrid_dn_chroma_t4_snr_title">t4: point SNR</string>
     <string name="prefs_scam_hybrid_dn_chroma_t4_snr_summary">Dim light point: the SNR where it applies. Higher: used on brighter shots; lower: on darker ones.</string>
     <string name="prefs_scam_hybrid_dn_chroma_t4_outlier_summary">Dim light: colour smoothing reach, 5 integers 0–16. Higher: smoother but colour bleeds; lower: crisper.</string>
-    <string name="prefs_scam_hybrid_why_sharp_screen_title">Sharpening: details</string>
+    <string name="prefs_scam_hybrid_why_sharp_screen_title">Sharpening</string>
     <string name="prefs_scam_hybrid_why_sharp_screen_summary">Why sharpening and its settings.</string>
     <string name="prefs_scam_hybrid_sharp_category_title">Why sharpening</string>
     <string name="prefs_scam_hybrid_why_sharp_note_title">About Why sharpening</string>
     <string name="prefs_scam_hybrid_why_sharp_note_summary">The only sharpening of the photo: Why sharpening of brightness before the tone. Its overall strength is “Sharpness” in the “Picture” group; the rows below weaken or strengthen it.</string>
-    <string name="prefs_scam_hybrid_why_sharp_gain_title">Sharpness</string>
+    <string name="prefs_scam_hybrid_why_sharp_gain_title">Sharpening strength</string>
     <string name="prefs_scam_hybrid_why_sharp_gain_summary">How much fine detail goes into the photo. Higher: sharper, crisper; lower: softer; 0: no detail. Fine-tuning: “Sharpening: details” (For experts › SHDR).</string>
     <string name="prefs_scam_hybrid_why_sharp_domain_title">Sharpening domain</string>
     <string name="prefs_scam_hybrid_why_sharp_domain_summary">%s. Brightness Why sharpening is computed on. After exposure: weaker on strong edges in dark scenes.</string>
@@ -404,7 +404,7 @@
     <string name="prefs_scam_hybrid_why_ef_coarse_summary">Shorter side of the coarsest level of the fusion\'s Laplacian pyramid, px. Higher: tone adapts to smaller areas, flatter; lower: to larger areas, more overall contrast.</string>
     <string name="prefs_scam_hybrid_why_texture_title">Texture in the Why tone</string>
     <string name="prefs_scam_hybrid_why_texture_summary">Adds SCAMERA local contrast after the Why tone: textures look stronger.</string>
-    <string name="prefs_scam_hybrid_why_artifacts_category_title">Artefacts and recovery</string>
+    <string name="prefs_scam_hybrid_why_artifacts_category_title">Colour and detail</string>
     <string name="prefs_scam_hybrid_highlight_recovery_title">Per-channel highlight recovery, %</string>
     <string name="prefs_scam_hybrid_highlight_recovery_summary">Colour recovery of clipped highlights, %. Higher: stronger; lower: weaker; 0: off.</string>
     <string name="prefs_scam_hybrid_highlight_chroma_title">Highlights: trust threshold for surrounding colour</string>
@@ -632,7 +632,7 @@
     <string name="prefs_scam_hybrid_dn_t5_revert_title">t5: grain put back b0…b4</string>
     <string name="prefs_scam_hybrid_dn_t5_outlier_title">t5: outliers b0…b4</string>
     <!-- P134: «Цвет» -->
-    <string name="prefs_colour_wb_category_title">White balance</string>
+    <string name="prefs_colour_wb_category_title">Colour adaptation (white balance)</string>
     <string name="prefs_colour_warmth_title">Warmth</string>
     <string name="prefs_colour_warmth_summary">Every photo warmer or cooler on top of the auto white balance. Higher: warmer; lower: cooler; 0: as measured.</string>
     <string name="prefs_colour_tint_title">Tint</string>
@@ -641,12 +641,12 @@
     <string name="prefs_colour_keep_warm_summary">Under tungsten lamps and at sunset part of the warmth stays instead of being neutralised. 0: the light is fully neutral.</string>
     <string name="prefs_colour_keep_cool_title">Keep coolness</string>
     <string name="prefs_colour_keep_cool_summary">In shade and overcast part of the blue stays. 0: the light is fully neutral.</string>
-    <string name="prefs_colour_sat_category_title">Colour vibrance</string>
-    <string name="prefs_colour_vib_shadows_title">Shadow vibrance</string>
+    <string name="prefs_colour_sat_category_title">Vibrance</string>
+    <string name="prefs_colour_vib_shadows_title">Vibrance of dull shadows</string>
     <string name="prefs_colour_vib_shadows_summary">Dull colours in the shadows richer or calmer. Higher: richer; lower: calmer, more neutral shadows; 0: off.</string>
-    <string name="prefs_colour_vib_highlights_title">Highlight vibrance</string>
+    <string name="prefs_colour_vib_highlights_title">Vibrance of dull highlights</string>
     <string name="prefs_colour_vib_highlights_summary">Dull colours in the bright areas richer or calmer. Higher: richer; lower: calmer; 0: off.</string>
-    <string name="prefs_colour_skin_protect_title">Skin protection</string>
+    <string name="prefs_colour_skin_protect_title">Skin protection in vibrance</string>
     <string name="prefs_colour_skin_protect_summary">Faces keep their colour when vibrance, saturation, the mixer or the grading add colour. Higher: stronger; 0: off.</string>
     <string name="prefs_colour_skin_hue_title">Skin tone</string>
     <string name="prefs_colour_skin_hue_summary">Skin redder or more golden; other colours stay as they are. Higher: more golden; lower: redder; 0: as is.</string>
@@ -762,14 +762,14 @@
     <string name="prefs_advanced_screen_summary">Merge frames, camera colour, RAW, viewfinder, diagnostics</string>
     <string name="prefs_adv_cameras_title">Camera and RAW</string>
     <string name="prefs_adv_system_title">System</string>
-    <string name="prefs_root_photo_title">File and size</string>
+    <string name="prefs_root_photo_title">Saving and photo formats</string>
     <string name="prefs_file_format_title">File format</string>
     <string name="prefs_file_format_summary">JPEG suits nearly always</string>
     <string name="prefs_photo_size_screen_title">Photo size</string>
     <string name="prefs_photo_size_screen_summary">How much detail the photo holds</string>
-    <string name="prefs_root_shoot_title">Shooting</string>
+    <string name="prefs_root_shoot_title">General settings</string>
     <string name="prefs_root_view_title">Camera screen</string>
-    <string name="prefs_root_colour_title">Picture</string>
+    <string name="prefs_root_colour_title">Image settings</string>
     <string name="prefs_colour_fine_title">Fine colour</string>
     <string name="prefs_colour_fine_summary">Tint, vibrance, skin, mixer, grading</string>
     <string name="prefs_root_app_title">App</string>
@@ -809,7 +809,7 @@
     <string name="shade_t_ettr">ETTR</string>
     <!-- 2026-10-27 settings layout (owner: settings anyone can set up alone) -->
     <string name="prefs_photo_style_screen_title">Style and film</string>
-    <string name="prefs_colour_skin_category_title">Skin</string>
+    <string name="prefs_colour_skin_category_title">Skin tones</string>
     <string name="prefs_focus_screen_title">Focus</string>
     <string name="prefs_photo_size_after_merge_title">For experts: after the merge</string>
     <string name="prefs_wide169_title">16:9 frame</string>
@@ -938,7 +938,7 @@
     <string name="prefs_scam_hybrid_why_classic_weight_center_title">Layer fusion target brightness</string>
     <string name="prefs_scam_hybrid_why_classic_weight_center_summary">Which brightness of each layer counts as well exposed. Higher: brighter; lower: darker. Used with the classic layout.</string>
     <string name="prefs_scam_hybrid_hdr_screen_title">HDR settings</string>
-    <string name="prefs_scam_hybrid_hdr_screen_summary">Highlight shoulder above white and the short-frame denoise</string>
+    <string name="prefs_scam_hybrid_hdr_screen_summary">Highlight shoulder, highlight and shadow frames</string>
     <string name="prefs_scam_hybrid_hdr_shoulder_category_title">Highlight shoulder above white</string>
     <string name="prefs_scam_hybrid_hdr_frames_category_title">Short frames</string>
     <string name="prefs_scam_hybrid_why_hr_strength_title">Highlight colour retention strength</string>
@@ -947,7 +947,7 @@
     <string name="prefs_scam_hybrid_why_hr_knee_summary">From which share of the curve top the shoulder starts. Lower: earlier and softer compression; higher: brighter highlights up to the top.</string>
     <string name="prefs_scam_hybrid_why_hr_room_title">Highlight headroom</string>
     <string name="prefs_scam_hybrid_why_hr_room_summary">How much room above the knee is left for the brightest sources. Higher: a brighter sun and lamps; lower: denser.</string>
-    <string name="prefs_scam_hybrid_artifacts_screen_title">Highlights and aberrations</string>
+    <string name="prefs_scam_hybrid_artifacts_screen_title">Chromatic aberrations and highlights</string>
     <string name="prefs_scam_hybrid_artifacts_screen_summary">Clipped highlight recovery, fringes and bands at bright edges</string>
     <string name="prefs_scam_hybrid_why_cct_sat_title">Matrix saturation</string>
     <string name="prefs_scam_hybrid_why_cct_sat_summary">Saturation of the colour matrix right at the RAW stage, the brightness kept. Higher: all colours more vivid; lower: more muted.</string>
@@ -987,11 +987,11 @@
     <string name="prefs_scam_hybrid_why_sharp_sobel_thresh_summary">Gradient (0..255 scale) from which an edge gets the boost. Higher: only strong edges, texture and noise left alone.</string>
     <string name="prefs_scam_hybrid_why_sharp_edge_thinning_title">Edge thinning</string>
     <string name="prefs_scam_hybrid_why_sharp_edge_thinning_summary">Pulls edge pixels towards the nearer side of the edge: thinner, crisper lines. Negative: softer edges. 0: off.</string>
-    <string name="prefs_scam_hybrid_why_sharp_rl1_damping_title">Damping (stage 1)</string>
+    <string name="prefs_scam_hybrid_why_sharp_rl1_damping_title">RL 1: damping</string>
     <string name="prefs_scam_hybrid_why_sharp_rl1_damping_summary">Holds the deconvolution back where the image is already sharp (total-variation term): fewer rings and less noise growth. 0: off.</string>
-    <string name="prefs_scam_hybrid_why_sharp_rl2_damping_title">Damping (stage 2)</string>
+    <string name="prefs_scam_hybrid_why_sharp_rl2_damping_title">RL 2: damping</string>
     <string name="prefs_scam_hybrid_why_sharp_rl2_damping_summary">Holds the deconvolution back where the image is already sharp (total-variation term): fewer rings and less noise growth. 0: off.</string>
-    <string name="prefs_scam_hybrid_why_sharp_rl3_damping_title">Damping (stage 3)</string>
+    <string name="prefs_scam_hybrid_why_sharp_rl3_damping_title">RL 3: damping</string>
     <string name="prefs_scam_hybrid_why_sharp_rl3_damping_summary">Holds the deconvolution back where the image is already sharp (total-variation term): fewer rings and less noise growth. 0: off.</string>
     <string name="prefs_scam_hybrid_why_curve_lift_title">Lift the centre</string>
     <string name="prefs_scam_hybrid_why_curve_lift_summary">Raises the middle of the own curve, the ends kept.</string>
@@ -1015,9 +1015,9 @@
     <string name="prefs_scam_hybrid_why_vibrance_saturated_summary">Extra saturation of colours that are already vivid; skin held back.</string>
     <string name="prefs_scam_hybrid_why_vibrance_mid_title">Vibrance of mid-tones</string>
     <string name="prefs_scam_hybrid_why_vibrance_mid_summary">Saturation of the mid-tones; skin held back. Minus: more muted.</string>
-    <string name="prefs_scam_hybrid_why_vibrance_shadows_title">Vibrance of shadows</string>
+    <string name="prefs_scam_hybrid_why_vibrance_shadows_title">Vibrance in shadows</string>
     <string name="prefs_scam_hybrid_why_vibrance_shadows_summary">Saturation of the shadows; skin held back. Minus: calmer, less coloured noise.</string>
-    <string name="prefs_scam_hybrid_why_skin_protect_title">Skin protection from vibrance</string>
+    <string name="prefs_scam_hybrid_why_skin_protect_title">Skin protection: saturated, mid-tones, shadows</string>
     <string name="prefs_scam_hybrid_why_skin_protect_summary">How much skin is held back from the vibrance of saturated colours, mid-tones and shadows. 0: none.</string>
     <string name="prefs_scam_hybrid_why_skin_hue_center_title">Target skin tone</string>
     <string name="prefs_scam_hybrid_why_skin_hue_center_summary">Hue (degrees) the skin mask is centred on. Lower: redder skin, higher: yellower.</string>
@@ -1031,8 +1031,45 @@
     <string name="prefs_scam_hybrid_why_cct_gain_g_summary">Gain of the green channel in the colour matrix.</string>
     <string name="prefs_scam_hybrid_why_cct_gain_b_title">Matrix blue</string>
     <string name="prefs_scam_hybrid_why_cct_gain_b_summary">Gain of the blue channel in the colour matrix.</string>
-    <string name="prefs_scam_hybrid_why_sobel_category_title">Edges: Sobel and thinning</string>
+    <string name="prefs_scam_hybrid_why_sobel_category_title">Edge filter (Sobel)</string>
     <string name="prefs_scam_hybrid_why_curve_mod_category_title">Curve modifiers</string>
     <string name="prefs_scam_hybrid_why_gamma_type_title">Gamma standard</string>
     <string name="prefs_scam_hybrid_why_gamma_type_summary">%s. Pure power: the gamma above as is; sRGB and Rec.709: the standards\' curves with a linear toe.</string>
+    <!-- P406: SHDR in the reference app's grouping -->
+    <string name="prefs_shdr_colour_title">Colour</string>
+    <string name="prefs_shdr_colour_summary">Vibrance, skin, matrix, white balance, mixer</string>
+    <string name="prefs_colour_ccm_category_title">Colour correction matrix (CCM)</string>
+    <string name="prefs_scam_hybrid_nr_merge_category_title">Merge denoise</string>
+    <string name="prefs_scam_hybrid_merge_frames_category_title">Burst frames</string>
+    <string name="prefs_scam_hybrid_merge_align_category_title">Alignment</string>
+    <string name="prefs_scam_hybrid_merge_reject_category_title">Merge and motion rejection</string>
+    <string name="prefs_scam_hybrid_merge_kernel_category_title">Merge kernel</string>
+    <string name="prefs_scam_hybrid_merge_quad_category_title">Quad Bayer and mosaic</string>
+    <string name="prefs_scam_hybrid_merge_final_category_title">Final assembly</string>
+    <string name="prefs_scam_hybrid_defringe_category_title">Defringe</string>
+    <string name="prefs_scam_hybrid_recovery_category_title">Highlight recovery</string>
+    <!-- P406: the settings root in the reference app's grouping -->
+    <string name="prefs_root_lenses_title">Camera modules and lenses</string>
+    <string name="prefs_root_lab_title">Lab</string>
+    <string name="prefs_root_logs_title">Logs</string>
+    <string name="prefs_colour_expert_screen_summary">Colour source, DCP profile, mosaic white balance, calibration</string>
+    <string name="prefs_viewfinder_screen_title">Viewfinder</string>
+    <string name="prefs_viewfinder_screen_summary">Corners, grid, horizon, info, RAW viewfinder</string>
+    <string name="prefs_shooting_screen_title">Shooting</string>
+    <string name="prefs_shooting_screen_summary">Motion mode, ETTR, focus</string>
+    <string name="prefs_appearance_screen_title">Appearance</string>
+    <string name="prefs_appearance_screen_summary">Accent, shade transparency, settings layout</string>
+    <!-- P408: colour matrix and Quad / Tetra white balance as in the reference app -->
+    <string name="prefs_scam_hybrid_why_ccm_profile_title">Colour matrix profile</string>
+    <string name="prefs_scam_hybrid_why_ccm_profile_summary">%s. A ready sensor matrix in place of the system one, per module and 50/200 MP shot.</string>
+    <string name="prefs_scam_hybrid_why_ccm_override_title">Own 3×3 colour matrix</string>
+    <string name="prefs_scam_hybrid_why_ccm_override_summary">Colour from the matrix below when no profile is chosen. Rows sum to 1, grey stays grey.</string>
+    <string name="prefs_scam_hybrid_why_ccm_matrix_title">3×3 matrix</string>
+    <string name="prefs_scam_hybrid_why_ccm_matrix_summary">Nine numbers by rows, comma-separated. 1, 0, 0, 0, 1, 0, 0, 0, 1: no change.</string>
+    <string name="prefs_scam_hybrid_why_dynamic_cct_title">Dynamic CCT</string>
+    <string name="prefs_scam_hybrid_why_dynamic_cct_summary">At high ISO the matrix softens: less colour noise, slightly calmer colours.</string>
+    <string name="prefs_scam_hybrid_why_dynamic_cct_strength_title">Dynamic CCT strength</string>
+    <string name="prefs_scam_hybrid_why_dynamic_cct_strength_summary">How far the matrix softens by ISO 6400. 0: off, 1: down to the white balance alone.</string>
+    <string name="prefs_scam_hybrid_mosaic_wb_mode_title">Quad / Tetra white balance</string>
+    <string name="prefs_scam_hybrid_mosaic_wb_mode_summary">%s. Where a 50/200 MP shot takes its white balance: the viewfinder at the press, or its own estimate of the frame.</string>
 </resources>

@@ -902,7 +902,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     if (OppoNativeFullRes.keepsColour(physicalID)) OppoNativeFullRes.rememberPlain(physicalID, result);
                 } else if (VivoSdkFullRes.oppo()) OppoNativeFullRes.complete(mVivoSdkCameraId, result);
                 // P212g (W6 = M6): P208's still-only viewfinder is the normal mode (its ISP AWB valid): its neutrals for the press
-                if (mVfNeutralFeed && mVivoSdkRawSession != null)
+                // P408: with the reference app's rule every session's (its live stream's last result at the press)
+                if (mVfNeutralFeed && mVivoSdkRawSession != null
+                        || com.particlesdevs.photoncamera.processing.color.MosaicNeutralResolver.arkMode())
                     mVfNeutrals.offer(physicalID, android.os.SystemClock.elapsedRealtime(), result);
                 // P212g (W7 = M12): a converged plain result teaches the camera's colour table (about once a second)
                 if (mVivoSdkRawSession == null) plainColour(result);
@@ -5658,6 +5660,13 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     @Nullable
     private com.particlesdevs.photoncamera.processing.color.MosaicNeutralResolver.Press mosaicWbAtPress() {
         try {
+            // P408: «Баланс белого Quad / Tetra» as the reference app - the live stream's last result at the press
+            if (com.particlesdevs.photoncamera.processing.color.MosaicNeutralResolver.arkMode()) {
+                final com.particlesdevs.photoncamera.processing.color.MosaicNeutralResolver.Press p =
+                        mVfNeutrals.ark(physicalID, android.os.SystemClock.elapsedRealtime());
+                Log.i("SCAM_CAPTURE", "mosaic white balance at the press: " + p);
+                return p;
+            }
             // P315: an OPPO-family module's picked sensor mode (the X8U's 2x ISZ): the HAL's neutral when it is valid
             if (mVivoSdkRawSession == null && SensorModePick.session() != null && SensorModePick.brand() == SensorModePick.Brand.OPLUS)
                 return com.particlesdevs.photoncamera.processing.color.MosaicNeutralResolver.Press.sensorMode();

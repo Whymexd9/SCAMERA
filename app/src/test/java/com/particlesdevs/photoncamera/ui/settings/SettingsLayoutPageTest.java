@@ -118,7 +118,7 @@ public class SettingsLayoutPageTest {
 
     /** The rows the list shows under {@code group} (up to the next root group). */
     private static List<String> section(List<String> keys, String group) {
-        List<String> roots = Arrays.asList("root_colour", "root_photo", "root_shoot", "root_view", "root_app", "root_expert", "root_about");
+        List<String> roots = Arrays.asList("root_lenses", "root_photo", "root_shoot", "root_colour", "root_lab", "root_logs", "root_about");
         int a = keys.indexOf(group);
         assertTrue(group + " in " + keys, a >= 0);
         int b = a + 1;
@@ -181,16 +181,17 @@ public class SettingsLayoutPageTest {
     }
 
     @Test public void theMainPageTakesTheStoredOrder() {
-        prefs.edit().putString(SettingsLayout.KEY, "prefscreen=root_view,root_colour;root_view=pref_ettr").commit();
+        // P406: the main page's groups are the reference app's
+        prefs.edit().putString(SettingsLayout.KEY, "prefscreen=root_colour,root_lenses;root_colour=pref_antibanding_hz_key").commit();
         try (ActivityController<SettingsActivity> controller = Robolectric.buildActivity(SettingsActivity.class)) {
             controller.setup();
             List<String> keys = listed(page(controller.get()));
-            assertTrue(keys.toString(), keys.indexOf("root_view") < keys.indexOf("root_colour"));
+            assertTrue(keys.toString(), keys.indexOf("root_colour") < keys.indexOf("root_lenses"));
             // the groups the order does not name follow the one they follow in the app's order
-            assertTrue(keys.toString(), keys.indexOf("root_colour") < keys.indexOf("root_photo"));
-            assertTrue(keys.toString(), keys.indexOf("root_app") < keys.indexOf("root_about"));
-            assertTrue(section(keys, "root_view").toString(), section(keys, "root_view").contains("pref_ettr"));
-            assertFalse(section(keys, "root_shoot").contains("pref_ettr"));
+            assertTrue(keys.toString(), keys.indexOf("root_lenses") < keys.indexOf("root_photo"));
+            assertTrue(keys.toString(), keys.indexOf("root_lab") < keys.indexOf("root_about"));
+            assertTrue(section(keys, "root_colour").toString(), section(keys, "root_colour").contains("pref_antibanding_hz_key"));
+            assertFalse(section(keys, "root_shoot").contains("pref_antibanding_hz_key"));
             assertNotNull("the editor's row", page(controller.get()).findPreference("settings_layout_editor"));
             assertNotNull("the header's button", page(controller.get()).requireView().findViewWithTag("settings_page_arrange"));
         }
@@ -203,26 +204,26 @@ public class SettingsLayoutPageTest {
             List<String> before = listed(page(activity));
             SettingsLayoutFragment f = openEditor(activity);
             // «Группы»: the page's groups as cards
-            assertEquals("group:root_colour", f.cards().get(0));
-            assertFalse("P390: the modules are a row of «Съёмка»", f.cards().contains("group:root_modules"));
-            assertTrue(act(f, "group:root_view", "Move up"));
-            assertTrue(stored(), stored().startsWith("prefscreen=root_colour,root_photo,root_view,root_shoot,"));
+            assertEquals("group:root_lenses", f.cards().get(0));
+            assertFalse("P390: the modules are a row of their group", f.cards().contains("group:root_modules"));
+            assertTrue(act(f, "group:root_shoot", "Move up"));
+            assertTrue(stored(), stored().startsWith("prefscreen=root_lenses,root_shoot,root_photo,root_colour,"));
             // «Пункты»: a group's first row goes up into the group above (both share rows)
             text(f.requireView(), "Rows").performClick();
             idle();
-            assertTrue(f.cards().toString(), f.cards().contains("header:root_shoot"));
-            assertEquals("header:root_colour", f.cards().get(0));
-            // (P390: «Съёмка» starts with «Камеры и модули»; «Экран камеры» is above it now)
-            assertTrue(act(f, "row:modules_screen", "Move up"));
-            assertTrue(stored(), SettingsLayout.parse(stored()).get("root_view").contains("modules_screen"));
-            assertFalse(stored(), SettingsLayout.parse(stored()).get("root_shoot").contains("modules_screen"));
-            int at = f.cards().indexOf("row:modules_screen");
-            assertEquals("header:root_shoot", f.cards().get(at + 1));
-            // «Приложение» keeps its rows (a module page hides it whole)
+            assertTrue(f.cards().toString(), f.cards().contains("header:root_photo"));
+            assertEquals("header:root_lenses", f.cards().get(0));
+            // («Сохранение и форматы фото» starts with «Формат файла»; «Основные настройки» is above it now)
+            assertTrue(act(f, "row:output_settings_screen", "Move up"));
+            assertTrue(stored(), SettingsLayout.parse(stored()).get("root_shoot").contains("output_settings_screen"));
+            assertFalse(stored(), SettingsLayout.parse(stored()).get("root_photo").contains("output_settings_screen"));
+            int at = f.cards().indexOf("row:output_settings_screen");
+            assertEquals("header:root_photo", f.cards().get(at + 1));
+            // «Логи» keeps its rows (a module page hides it whole)
             String now = stored();
             List<String> cards = f.cards();
             String first = null;
-            for (int i = cards.indexOf("header:root_app") + 1; i < cards.size() && first == null; i++)
+            for (int i = cards.indexOf("header:root_logs") + 1; i < cards.size() && first == null; i++)
                 if (cards.get(i).startsWith("row:")) first = cards.get(i);
             assertNotNull(cards.toString(), first);
             assertFalse(act(f, first, "Move up"));
@@ -230,15 +231,15 @@ public class SettingsLayoutPageTest {
             // back on the page: the new order, the rest as it was
             back(activity);
             List<String> keys = listed(page(activity));
-            assertTrue(keys.toString(), keys.indexOf("root_view") < keys.indexOf("root_shoot"));
-            assertTrue(section(keys, "root_view").toString(), section(keys, "root_view").contains("modules_screen"));
+            assertTrue(keys.toString(), keys.indexOf("root_shoot") < keys.indexOf("root_photo"));
+            assertTrue(section(keys, "root_shoot").toString(), section(keys, "root_shoot").contains("output_settings_screen"));
             assertEquals(before.size(), keys.size());
         }
     }
 
     @Test public void theResetPutsThePageBack() {
-        prefs.edit().putString(SettingsLayout.KEY, "prefscreen=root_about,root_colour,root_photo,root_shoot,root_modules,root_view,"
-                + "root_app,root_expert;photo_style_screen=x").commit();
+        prefs.edit().putString(SettingsLayout.KEY, "prefscreen=root_about,root_lenses,root_photo,root_shoot,root_modules,root_colour,"
+                + "root_lab,root_logs;photo_style_screen=x").commit();
         try (ActivityController<SettingsActivity> controller = Robolectric.buildActivity(SettingsActivity.class)) {
             controller.setup();
             SettingsActivity activity = controller.get();
@@ -251,11 +252,11 @@ public class SettingsLayoutPageTest {
             idle();
             // another page's line stays
             assertEquals("photo_style_screen=x", stored());
-            assertEquals("group:root_colour", f.cards().get(0));
+            assertEquals("group:root_lenses", f.cards().get(0));
             back(activity);
             List<String> keys = listed(page(activity));
-            assertTrue(keys.toString(), keys.indexOf("root_colour") < keys.indexOf("root_view"));
-            assertTrue(keys.toString(), keys.indexOf("root_about") > keys.indexOf("root_expert"));
+            assertTrue(keys.toString(), keys.indexOf("root_lenses") < keys.indexOf("root_colour"));
+            assertTrue(keys.toString(), keys.indexOf("root_about") > keys.indexOf("root_logs"));
         }
     }
 
@@ -264,30 +265,30 @@ public class SettingsLayoutPageTest {
         try (ActivityController<SettingsActivity> controller = Robolectric.buildActivity(SettingsActivity.class)) {
             controller.setup();
             SettingsActivity.SettingsFragment root = page(controller.get());
-            PreferenceGroup v = root.findPreference("root_view"), s = root.findPreference("root_shoot");
+            PreferenceGroup v = root.findPreference("root_photo"), s = root.findPreference("root_lenses");
             for (int i = 0; i < v.getPreferenceCount(); i++) view.add(v.getPreference(i).getKey());
             for (int i = 0; i < s.getPreferenceCount(); i++) shoot.add(s.getPreference(i).getKey());
         }
         List<String> all = new ArrayList<>(shoot);
         all.addAll(view);
-        prefs.edit().putString(SettingsLayout.KEY, "root_shoot=" + String.join(",", all) + ";root_view=").commit();
+        prefs.edit().putString(SettingsLayout.KEY, "root_lenses=" + String.join(",", all) + ";root_photo=").commit();
         try (ActivityController<SettingsActivity> controller = Robolectric.buildActivity(SettingsActivity.class)) {
             controller.setup();
             SettingsActivity activity = controller.get();
             List<String> keys = listed(page(activity));
-            assertFalse(keys.toString(), keys.contains("root_view"));
-            for (String k : view) if (keys.contains(k)) assertTrue(k, section(keys, "root_shoot").contains(k));
+            assertFalse(keys.toString(), keys.contains("root_photo"));
+            for (String k : view) if (keys.contains(k)) assertTrue(k, section(keys, "root_lenses").contains(k));
             SettingsLayoutFragment f = openEditor(activity);
             text(f.requireView(), "Rows").performClick();
             idle();
-            int header = f.cards().indexOf("header:root_view");
+            int header = f.cards().indexOf("header:root_photo");
             assertTrue(f.cards().toString(), header >= 0);
-            assertEquals("empty:root_view", f.cards().get(header + 1));
+            assertEquals("empty:root_photo", f.cards().get(header + 1));
             prefs.edit().remove(SettingsLayout.KEY).commit();
             back(activity);
             keys = listed(page(activity));
-            assertTrue(keys.toString(), keys.contains("root_view"));
-            assertTrue(section(keys, "root_view").toString(), section(keys, "root_view").contains(view.get(0)));
+            assertTrue(keys.toString(), keys.contains("root_photo"));
+            assertTrue(section(keys, "root_photo").toString(), section(keys, "root_photo").contains(view.get(0)));
         }
     }
 

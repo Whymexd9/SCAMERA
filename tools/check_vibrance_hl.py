@@ -28,10 +28,11 @@ OKLab grid (lightness 0.30 .. 1.05 x chroma 0.004 .. 0.09 x nine hues) at a flat
   (chroma noise and cast gradients on a white wall: the gate 0.010 .. 0.020 of P393's first version was x1.27 of P341's, the
   room burst's white walls' chroma noise x1.41; 0.010 .. 0.025 x1.09 / x1.12);
 - under a full sky mask (SKY 1) every patch as P378 within float rounding (2e-6: the ramp's blend is arithmetic on uniforms there);
-- the other tone operators (TONE_OP 1: ACES, Uchimura; the shape is tuned on AgX's shoulder): a cast not raised (x1.15), no patch
-  more saturated than with P341's shape (the shape only takes vibrance away), under ACES the pale colour at most x1.05 of its
-  mid-tones as under AgX (Uchimura's shoulder takes less of the light tones' chroma than AgX's, so P341's vibrance - tuned on
-  AgX - over-saturates them: x1.64 with this shape, P341 x1.89, without the vibrance x0.86; reported, P341's own scope).
+- the other tone operators (TONE_OP 1: ACES, Uchimura; P407: the reference's own term there, x (1 + 0.25 vibHlU) over OKLab L
+  0.60 .. 0.80 .. 0.88 .. 0.98 with this cast gate - P341's, tuned on AgX's shoulder, over-saturated the per-channel curves'
+  light tones): a cast not raised (x1.15; with the gate open the bench sees it raised), nothing changed below L 0.55, a coloured
+  light tone at L 0.80 x1.10 .. x1.45 in display chroma (x1.25 in the scene), under ACES the pale colour at most x1.05 of its
+  mid-tones.
 Usage: check_vibrance_hl.py [--report]
 """
 from pathlib import Path
@@ -50,6 +51,7 @@ REPORT = '--report' in sys.argv
 SH = ROOT / 'app/src/main/assets/shaders'
 P341_SHAPE = (0.45, 0.75, 0.002, 0.008)
 # P393 review: the first version's cast gate (0.010 .. 0.020) - x1.27 of P341's chroma slope, white walls' chroma noise x1.41
+OPEN_GATE = (0.57, 0.89, 0.0, 0.0005)   # P407: the cast gate open from chroma 0 (the bench's sanity under TONE_OP 1)
 NARROW_GATE = (0.50, 0.85, 0.010, 0.020)
 # the vibrance's largest chroma slope at most 10 % above P341's (0.010 .. 0.025: x1.09; the room burst's white walls x1.12)
 SLOPE_LIMIT = 1.10
@@ -252,7 +254,7 @@ def main():
                            ('off', None, 0, {'vibHlShapeU': P341_SHAPE}), ('ref', ref, 0, {}),
                            ('skycur', None, 1, {}), ('skyref', ref, 1, {}), ('skyoff', None, 1, {'vibHlShapeU': P341_SHAPE})]
                      + [(op + k, tone1, 0, dict(u, **o)) for op, u in ops.items()
-                        for k, o in (('vib0', {'vibHlU': 0.0}), ('cur', {}), ('off', {'vibHlShapeU': P341_SHAPE}))])
+                        for k, o in (('vib0', {'vibHlU': 0.0}), ('cur', {}), ('open', {'vibHlShapeU': OPEN_GATE}))])
         rr = b.render(rimg, [('vib0', None, 0, {'vibHlU': 0.0}), ('cur', None, 0, {}), ('off', None, 0, {'vibHlShapeU': P341_SHAPE}),
                              ('narrow', None, 0, {'vibHlShapeU': NARROW_GATE})])
     finally:
@@ -335,20 +337,24 @@ def main():
     check(s_narrow > s_old * SLOPE_LIMIT, 'the ramp no longer sees the steep 0.010 .. 0.020 gate (x%.2f): it measures nothing' % s_narrow)
     check(s_cur <= s_old * SLOPE_LIMIT, 'the vibrance is x%.2f steeper in chroma than P341\'s (x%.2f against x%.2f): chroma noise and cast '
           'gradients on white walls stretched more' % (s_cur / s_old, s_cur, s_old))
-    # TONE_OP 1
+    # TONE_OP 1 (P407): the reference's own light-tone term, x (1 + 0.25 vibHlU) over OKLab L 0.60 .. 0.80 .. 0.88 .. 0.98, with the cast gate
     for op in ops:
-        o0, oc, oo = (patches(r[op + k], rows, img) for k in ('vib0', 'cur', 'off'))
-        cast = max(oc[k][1] / oo_[1] for k, oo_ in o0.items() if k[1] <= 0.008 and k[2] >= 0.45 and oo_[1] > 0.3)
-        cast_old = max(oo[k][1] / o0[k][1] for k in o0 if k[1] <= 0.008 and k[2] >= 0.45 and o0[k][1] > 0.3)
-        above = max(oc[k][1] - oo[k][1] for k in o0)
+        o0, oc, oo = (patches(r[op + k], rows, img) for k in ('vib0', 'cur', 'open'))
+        cast = max(oc[k][1] / o0_[1] for k, o0_ in o0.items() if k[1] <= 0.008 and k[2] >= 0.45 and o0_[1] > 0.3)
+        cast_open = max(oo[k][1] / o0[k][1] for k in o0 if k[1] <= 0.008 and k[2] >= 0.45 and o0[k][1] > 0.3)
+        low = max(float(np.abs(centre(r[op + 'cur'], rows.index((h, c)), list(LS).index(L)) - centre(r[op + 'vib0'], rows.index((h, c)),
+                                                                                                   list(LS).index(L))).max())
+                  for (h, c, L) in o0 if L <= 0.55)
+        full = [oc[k][1] / o0[k][1] for k in o0 if k[1] >= 0.035 and k[2] == 0.80 and o0[k][1] > 3]
         pale = max(oc[k][1] / max(oc[k][3], 0.3) / mid_sat(o0, k[0], k[1]) for k in o0 if 0.012 <= k[1] <= 0.020 and 0.55 <= k[2] <= 0.95)
-        pale_old = max(oo[k][1] / max(oo[k][3], 0.3) / mid_sat(o0, k[0], k[1]) for k in o0 if 0.012 <= k[1] <= 0.020 and 0.55 <= k[2] <= 0.95)
-        pale_v0 = max(o0[k][1] / max(o0[k][3], 0.3) / mid_sat(o0, k[0], k[1]) for k in o0 if 0.012 <= k[1] <= 0.020 and 0.55 <= k[2] <= 0.95)
-        print('TONE_OP 1 %s: cast x%.3f (P341 x%.2f); pale light tones x%.3f of the mid-tones (P341 x%.2f, without the vibrance x%.2f); '
-              'display C* above P341\'s by %.3f at most' % (op, cast, cast_old, pale, pale_old, pale_v0, above))
+        print('TONE_OP 1 %s: cast x%.3f (the gate open x%.2f); below L 0.55 max |d| %.3g; coloured at L 0.80 x%.3f .. x%.3f; '
+              'pale light tones x%.3f of the mid-tones' % (op, cast, cast_open, low, min(full), max(full), pale))
         check(cast <= 1.15, 'TONE_OP 1 %s: a white-balance cast is raised x%.3f' % (op, cast))
-        check(cast_old >= 1.5, 'TONE_OP 1 %s: the bench no longer sees P341 raising a cast (x%.2f)' % (op, cast_old))
-        check(above <= 0.05, 'TONE_OP 1 %s: a patch more saturated than with P341\'s shape by C* %.3f' % (op, above))
+        check(cast_open >= 1.15, 'TONE_OP 1 %s: the bench no longer sees an ungated term raising a cast (x%.2f)' % (op, cast_open))
+        check(low == 0.0, 'TONE_OP 1 %s: the term reaches below OKLab L 0.60 (max |d| %.3g)' % (op, low))
+        # x1.25 in the scene; the display chroma after the operator and the gamut cut x1.14 .. x1.43 (ACES steepest)
+        check(1.10 <= min(full) and max(full) <= 1.45, 'TONE_OP 1 %s: a coloured light tone x%.3f .. x%.3f, not the reference\'s x1.25'
+              % (op, min(full), max(full)))
         if op == 'ACES':
             check(pale <= 1.05, 'TONE_OP 1 ACES: a pale light-tone colour x%.3f as saturated as the mid-tones' % pale)
     if REPORT:
@@ -360,7 +366,7 @@ def main():
         sys.exit(1)
     print('PASS: the light-tone vibrance raises no white-balance cast, keeps pale light tones at the mid-tones\' saturation, keeps '
           'clearly coloured surfaces (skin, warm colours), the sky as P341 / P378, the bright pale sky >= 90 %, is no steeper in '
-          'chroma than P341 by more than 10 %, the same under ACES / Uchimura; its off-switch is P341 / P378 bit for bit')
+          'chroma than P341 by more than 10 %, under ACES / Uchimura the reference's light-tone term with the cast gate; its off-switch is P341 / P378 bit for bit')
 
 
 if __name__ == '__main__':

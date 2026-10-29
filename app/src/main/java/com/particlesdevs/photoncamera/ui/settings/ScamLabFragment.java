@@ -84,8 +84,8 @@ public class ScamLabFragment extends ModuleConceptFragment {
      * colour method and calibration, in «Другие тонкие настройки» since 2026-10-27).
      */
     static final String[] GROUPS = {"scam_hybrid_why_ae_screen", "scam_hybrid_why_curves_screen", "scam_hybrid_why_tone_screen",
-            "scam_hybrid_why_sharp_screen", "scam_hybrid_why_rl_screen", "scam_hybrid_photo_screen", "scam_hybrid_merge_screen",
-            "scam_hybrid_capture_screen", "scam_hybrid_hdr_screen", "scam_hybrid_artifacts_screen", "noise_model_screen", "photo_size_screen", "adv_output",
+            "photo_processing_screen", "scam_hybrid_why_sharp_screen", "scam_hybrid_why_rl_screen", "scam_hybrid_photo_screen",
+            "scam_hybrid_merge_screen", "scam_hybrid_hdr_screen", "scam_hybrid_artifacts_screen", "noise_model_screen", "photo_size_screen", "adv_output",
             "scam_hybrid_motion_screen", "root_colour", "colour_expert_category"};
     /**
      * Settings fixed at the shot: what the capture plan took (the exposures and counts of the highlight / shadow frames, the
@@ -719,6 +719,8 @@ public class ScamLabFragment extends ModuleConceptFragment {
         for (int i = 0; i < group.getPreferenceCount(); i++) {
             final Preference p = group.getPreference(i);
             if (!p.isVisible() || hiddenFor(p.getKey(), s.prefs(), s.oppoTunedCcm())) continue;
+            // P406: a processing page inside «Настройки изображения» is a group of its own in the list
+            if (p instanceof PreferenceScreen && Arrays.asList(GROUPS).contains(p.getKey())) continue;
             if (p instanceof PreferenceCategory && !hasRows((PreferenceGroup) p, s.prefs(), s.oppoTunedCcm())) continue; // no empty caption
             if (p instanceof PreferenceScreen) {
                 final String key = p.getKey();

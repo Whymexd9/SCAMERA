@@ -503,8 +503,8 @@ public final class ShadeCatalog {
         }
     }
 
-    /** The settings root's wrapper page and groups of «Для опытных»: not in the section path. */
-    static final Set<String> PATH_SKIP = new HashSet<>(Arrays.asList("advanced_screen", "adv_cameras", "adv_system"));
+    /** Groups not in the section path (P406: the settings root's groups have none left; kept for a later wrapper). */
+    static final Set<String> PATH_SKIP = new HashSet<>();
 
     private void walk(Preference p, List<String> path, @Nullable Drawable.ConstantState inherited, boolean root) {
         if (!p.isVisible()) return;

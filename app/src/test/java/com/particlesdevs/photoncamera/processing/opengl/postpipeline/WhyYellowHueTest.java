@@ -11,7 +11,7 @@ import java.nio.file.Files;
 
 /**
  * P395 (owner, 2026-10-29: the yellow «Лента» facade orange-ochre beside ArkCam's yellow): why/combine yellowHueU - the saturated
- * orange-yellow scene hues turned up to 8 deg towards yellow - on by default (WhyTone.yellowHue 1, scam_dev hybrid_why_yellow_hue),
+ * orange-yellow scene hues turned up to 8 deg towards yellow - on by default on vivo (WhyTone.yellowHue 1, scam_dev hybrid_why_yellow_hue),
  * set by the photo (WhyCombine) and the RAW viewfinder (LiveWhyTone) alike. The pixels: tools/check_yellow_hue.py.
  */
 public class WhyYellowHueTest {
@@ -29,7 +29,9 @@ public class WhyYellowHueTest {
         assertTrue(why.contains("glProg.setVar(\"yellowHueU\", WhyTone.yellowHue());"));
         assertTrue(live.contains("if (yellowHue > 0f) defs.add(new String[]{\"YELLOW_HUE\", \"1\"});"));
         assertTrue(live.contains("set(p, \"yellowHueU\", yellowHue);"));
-        assertTrue("on by default", read(src + "WhyTone.java").contains("value(\"yellow_hue\", 1f)"));
+        // P407: on by default on vivo only (its matrix's fault; the OPPO ISP matrix renders the yellows at the reference's hue)
+        assertTrue("on by default on vivo", read(src + "WhyTone.java").contains(
+                "value(\"yellow_hue\", \"vivo\".equalsIgnoreCase(android.os.Build.MANUFACTURER) ? 1f : 0f)"));
         assertTrue("the dev line", read("src/main/java/com/particlesdevs/photoncamera/settings/DevKeys.java").contains("\"hybrid_why_yellow_hue\", \"1.0\""));
     }
 }
