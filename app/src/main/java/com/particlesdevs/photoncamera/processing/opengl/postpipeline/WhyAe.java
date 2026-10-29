@@ -68,6 +68,8 @@ public final class WhyAe {
     public static final class Result {
         public float ae = 1f, clip = 1f, deficit = 1f, effS, effH, nf = 1f;
         public float p10, p50, p98, p995, mean, geo, gmax, ovArea, flat, spread, r, m, realPeak;
+        /** P404: the flat scene's contrast boost (flat x contrast_boost) - the AgX slope's, also the own curve's S (why/combine curveBoostU). */
+        public float contrastC;
         /** P159: p98 / p995 of the max channel beyond the ceiling ({@link Stats#tail}); = p98 / p995 below it. */
         public float p98x, p995x;
         public float maxGainByNoise = 0f;
@@ -511,6 +513,7 @@ public final class WhyAe {
             }
             double cb = flat * s.contrastBoost;                                               // 0x730e4-0x73108
             if (cb > 1e-4) r.slope += (float) cb;                                              // AgX (operator 0): 0x73128
+            r.contrastC = (float) cb;
             r.effS = (float) effS;
             r.effH = (float) effH;
             r.realPeak = (float) realPeak;

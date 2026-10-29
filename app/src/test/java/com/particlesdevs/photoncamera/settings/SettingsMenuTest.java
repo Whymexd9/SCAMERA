@@ -1486,8 +1486,10 @@ public class SettingsMenuTest {
                 "pref_scam_hybrid_why_vibrance","pref_scam_hybrid_why_vibrance_sky","pref_scam_hybrid_colour_vib_highlights","colour_mixer_screen",
                 "pref_scam_hybrid_colour_mix_blue_sat","colour_grading_screen","pref_scam_hybrid_colour_grade_highlights_hue"})
             assertNotNull(key,fine.findPreference(key));
-        assertEquals(Arrays.asList("pref_scam_hybrid_colour_skin_protect","pref_scam_hybrid_colour_skin_hue","pref_scam_hybrid_colour_skin_even"),
-                keys(screen.findPreference("colour_skin_category")));
+        // P404: the skin's own mask and protection from the extra vibrance terms after ours
+        assertEquals(Arrays.asList("pref_scam_hybrid_colour_skin_protect","pref_scam_hybrid_colour_skin_hue","pref_scam_hybrid_colour_skin_even",
+                "pref_scam_hybrid_why_skin_protect","pref_scam_hybrid_why_skin_hue_center","pref_scam_hybrid_why_skin_luma_min",
+                "pref_scam_hybrid_why_skin_sat_shift"),keys(screen.findPreference("colour_skin_category")));
         assertSame(fine,((Preference)screen.findPreference("colour_skin_category")).getParent());
         // «Файл и размер»
         assertEquals(Arrays.asList("output_settings_screen","photo_size_screen","pref_wide169_key","watermark_screen","pref_file_name_pattern"),

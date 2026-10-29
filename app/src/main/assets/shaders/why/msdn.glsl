@@ -13,6 +13,9 @@ precision highp int;
 //  MODE 3: level 1 or 2 rebuilt: the coarser rebuilt level + the filtered detail of this one
 //  MODE 4: the full-size camera RGB: the input + the change of level 0 rebuilt
 #define MODE 0
+// MOTION 1 (WhyMsDenoise, the merge's frame map at the input's size and «Усиление в зонах движения» above 0): the detail thresholds
+// rise where the merge kept few frames (pyr_laplace_filter_msdenoise's motion boost: 1 frame full, 6 and more none).
+#define MOTION 0
 uniform sampler2D InputBuffer;      // MODE 0, 4: the camera RGB (white-balanced, linear); MODE 1, 2, 3: the OKLab level (NEAREST)
 uniform sampler2D Coarse;           // MODE 3, 4: the next coarser OKLab level (LINEAR)
 uniform sampler2D CoarseRecon;      // MODE 3, 4: the next coarser rebuilt level (LINEAR)
@@ -23,6 +26,11 @@ uniform float lumaThU;              // this level's luminance threshold (already
 uniform float chromaThU;            // this level's colour threshold
 uniform float shadowU;              // shadow boost of the thresholds
 uniform int levelU;                 // 0, 1, 2
+#if MOTION == 1
+uniform highp usampler2D EffMap;    // the merge's frame map (codes, 0 = unknown), full size
+uniform float effScaleU;            // frames per code
+uniform vec2 motionU;               // the luminance and colour thresholds' boost at full motion (x the setting: 0.30, 0.50)
+#endif
 out vec4 Output;
 
 float scbrt(float x) { return sign(x) * pow(abs(x), 1.0 / 3.0); }
@@ -57,13 +65,22 @@ vec3 fineAt(ivec2 p) { return texelFetch(InputBuffer, clamp(p, ivec2(0), texture
 #endif
 
 #if MODE == 3 || MODE == 4
-// pyr_laplace_filter_msdenoise (no motion boost: the merge has no per-pixel frame count here)
+// pyr_laplace_filter_msdenoise
 vec3 filteredDetail(ivec2 xy, vec2 inv) {
     vec3 fine = FINE(xy);
     vec3 lap = fine - texture(Coarse, (vec2(xy) + 0.5) * inv).rgb;
     float shadow = 1.0 + shadowU * max(0.0, 1.0 - fine.x * 2.5);
     float lTh = lumaThU * shadow * (levelU == 0 ? 1.0 : (levelU == 1 ? 0.65 : 0.35));
     float cTh = chromaThU * shadow * (levelU == 0 ? 1.0 : (levelU == 1 ? 0.85 : 0.70));
+#if MOTION == 1
+    uint code = texelFetch(EffMap, clamp(xy << levelU, ivec2(0), textureSize(EffMap, 0) - ivec2(1)), 0).r;
+    if (code > 0u) {
+        float t = clamp(1.0 - (max(float(code) * effScaleU, 1.0) - 1.0) / 5.0, 0.0, 1.0);
+        float mo = t * t * (3.0 - 2.0 * t);
+        lTh *= 1.0 + motionU.x * mo;
+        cTh *= 1.0 + motionU.y * mo;
+    }
+#endif
     float la = abs(lap.x);
     float lF = sign(lap.x) * max(0.0, la - lTh * (1.0 - smoothstep(0.0, lTh * 2.5, la)));
     vec2 ab = lap.yz;

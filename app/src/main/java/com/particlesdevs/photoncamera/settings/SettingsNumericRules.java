@@ -139,6 +139,33 @@ public final class SettingsNumericRules {
             case "pref_scam_hybrid_why_ms_luma_l2": case "pref_scam_hybrid_why_ms_chroma": case "pref_scam_hybrid_why_ms_chroma_l0":
             case "pref_scam_hybrid_why_ms_chroma_l1": case "pref_scam_hybrid_why_ms_chroma_l2": return new double[]{0,3,0};
             case "pref_scam_hybrid_dezipper": return new double[]{0,15,0};
+            // P404: the tone curve's modifiers, gamma standard, colour, sharpness and denoise rows
+            case "pref_scam_hybrid_why_sharp_sobel_amount": return new double[]{0,5,0};
+            case "pref_scam_hybrid_why_sharp_sobel_thresh": return new double[]{0,50,0};
+            case "pref_scam_hybrid_why_sharp_edge_thinning": return new double[]{-1,1,0};
+            case "pref_scam_hybrid_why_sharp_rl1_damping": return new double[]{0,1,0};
+            case "pref_scam_hybrid_why_sharp_rl2_damping": return new double[]{0,1,0};
+            case "pref_scam_hybrid_why_sharp_rl3_damping": return new double[]{0,1,0};
+            case "pref_scam_hybrid_why_curve_lift": return new double[]{-100,100,1};
+            case "pref_scam_hybrid_why_curve_contrast": return new double[]{-100,100,1};
+            case "pref_scam_hybrid_why_curve_shadow_contrast": return new double[]{-100,100,1};
+            case "pref_scam_hybrid_why_curve_highlight_contrast": return new double[]{-100,100,1};
+            case "pref_scam_hybrid_why_curve_deep_shadows": return new double[]{-100,100,1};
+            case "pref_scam_hybrid_why_curve_extreme_highlights": return new double[]{-100,100,1};
+            case "pref_scam_hybrid_why_curve_offset": return new double[]{-50,50,1};
+            case "pref_scam_hybrid_why_curve_boost": return new double[]{0,2,0};
+            case "pref_scam_hybrid_why_ms_motion": return new double[]{0,3,0};
+            case "pref_scam_hybrid_why_vibrance_saturated": return new double[]{0,1,0};
+            case "pref_scam_hybrid_why_vibrance_mid": return new double[]{-1,1.5,0};
+            case "pref_scam_hybrid_why_vibrance_shadows": return new double[]{-1,1,0};
+            case "pref_scam_hybrid_why_skin_protect": return new double[]{0,1,0};
+            case "pref_scam_hybrid_why_skin_hue_center": return new double[]{25,65,0};
+            case "pref_scam_hybrid_why_skin_luma_min": return new double[]{0.05,0.5,0};
+            case "pref_scam_hybrid_why_skin_sat_shift": return new double[]{-0.5,0.5,0};
+            case "pref_scam_hybrid_why_cct_gain_r": return new double[]{0.7,1.3,0};
+            case "pref_scam_hybrid_why_cct_gain_g": return new double[]{0.7,1.3,0};
+            case "pref_scam_hybrid_why_cct_gain_b": return new double[]{0.7,1.3,0};
+            case "pref_scam_hybrid_why_gamma_type": return new double[]{0,2,1};
             case "pref_scam_hybrid_why_vibrance": case "pref_scam_hybrid_why_vibrance_sky":
             case "pref_scam_hybrid_why_vibrance_green": return new double[]{-1,1,0};
             case "pref_scam_hybrid_why_chroma_denoise": return new double[]{0,1,0};

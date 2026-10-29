@@ -9153,3 +9153,23 @@ dump 14:14:07 and the full JPEG pair): DONE (host), not tried on a phone
   «Кадры светов и теней», «Настройки HDR» (the shoulder, the short frames' denoise), «Света и аберрации». Every row kept its key
   and attributes (SettingsMovesKeepValuesTest); Lab groups follow.
 
+
+### P404 - the rest of the reference app's colour, tone, sharpness and denoise rows (owner, 2026-10-29: «Шумодав: усиление
+пирамидального шумодава в зонах движения», «Цвет: сочность ярких тонов, полутонов и теней; силу защиты кожи; целевой тон кожи и
+порог яркости кожи; сдвиг насыщенности кожи; баланс R/G/B в матрице», «Глобальный тонмап: модификаторы кривой ...; выбор стандарта
+гаммы ...; контраст-буст для своей кривой», «И резкость»): DONE
+- Pyramid denoise: the merge's frame map (ScamHybridBurst.lastEffectiveFrames, frames = code x median / 64) at the input's size ->
+  msdn MOTION 1: the detail thresholds x (1 + 0.30 k) luma / (1 + 0.50 k) colour x smoothstep of (1 - (n - 1) / 5) - pyr_laplace_
+  filter_msdenoise's boost, k = «Усиление в зонах движения» (1). No map (a single frame, legacy, another size): no boost.
+- Colour: ARK_VIB in combine's scene OKLab with our vibrance (saturated / mid-tone / shadow terms, held off skin by the reference's
+  own skin mask x «Сила защиты кожи», hue centre 41.2 deg, lower L 0.16, the skin saturation shift); its strength / sky / green /
+  light terms are ours, its skin hue shift is «Оттенок кожи». cct_gain R/G/B: a diagonal on the matrix after cct_sat (photo and
+  viewfinder through withCctSat). «Сочность в светах» stays ours.
+- Tone: curve modifiers (ToneCurveHelper.calcDeltaY: six 17-node tables, smoothstep) on the own curve's samples; GAMMA_TYPE 1 / 2
+  (sRGB, Rec.709) for combine's encode and the target inversion, the fusion lumas (import why_fusion, lpyr / gf define) and
+  FusedCurve; the sun glow keeps the pure-power round trip. curveBoostU = the AE's flat-scene contrast x «Контраст-буст» (0 by default) on the
+  own curve (get_curve_contrast_delta).
+- Sharpness: Sobel boost (amount, threshold / 255) and edge thinning in sharp_compose (luma_compose_usm, inner pixels, before the
+  edge damping); the TV damping of rl_mult per RL stage.
+- Defaults bit for bit: combine (check_colour_output --shader), lpyr / gf / msdn token streams (check_why_p404.py), the new
+  runtime terms 0. GPU vs numpy: Sobel / thinning / RL damping (check_why_p404.py); WhyV207PortTest.

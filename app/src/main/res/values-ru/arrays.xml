@@ -209,4 +209,9 @@
         <item>Наша</item>
         <item>Классическая (v2.07)</item>
     </string-array>
+    <string-array name="scam_hybrid_why_gamma_type_entries">
+        <item>Чистая степень</item>
+        <item>sRGB</item>
+        <item>Rec.709</item>
+    </string-array>
 </resources>

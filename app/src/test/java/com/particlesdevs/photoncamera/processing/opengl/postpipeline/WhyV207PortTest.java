@@ -95,4 +95,52 @@ public class WhyV207PortTest {
                 "pref_scam_hybrid_why_agx_inset", "pref_scam_hybrid_dezipper", "pref_scam_hybrid_why_ms_denoise"})
             assertTrue("a settings row: " + k, xml.contains("android:key=\"" + k + "\""));
     }
+
+    @Test public void curveModifiers() {
+        float[] y = new float[257];
+        for (int i = 0; i < y.length; i++) y[i] = i / 256f;
+        assertSame("all 0: the curve as it is", y, WhyTone.curveModified(y, new float[7]));
+        float[] lift = WhyTone.curveModified(y, new float[]{100, 0, 0, 0, 0, 0, 0});
+        assertEquals("lift: the centre up by 0.25", 0.75f, lift[128], 1e-6f);
+        assertEquals("the ends kept", 0f, lift[0], 0f);
+        assertEquals(1f, lift[256], 0f);
+        float[] c = WhyTone.curveModified(y, new float[]{0, 100, 0, 0, 0, 0, 0});
+        assertTrue("contrast: shadows down, lights up", c[64] < y[64] && c[192] > y[192]);
+        assertEquals("the centre kept", y[128], c[128], 1e-6f);
+        float[] off = WhyTone.curveModified(y, new float[]{0, 0, 0, 0, 0, 0, 50});
+        assertEquals("offset 50: +0.25", y[100] + 0.25f, off[100], 1e-6f);
+        assertEquals("smoothstep between the nodes", WhyTone.CURVE_B[8], WhyTone.curveCoeff(WhyTone.CURVE_B, 0.5f), 0f);
+        assertEquals(0.5f * (WhyTone.CURVE_B[3] + WhyTone.CURVE_B[4]), WhyTone.curveCoeff(WhyTone.CURVE_B, 3.5f / 16f), 1e-3f);
+    }
+
+    @Test public void matrixGainsAndMotionBoost() {
+        assertNull("gains 1: no matrix", WhyTone.cctGain(new float[]{1, 1, 1}, null));
+        float[] g = WhyTone.cctGain(new float[]{1.2f, 1f, 0.8f}, null);
+        assertArrayEquals(new float[]{1.2f, 0, 0, 0, 1, 0, 0, 0, 0.8f}, g, 0f);
+        assertArrayEquals(new float[]{0.30f, 0.50f}, WhyMsDenoise.motionBoost(1f), 1e-6f);
+        assertArrayEquals(new float[]{0f, 0f}, WhyMsDenoise.motionBoost(-1f), 0f);
+        assertEquals("median code 64 = the median frames", 4f / 64f, WhyMsDenoise.effScale(4f), 0f);
+        assertTrue(Float.isNaN(WhyMsDenoise.effScale(Float.NaN)) && Float.isNaN(WhyMsDenoise.effScale(0f)));
+    }
+
+    @Test public void p404Wiring() throws IOException {
+        final String src = "src/main/java/com/particlesdevs/photoncamera/processing/opengl/postpipeline/";
+        final String shader = read("src/main/assets/shaders/why/combine.glsl");
+        assertTrue(shader.contains("#define GAMMA_TYPE 0\n") && shader.contains("#define ARK_VIB 0\n"));
+        assertTrue(read("src/main/assets/shaders/why/msdn.glsl").contains("#define MOTION 0\n"));
+        final String why = read(src + "WhyCombine.java"), live = read(src + "LiveWhyTone.java");
+        for (String s : new String[]{"\"GAMMA_TYPE\"", "\"ARK_VIB\"", "\"arkVibU\"", "\"arkSkinU\"", "WhyTone.curveBoost(r.contrastC)"}) {
+            assertTrue("the photo: " + s, why.contains(s));
+            assertTrue("the viewfinder: " + s, live.contains(s));
+        }
+        final String sharp = read(src + "WhyLumaSharpen.java");
+        assertTrue(sharp.contains("\"sobelU\"") && sharp.contains("\"thinU\"") && sharp.contains("\"dampU\""));
+        final String xml = read("src/main/res/xml/preferences.xml");
+        for (String k : new String[]{"sharp_sobel_amount", "sharp_sobel_thresh", "sharp_edge_thinning", "sharp_rl1_damping",
+                "sharp_rl2_damping", "sharp_rl3_damping", "gamma_type", "curve_lift", "curve_contrast", "curve_shadow_contrast",
+                "curve_highlight_contrast", "curve_deep_shadows", "curve_extreme_highlights", "curve_offset", "curve_boost", "ms_motion",
+                "vibrance_saturated", "vibrance_mid", "vibrance_shadows", "skin_protect", "skin_hue_center", "skin_luma_min",
+                "skin_sat_shift", "cct_gain_r", "cct_gain_g", "cct_gain_b"})
+            assertTrue("a settings row: " + k, xml.contains("android:key=\"pref_scam_hybrid_why_" + k + "\""));
+    }
 }

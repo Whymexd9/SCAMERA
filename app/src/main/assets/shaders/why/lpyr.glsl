@@ -102,6 +102,8 @@ uniform float winScaleU;        // the node spacing of WinMean in whyLow px
 uniform sampler2D WinMean;      // the log light's Gaussian at the window level (MODE 7's pyramid, .r)
 uniform sampler2D Fused31;      // the fused luma of build 31091's weights and darkest exposure (this shader's MODE 5, .r)
 #endif
+// P404: the display standard of the fusion's lumas (import why_fusion; 0 = the pure power, as before)
+#define GAMMA_TYPE 0
 #import why_fusion
 out vec4 Output;
 

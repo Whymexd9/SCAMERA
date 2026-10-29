@@ -73,6 +73,7 @@ public final class WhyFusion extends Node {
     /** {@code asset} (gf or lpyr) in MODE {@code mode} with the fusion's uniforms of this shot (import why_fusion). */
     private void fusionProgram(String asset, int mode, GLTexture source, float[] em, float[] lw, float ae, float center, float[] satLight) {
         glProg.setDefine("MODE", mode);
+        gammaDefine();
         glProg.useAssetProgram(asset, false);
         glProg.setTexture("InputBuffer", source);
         glProg.setVar("expU", em[0], em[1], em[2], em[3]);
@@ -94,6 +95,12 @@ public final class WhyFusion extends Node {
         glProg.setVar("deepFloorU", WhyTone.deepFloor());
         // set on every pass (a linked program keeps its uniforms): zeros = the floor as before
         glProg.setVar("deepNoiseU", deepNoise[0], deepNoise[1], deepNoise[2], deepNoise[3]);
+    }
+
+    /** P404: «Стандарт гаммы дисплея» on the next fusion program (import why_fusion GAMMA_TYPE; the pure power sets none). */
+    private void gammaDefine() {
+        final int t = WhyTone.gammaType();
+        if (t != 0) glProg.setDefine("GAMMA_TYPE", t);
     }
 
     /** Separable box of radius r; closes the input. */
@@ -382,6 +389,7 @@ public final class WhyFusion extends Node {
             for (int l = 2; l <= levels; l++) {
                 for (GLTexture[] p : new GLTexture[][]{L, W}) {
                     glProg.setDefine("MODE", 2);
+                    gammaDefine();
                     glProg.useAssetProgram("why/lpyr", false);
                     glProg.setTexture("InputBuffer", p[l - 1]);
                     glProg.drawBlocks(p[l]);
@@ -395,6 +403,7 @@ public final class WhyFusion extends Node {
                 glProg.drawBlocks(GF[1]);
                 for (int l = 2; l <= deep; l++) {
                     glProg.setDefine("MODE", 2);
+                    gammaDefine();
                     glProg.useAssetProgram("why/lpyr", false);
                     glProg.setTexture("InputBuffer", GF[l - 1]);
                     glProg.drawBlocks(GF[l]);
@@ -408,6 +417,7 @@ public final class WhyFusion extends Node {
                 glProg.drawBlocks(D0);
                 for (int l = 1; l < levels; l++) {
                     glProg.setDefine("MODE", 8);
+                    gammaDefine();
                     glProg.useAssetProgram("why/lpyr", false);
                     glProg.setTexture("LevelGF", GF[l]);
                     glProg.setTexture("RefG", GF[l + REF_DOWN]);
@@ -418,6 +428,7 @@ public final class WhyFusion extends Node {
                 // carried 3 x 3 (a coarse band never keeps more excess than the finer one round the same edge); the coarsest the carry
                 for (int l = 1; l <= levels; l++) {
                     glProg.setDefine("MODE", 10);
+                    gammaDefine();
                     glProg.useAssetProgram("why/lpyr", false);
                     glProg.setTexture("FineA", l == 1 ? D0 : A[l - 1]);
                     if (l < levels) glProg.setTexture("LevelA", D[l]);
@@ -442,6 +453,7 @@ public final class WhyFusion extends Node {
                 glProg.drawBlocks(G[1]);
                 for (int l = 2; l <= levels; l++) {
                     glProg.setDefine("MODE", 2);
+                    gammaDefine();
                     glProg.useAssetProgram("why/lpyr", false);
                     glProg.setTexture("InputBuffer", G[l - 1]);
                     glProg.drawBlocks(G[l]);
@@ -453,6 +465,7 @@ public final class WhyFusion extends Node {
             // then every band from coarse to fine
             if (bands) glProg.setDefine("EDGE_BANDS", 1);
             glProg.setDefine("MODE", 3);
+            gammaDefine();
             glProg.useAssetProgram("why/lpyr", false);
             glProg.setTexture("LevelL", L[levels]);
             glProg.setTexture("LevelW", W[levels]);
@@ -465,6 +478,7 @@ public final class WhyFusion extends Node {
             for (int l = levels - 1; l >= 1; l--) {
                 if (bands) glProg.setDefine("EDGE_BANDS", 1);
                 glProg.setDefine("MODE", 4);
+                gammaDefine();
                 glProg.useAssetProgram("why/lpyr", false);
                 glProg.setTexture("LevelL", L[l]);
                 glProg.setTexture("LevelW", W[l]);

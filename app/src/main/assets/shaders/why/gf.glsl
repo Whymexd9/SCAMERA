@@ -13,6 +13,8 @@ precision highp sampler2D;
 uniform sampler2D InputBuffer;  // whyLow (after bracket_dn), linear Rec.709
 uniform sampler2D MeanA;        // MODE 3: box-filtered a (RGBA32F, half size)
 uniform sampler2D MeanB;        // MODE 3: box-filtered b
+// P404: the display standard of the fusion's lumas (import why_fusion; 0 = the pure power, as before)
+#define GAMMA_TYPE 0
 #import why_fusion
 out vec4 Output;
 

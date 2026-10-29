@@ -4,7 +4,8 @@ precision highp sampler2D;
 // reference research/hybrid5/ref/sharpen/ark_sharpen_ref.py luma_compose]: USM (with noise threshold), bilateral
 // high-boost and guided-filter local contrast summed, damped on strong 3x3 contrast, clamped to the local min/max
 // (halo control), faded towards white (protect highlights) and black (protect shadows), optional luma grain.
-// Sobel and edge thinning (off in the X8U config) are not ported. On the Sabre 2x grid the spatial constants come
+// P404: the reference app's Sobel edge boost and edge thinning (shock filter) from v2.07's luma_compose_usm (sobelU / thinU,
+// 0 = off as before). On the Sabre 2x grid the spatial constants come
 // scaled by WhyLumaSharpen (radii x scale, neighbourhood radius nbU), so the response matches WhyCam's on the 1x grid.
 // P364: GATHER 1 - with the 1x grid's window sizes (min / max 3 x 3, USM radius 2, bilateral radius 1) the pixel's 6 x 6
 // neighbourhood (-2 .. 3) is read once as nine 2 x 2 textureGather blocks instead of 44 texelFetch, and every sum takes its
@@ -28,6 +29,8 @@ uniform float haloU;                // halo control 0..1
 uniform float protectShadowsU;      // 0..1
 uniform float protectHighlightsU;   // 0..1
 uniform float grainU;               // pref_sharp_film_grain / 255 (0 = off)
+uniform vec2 sobelU;                // P404: amount, threshold of the Sobel edge boost (amount 0 = off)
+uniform float thinU;                // P404: edge thinning (0 = off)
 out vec4 Output;
 
 float hash12(vec2 p) {
@@ -153,6 +156,22 @@ void main() {
     }
     }
     float lc = lmax - lmin;
+    if ((abs(sobelU.x) > 0.001 || abs(thinU) > 0.001) && all(greaterThan(xy, ivec2(0))) && all(lessThan(xy, last))) {
+        // P404: v2.07 luma_compose_usm on the 3 x 3 neighbourhood (inner pixels, as there)
+        float tl = texelFetch(InputBuffer, xy + ivec2(-1, -1), 0).r, tc = texelFetch(InputBuffer, xy + ivec2(0, -1), 0).r;
+        float tr = texelFetch(InputBuffer, xy + ivec2(1, -1), 0).r, ml = texelFetch(InputBuffer, xy + ivec2(-1, 0), 0).r;
+        float mr = texelFetch(InputBuffer, xy + ivec2(1, 0), 0).r, bl = texelFetch(InputBuffer, xy + ivec2(-1, 1), 0).r;
+        float bc = texelFetch(InputBuffer, xy + ivec2(0, 1), 0).r, br = texelFetch(InputBuffer, xy + ivec2(1, 1), 0).r;
+        if (abs(sobelU.x) > 0.001) {
+            float gx = -tl - 2.0 * ml - bl + tr + 2.0 * mr + br, gy = -tl - 2.0 * tc - tr + bl + 2.0 * bc + br;
+            if (sqrt(gx * gx + gy * gy) > sobelU.y) tot += (c - (tl + tc + tr + ml + mr + bl + bc + br) * 0.125) * sobelU.x;
+        }
+        if (abs(thinU) > 0.001) {
+            float n1 = min(min(min(tl, tc), min(tr, ml)), min(min(mr, bl), min(min(bc, br), c)));
+            float n2 = max(max(max(tl, tc), max(tr, ml)), max(max(mr, bl), max(max(bc, br), c)));
+            if (n2 - n1 > 0.02) tot += ((tl + tc + tr + ml + mr + bl + bc + br - 8.0 * c < 0.0 ? n2 : n1) - c) * thinU;
+        }
+    }
     if (abs(gfLcU) > 0.001) {
         int d = downU > 0 ? downU : 1;
         vec2 ab;

@@ -572,9 +572,74 @@ public final class WhyTone {
 
     /** The own curve's 256 samples (pref_scam_hybrid_why_curve_points, WhyCam's S when empty). */
     static float[] curveSamples() {
-        return com.particlesdevs.photoncamera.processing.color.ToneCurve
+        return curveModified(com.particlesdevs.photoncamera.processing.color.ToneCurve
                 .parse(PreferenceKeys.hybridString("why_curve_points", com.particlesdevs.photoncamera.processing.color.ToneCurve.DEFAULT_POINTS))
-                .samples(com.particlesdevs.photoncamera.processing.color.ToneCurve.SAMPLES);
+                .samples(com.particlesdevs.photoncamera.processing.color.ToneCurve.SAMPLES), new float[]{value("curve_lift", 0f),
+                value("curve_contrast", 0f), value("curve_shadow_contrast", 0f), value("curve_highlight_contrast", 0f),
+                value("curve_deep_shadows", 0f), value("curve_extreme_highlights", 0f), value("curve_offset", 0f)});
+    }
+
+    /**
+     * P404: «Модификаторы кривой» of the reference app (ToneCurveHelper.calcDeltaY): each sample of the own curve at x moves by offset
+     * / 200 + 2.5e-6 (B lift - C contrast - E shadow contrast - F highlight contrast + G deep shadows - H extreme highlights), the six
+     * tables over x (17 nodes, smoothstep between them), within 0..1; all 0: the curve as it is. m: lift, contrast, shadow
+     * contrast, highlight contrast, deep shadows, extreme highlights (-100..100), offset (-50..50).
+     */
+    static float[] curveModified(float[] y, float[] m) {
+        boolean any = false;
+        for (float v : m) any |= Math.abs(v) > 1e-4f;
+        if (!any) return y;
+        final float[] out = new float[y.length];
+        for (int i = 0; i < y.length; i++) {
+            final float x = y.length > 1 ? i / (float) (y.length - 1) : 0f;
+            final float d = m[6] / 200f + 2.5e-6f * (curveCoeff(CURVE_B, x) * m[0] - curveCoeff(CURVE_C, x) * m[1] - curveCoeff(CURVE_E, x) * m[2]
+                    - curveCoeff(CURVE_F, x) * m[3] + curveCoeff(CURVE_G, x) * m[4] - curveCoeff(CURVE_H, x) * m[5]);
+            out[i] = Math.max(0f, Math.min(1f, y[i] + d));
+        }
+        return out;
+    }
+
+    static final float[] CURVE_B = {0, 0, 4, 50, 178, 401, 674, 906, 1000, 906, 674, 401, 178, 50, 4, 0, 0},
+            CURVE_C = {0, 349, 659, 889, 1000, 964, 769, 431, 0, -431, -769, -964, -1000, -889, -659, -349, 0},
+            CURVE_E = {0, 349, 659, 889, 1000, 962, 769, 471, 206, 51, 6, 0, 0, 0, 0, 0, 0},
+            CURVE_F = {0, 0, 0, 0, 0, 0, -6, -51, -206, -471, -769, -962, -1000, -889, -659, -349, 0},
+            CURVE_G = {0, 667, 1000, 956, 697, 402, 180, 61, 14, 1, 0, 0, 0, 0, 0, 0, 0},
+            CURVE_H = {0, 0, 0, 0, 0, 0, 0, -1, -14, -61, -180, -402, -697, -956, -1000, -667, 0};
+
+    /** ToneCurveHelper.sampleCoeff: the table at x (17 nodes over 0..1), smoothstep between two nodes. */
+    static float curveCoeff(float[] t, float x) {
+        final float idx = x * 16f;
+        final int i = (int) idx;
+        if (i < 0) return t[0];
+        if (i >= 16) return t[16];
+        final float f = idx - i;
+        return t[i] + f * f * (3f - 2f * f) * (t[i + 1] - t[i]);
+    }
+
+    /**
+     * P404: the reference app's vibrance terms (why/combine ARK_VIB): {saturated, mid-tones, shadows, skin protection 0..1} and {the
+     * skin hue centre in radians (deg 41.2), its lower OKLab L (0.16), its saturation shift}; null when the three terms and the shift
+     * are 0 (no define).
+     */
+    static float[][] arkVibrance() {
+        final float sat = value("vibrance_saturated", 0f), mid = value("vibrance_mid", 0f), sh = value("vibrance_shadows", 0f),
+                skinSat = value("skin_sat_shift", 0f);
+        if (Math.abs(sat) < 1e-4f && Math.abs(mid) < 1e-4f && Math.abs(sh) < 1e-4f && Math.abs(skinSat) < 1e-4f) return null;
+        return new float[][]{{sat, mid, sh, Math.max(0f, Math.min(1f, value("skin_protect", 1f)))},
+                {(float) Math.toRadians(value("skin_hue_center", 41.2f)), value("skin_luma_min", 0.16f), skinSat}};
+    }
+
+    /**
+     * P404: the own curve's contrast boost - the AE's flat-scene contrast {@code c} (what AgX adds to its slope) x «Контраст-буст»
+     * (0..2; 0 by default: the own curve as before, 1 as the reference app).
+     */
+    static float curveBoost(float c) {
+        return c * Math.max(0f, Math.min(2f, value("curve_boost", 0f)));
+    }
+
+    /** P404: «Стандарт гаммы дисплея» - 0 the pure power 1 / gamma (as before), 1 sRGB, 2 Rec.709 (why/combine GAMMA_TYPE). */
+    static int gammaType() {
+        return Math.max(0, Math.min(2, Math.round(value("gamma_type", 0f))));
     }
 
     /** ef_gamma; the mod takes 2.2 for a value at or below 0.1 [pushCurrentLut 0x80da4]. */
@@ -673,7 +738,19 @@ public final class WhyTone {
      * of the «Цвет» white matrix {@code white} (null: none) of linear sRGB; null when both are neutral.
      */
     public static float[] withCctSat(float[] white) {
-        return cctSat(Math.max(0f, Math.min(2f, value("cct_sat", 1f))), white);
+        return cctGain(new float[]{gain("cct_gain_r"), gain("cct_gain_g"), gain("cct_gain_b")},
+                cctSat(Math.max(0f, Math.min(2f, value("cct_sat", 1f))), white));
+    }
+
+    private static float gain(String key) {
+        return Math.max(0.7f, Math.min(1.3f, value(key, 1f)));
+    }
+
+    /** P404: the reference app's cct_gain R/G/B - the rows of the matrix ({@code white}, null: none) scaled; null when all are 1. */
+    static float[] cctGain(float[] g, float[] white) {
+        if (Math.abs(g[0] - 1f) < 1e-4f && Math.abs(g[1] - 1f) < 1e-4f && Math.abs(g[2] - 1f) < 1e-4f) return white;
+        final float[] d = {g[0], 0f, 0f, 0f, g[1], 0f, 0f, 0f, g[2]};
+        return white != null ? ColourLook.mul(d, white) : d;
     }
 
     /** {@link #withCctSat} of the saturation {@code k}. */
