@@ -386,6 +386,9 @@ public final class DevKeys {
         k.add(n(post, "hybrid_why_sat_light_level_lo", "0.25", Lang.t("Тон с запасом Bento: цветной свет: уровень света (x AE), с которого начинаются веса ядра", "Tone with Bento headroom: coloured light - light level (x AE) where the kernel's weights start")));
         k.add(n(post, "hybrid_why_sat_light_level_hi", "0.6", Lang.t("Тон с запасом Bento: цветной свет: уровень света полных весов ядра", "Tone with Bento headroom: coloured light - light level of the full kernel weights")));
         k.add(n(post, "hybrid_why_fusion_mono", "0.04", Lang.t("Тон: подъём слияния к монотонной огибающей (нет тёмного кольца у лампы)", "Tone: fusion lifted to its monotonic envelope (no dark ring round a lamp)")));
+        // P400: a daylit window's mid-tones under its sky, in a room
+        k.add(n(post, "hybrid_why_window_depth", "0.10", Lang.t("Тон: в комнате то, что видно в освещённом окне (краны, надстройки, берег), темнее неба, а не выбелено до него; освещённые солнцем места у окна чуть темнее; сама комната, пересвеченное небо и белые света как раньше; 0 — выкл.",
+                "Tone: in a room, what is seen through a daylit window (cranes, superstructures, the shore) darker than the sky, not bleached to it; sunlit spots by the window a little darker; the room itself, the blown sky and white lights as before; 0: off")));
         k.add(n(post, "hybrid_why_deep_floor", "2.0", Lang.t("Тон: глубокие тени берут яркий слой слияния (порог в сигмах под центром; комната под окном не уходит в чёрный); 0 — выкл.",
                 "Tone: deep shadows take the fusion's bright layer (threshold in sigmas under the centre; a room under a window is not crushed to black); 0 = off")));
         k.add(n(post, "hybrid_why_macro_toe", "1", Lang.t("Тон: контраст ниже середины степенью, без сдвига чёрного (тени не обрезаются в чёрный); 0 — прямая, как раньше",

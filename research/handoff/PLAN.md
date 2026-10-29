@@ -9078,3 +9078,24 @@ dump 14:14:07 and the full JPEG pair): DONE (host), not tried on a phone
   glow, a blue sky round a blown sun, red / orange / neutral dark bars against the sky bit for bit; a violet surface against
   the sky changed within 6 px only), ScamRgbPurpleFringeTest. The 14:22:07 dump (1 / 4 size): 0.15 % of the pixels change,
   all along the window frames, the ring, the tower behind the glass and the ceiling lamp's edges.
+
+### P400 - the cranes and the tower behind the window bleached to the sky (owner, 2026-10-29: «на этой паре также у нас что-то с
+информацией на светах, на кранах видно, такую проблему мы уже решали очень давно», the P216 screenshot; «изучи что мы меняли в
+версиях около 31091»): DONE (host), not tried on a phone
+- History: builds ~31087 - 31091 (2026-10-18/19) carried P216 (the bridge window: real ceiling, shoulder, highlight detail) with
+  the kernel's fusion weights (centre 0.6, highlight layer 0.8, no envelope). Build 31106 (fca6b586, P291, «белый никогда не уходил
+  в серый»: the lamp-lit sheet) moved the headroom weights to centre 0.75 / highlight layer 0.4 plus the monotonic envelope: the
+  clipped layers keep ~0.6 of their weight above ~0.4 x white, and the fusion's curve lands 0.4 .. 3.5 x white on 0.86 .. 0.96
+  (142207 host: tower 0.74 -> fused 0.895, crane 0.41 -> 0.856, sky 3.5 -> 0.957; the pyramid and the guided filter alike).
+  Going back to the 31091 weights would bring the window back but darken every Bento room by ~0.4 EV and grey the sky (host:
+  sky 0.91 -> 0.61, ceiling 0.32 -> 0.22) and undo P291. A global curve cannot help: the room's mid-tones (I 0.1 - 0.25 -> 0.67 -
+  0.79) leave 0.75 EV of display for 6.7 EV of window.
+- DONE: why/lpyr WINDOW (WhyFusion.windowParams / windowLevel, WhyTone.windowDepth, scam_dev hybrid_why_window_depth, default
+  0.10): in a room (the frame's median at EV <= 10, off from 11.5) with Bento headroom and a known exposure, a pixel in a daylit
+  area (the log light's Gaussian at ~1 / 110 of whyLow's width, EV 10.5 .. 12) in the mid-tones (I 0.12 .. 0.3 in, 1 .. 2.5 out)
+  takes the depth off the fused luma. 142207 host chain: tower / sky 0.39 -> 0.96 EV, crane / sky 0.64 -> 1.21 EV (the reference
+  app ~0.95), the sky, the room's wall, floor and ceiling unchanged; 141407 / 142425: windows deeper, sunlit console / sill a
+  little darker (the compromise). Tried and dropped: a «darker than the brightest light round it» gate (max pyramid) - blotches
+  on a blue sky beside a blown window at every radius.
+- tools/check_why_window.py (CI), WhyWindowTest; check_why_pyramid_bands (fuse(win=...)), _pyramid, _edge, _noise, _sky,
+  _highlights, _headroom, shader_fp16 PASS.

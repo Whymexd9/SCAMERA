@@ -153,16 +153,19 @@ def share_uniforms(bands, level, coarsest):
             'coneU': (float(fall), float(lo0), float(hi0), float(fall0))}
 
 
-def fuse(gl, low, uni, coarse=24, bands=None, noise=None, low_band=1.0, levels=None, gmix=None, edge=None, sh=None, shift=None):
+def fuse(gl, low, uni, coarse=24, bands=None, noise=None, low_band=1.0, levels=None, gmix=None, edge=None, sh=None, shift=None, win=None):
     """WhyFusion.pyramid on whyLow {low} (H x W x 4): bands None = EDGE_BANDS 0 (the pyramid; gmix / edge: P349's guided share,
     P389's edge share, as shipped before P391), else EDGE_BANDS 1 with the noise cap {noise}, the lowest band's weight {low_band}
-    and the edges' noise shift {shift} (k, S_I, O_I). -> (fused, levels)."""
+    and the edges' noise shift {shift} (k, S_I, O_I); win (P400, with bands): (strength, lo, hi, the window level) = WINDOW 1.
+    -> (fused, levels)."""
     h, w = low.shape[:2]
     src = gl.tex(low)
     n = levels or cwp.levels_for(w, h, coarse)
     eb = '1' if bands is not None else '0'
     P = lambda mode, eb_=eb: gl.progd('why/lpyr', {'MODE': str(mode), 'EDGE_BANDS': eb_}, sh)
     deep = n + REF_DOWN - 1 if bands is not None else n
+    if win is not None:
+        deep = max(deep, win[3])
     sizes, L, Wt, F, GF, D, A = [(w, h)], [None], [None], [None], [None], [None], [None]
     for l in range(1, deep + 1):
         pw, ph = sizes[-1]
@@ -228,7 +231,13 @@ def fuse(gl, low, uni, coarse=24, bands=None, noise=None, low_band=1.0, levels=N
         tx.append(('GuideC', G[-1]))
         u5['edgeMixU'] = eu['edgeMixU']
     out = gl.target(w, h, 1, 'f4')
-    gl.draw(P(5), out, tx, u5)
+    if win is not None and bands is not None:
+        # P400: the log light's Gaussian at the window level (MODE 7's pyramid)
+        tx += [('WinMean', GF[win[3]])]
+        u5.update(winU=(float(win[0]), float(win[1]), float(win[2]), 0.0), winScaleU=float(2 ** win[3]))
+        gl.draw(gl.progd('why/lpyr', {'MODE': '5', 'EDGE_BANDS': eb, 'WINDOW': '1'}, sh), out, tx, u5)
+    else:
+        gl.draw(P(5), out, tx, u5)
     res = gl.read(out)[:, :, 0]
     for t in [src, out] + [x for x in L + Wt + F + GF + D + A if x is not None] + ([D0] if bands is not None else []):
         t.release()

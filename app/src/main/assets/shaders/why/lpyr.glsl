@@ -50,6 +50,15 @@ precision highp sampler2D;
 // the lowest band's reconstruction is moved by 1 - f towards the base of one level less (f = 0: one level less, exactly).
 // 0: the shader before P391, token for token.
 #define EDGE_BANDS 0
+// P400 WINDOW 1 (owner, 2026-10-29, the ship's bridge: «на кранах видно, такую проблему мы уже решали очень давно» - the crane and the
+// tower behind the window 0.4 - 0.55 EV under the sky where the scene has 2.3 - 3.1 EV and the reference app ~1 EV): with Bento
+// headroom the fusion's curve lands everything from ~0.4 to ~3.5 x white on 0.86 - 0.96 (P291's centre 0.75 keeps the clipped
+// layers' weight), and the room's mid-tones leave the curve no room below that. In a room (the frame's median under daylight, set by
+// WhyFusion) a pixel inside a daylit area - the log light's Gaussian of the window level, winU.yz: EV 10.5 .. 12 - in the mid-tones
+// (I 0.12 .. 0.3 in, 1 .. 2.5 out: the room, a backlit face and the blown sky keep theirs) takes winU.x off the fused luma. Smooth
+// in both: no step, no ring (a «darker than the brightest light round it» term drew blotches on a blue sky beside a blown window).
+// 0: the shader before P400, token for token.
+#define WINDOW 0
 uniform sampler2D InputBuffer;  // MODE 0, 1, 5: whyLow (after bracket_dn), linear Rec.709; MODE 2: the level to reduce
 uniform sampler2D LevelL;       // MODE 3, 4: lumas L of this level (RGBA)
 uniform sampler2D LevelW;       // MODE 3, 4: weights p of this level (RGBA)
@@ -86,6 +95,11 @@ uniform float lowCutU;          // MODE 4 (the lowest band), 5 (one level): 1 - 
 uniform vec3 bandNoiseU;        // MODE 8, 9: k N_l, the noise sigmas of D taken out in quadrature (y, z: S, O of the guide I's
                                 // noise); x <= 0 / unset: none
 #endif
+#if WINDOW == 1
+uniform vec4 winU;              // x: the strength (fused luma), y, z: the window's log light ramp (log2(I + bandEdgeU.z)), w: unused
+uniform float winScaleU;        // the node spacing of WinMean in whyLow px
+uniform sampler2D WinMean;      // the log light's Gaussian at the window level (MODE 7's pyramid, .r)
+#endif
 #import why_fusion
 out vec4 Output;
 
@@ -111,6 +125,20 @@ float coarseGuide(ivec2 xy) {
     float c = texelFetch(GuideC, ivec2(i0.x, i1.y), 0).r, d = texelFetch(GuideC, i1, 0).r;
     return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
 }
+
+#if WINDOW == 1
+// P400: a level's .r at whyLow pixel xy, linear between its nodes (node i on i * scale)
+float nodeAt(sampler2D t, ivec2 xy, float scale) {
+    ivec2 last = textureSize(t, 0) - ivec2(1);
+    vec2 u = vec2(xy) / scale;
+    ivec2 i0 = min(ivec2(floor(u)), last);
+    ivec2 i1 = min(i0 + ivec2(1), last);
+    vec2 f = clamp(u - vec2(i0), 0.0, 1.0);
+    float a = texelFetch(t, i0, 0).r, b = texelFetch(t, ivec2(i1.x, i0.y), 0).r;
+    float c = texelFetch(t, ivec2(i0.x, i1.y), 0).r, d = texelFetch(t, i1, 0).r;
+    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+#endif
 
 float blendBand(ivec2 xy, vec4 L, vec4 p) {
     vec4 band = L - expand(CoarseL, xy);
@@ -320,6 +348,13 @@ void main() {
                                                   smoothstep(guidedMixU.x, guidedMixU.y, I) * (1.0 - skyGuidedU * clearSky));
 #else
     if (guidedMixU.y > guidedMixU.x) fusedL = mix(fusedL, max(texelFetch(GuidedF, xy, 0).r, 0.0), smoothstep(guidedMixU.x, guidedMixU.y, I));
+#endif
+#if WINDOW == 1
+    if (winU.x > 0.0 && I > 0.0) {
+        float inWindow = smoothstep(winU.y, winU.z, nodeAt(WinMean, xy, winScaleU));
+        float mid = smoothstep(0.12, 0.3, I) * (1.0 - smoothstep(1.0, 2.5, I));
+        fusedL -= winU.x * inWindow * mid;
+    }
 #endif
     Output = vec4(fusedL, 0.0, 0.0, 1.0);
 #endif

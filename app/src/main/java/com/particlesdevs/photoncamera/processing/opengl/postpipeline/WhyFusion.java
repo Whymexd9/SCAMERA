@@ -339,6 +339,11 @@ public final class WhyFusion extends Node {
         final float[] beta = new float[4];
         if (noiseCap) for (int l = 0; l < Math.min(4, (int) nz[2]); l++) beta[l] = WhyTone.BAND_BETA[l];
         GLTexture guidedF = null;
+        // P400: the daylit-window term (null: off) at the window level of the log light's pyramid
+        final com.particlesdevs.photoncamera.processing.render.Parameters prm = basePipeline.mParameters;
+        final float[] win = bands ? windowParams(WhyTone.windowDepth(), st.ae, prm != null
+                ? WhySkyMask.evOffset(prm.iso, prm.exposureTime, prm.aperture, st.inScale) : Float.NaN) : null;
+        final int winLevel = win != null ? windowLevel(fragment ? frozen.lowWidth : low.x, deep) : 0;
         try {
             Point size = low;
             final GLFormat r16 = new GLFormat(GLFormat.DataType.FLOAT_16, 1), rg16 = new GLFormat(GLFormat.DataType.FLOAT_16, 2);
@@ -410,6 +415,7 @@ public final class WhyFusion extends Node {
                     D[l] = null;
                 }
                 for (int l = levels + 1; l <= deep; l++) {
+                    if (l == winLevel) continue;
                     GF[l].close();
                     GF[l] = null;
                 }
@@ -470,7 +476,13 @@ public final class WhyFusion extends Node {
             final boolean sky = guidedF != null && st.sky != null;
             if (sky) glProg.setDefine("SKY", 1);
             if (bands) glProg.setDefine("EDGE_BANDS", 1);
+            if (win != null) glProg.setDefine("WINDOW", 1);
             fusionProgram("why/lpyr", 5, st.lowDn, em, lw, ae, center, satLight);
+            if (win != null) {
+                glProg.setTexture("WinMean", GF[winLevel]);
+                glProg.setVar("winU", win[0], win[1], win[2], 0f);
+                glProg.setVar("winScaleU", (float) (1 << winLevel));
+            }
             glProg.setTexture("CoarseL", L[1]);
             glProg.setTexture("CoarseF", F[1]);
             if (bands) {
@@ -510,7 +522,30 @@ public final class WhyFusion extends Node {
                 + (deepNoise[0] > 0f ? " deepNoise=" + deepNoise[0] : "")
                 + (gmixLog[1] > gmixLog[0] ? " guidedShare=" + gmixLog[0] + ".." + gmixLog[1] : "")
                 + (edgeOn ? " edgeShare=" + edge[0] + ".." + edge[1] + "EV floor=" + edge[2] : "")
+                + (win != null ? String.format(java.util.Locale.ROOT, " window=%.3f@%.2f..%.2f level %d", win[0], win[1], win[2], winLevel) : "")
                 + " bracketDn=" + (st.lowDn != st.low ? strength : 0f) + " ms=" + (System.currentTimeMillis() - started));
+    }
+
+    /**
+     * P400: the daylit-window term of the fusion (why/lpyr WINDOW) - {strength, the window's log light ramp lo, hi (log2 of the guide
+     * I = Y x AE, lpyr's G)} - or null (off): only with Bento headroom (r.hr above the clip) and a known exposure ({@code ev}: the
+     * EV100 of a whyLow value of 1, WhySkyMask.evOffset), in a room (the frame's median at EV 10 or less, gone from EV 11.5: no
+     * landscape under a bright sky takes it); the window is daylight at EV 10.5 .. 12.
+     */
+    static float[] windowParams(float depth, WhyAe.Result r, float ev) {
+        if (!(depth > 0f) || r == null || !(r.hr > r.clip) || !Float.isFinite(ev) || !(r.ae > 0f)) return null;
+        final float median = (float) (Math.log(Math.max(r.p50, 1e-6f)) / Math.log(2.0)) + ev;
+        final float t = Math.max(0f, Math.min(1f, (median - 10f) / 1.5f));
+        final float strength = depth * (1f - t * t * (3f - 2f * t));
+        if (strength < 1e-4f) return null;
+        final float shift = (float) (Math.log(r.ae) / Math.log(2.0)) - ev;
+        return new float[]{strength, 10.5f + shift, 12f + shift};
+    }
+
+    /** P400: the window level: the Gaussian of the log light at about 1 / 110 of whyLow's width (level 5 at 2048 px). */
+    static int windowLevel(int width, int deepest) {
+        final int l = Math.round((float) (Math.log(Math.sqrt(3.0) * width / 111.0) / Math.log(2.0)));
+        return Math.max(1, Math.min(l, deepest));
     }
 
     /** P391: the edge measure's reference is the guide's Gaussian this many levels down (lpyr RefG; its node spacing 2^REF_DOWN). */

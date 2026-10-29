@@ -442,6 +442,14 @@ public final class WhyTone {
         return Math.max(0f, value("deep_floor", 2f));
     }
 
+    /**
+     * P400 (owner, 2026-10-29, the ship's bridge: the crane and the tower behind the window washed out, «такую проблему мы уже решали
+     * очень давно»): how much fused luma a daylit window's mid-tones under its sky give up in a room (why/lpyr WINDOW; 0 = off).
+     */
+    static float windowDepth() {
+        return Math.max(0f, Math.min(0.3f, value("window_depth", 0.10f)));
+    }
+
     /** Window burst: why/combine MACRO_TOE - the macro contrast below its pivot as a power, no black offset (scam_dev macro_toe 0: off). */
     static boolean macroToe() {
         return value("macro_toe", 1f) >= 0.5f;
