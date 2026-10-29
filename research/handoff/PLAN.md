@@ -9036,5 +9036,12 @@ the circled building of scam_burst-20261029-102753; «Арк камера в э�
   this frame; not changed - the reference kernel's rule, hybrid_why_hl_overflow raises it). tools/check_highlight_recovery.py
   case 8 (a Bento-recovered yellow wall with bits 3 + 4 keeps its colour; before: chroma 0.132 -> 0.047); highlight_*, opposed
   foliage, scam_hdr_gpu, signed_rgb PASS.
+- Round 2 (owner: «смотри чтобы эта правка не навредила в других сценах, делаем компромисс»): the defringe inside the Bento
+  mask is not off but edge-only (bentoEdge: max / min luminance of the white-balanced camera RGB 2 px round, share 1.3 .. 2): a
+  dotted line on a clip edge there is still removed (check_highlight_recovery case 9: alternation 0.366 -> 0.051; the edge-less
+  variant of d4217315 left it 0.366), a surface keeps its colour (case 8). The P58 exemption (clipHiUnflaggedU) as before.
+  Scope: the old merges (window, motion, sky, OPPO) and fresh merges of the 23:43 motion, the window and the 01:43 V2405A
+  bursts carry bit 6 (the binned route's border pass) - bit for bit; only the native mosaic route (the X200 Ultra facade
+  burst) changes: 6 % of its Bento pixels (edges) defringed as before, the wall 255 / 234 / 133, ae 1.23 -> 1.09.
 - The tone alone (before the cause was found): the wall's texture after the Bento ceiling is x0.3 of the fusion's; a
   texture-keeping ceiling and a highlight shoulder in the fusion were tried on the host and not kept (a few codes only).

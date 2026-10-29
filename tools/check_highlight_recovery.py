@@ -23,7 +23,8 @@ Checks:
 - the dotted red line on the dark side of the clip edge disappears (dots vs the pixels between them < 0.02);
 - the LEDs, the orange light and the blue screen keep their colour (chroma within 3 % of the input);
 - pixels without flags away from the band are passed through unchanged (white balance only);
-- P396: a Bento-recovered coloured surface without the worker's border pass (bits 3 + 4, the native mosaic route) keeps its colour.
+- P396: a Bento-recovered coloured surface without the worker's border pass (bits 3 + 4, the native mosaic route) keeps its colour,
+  and a dotted line on a clip edge there is still defringed (the defringe acts inside the Bento mask at an edge only).
 Usage: check_highlight_recovery.py [--shaders DIR] [--report]   (DIR: another asset shader tree, e.g. an older one)
 """
 from pathlib import Path
@@ -259,6 +260,21 @@ cout = np.linalg.norm(ab(wout[wcore]), axis=-1).mean()
 check(abs(cout / cin - 1) < 0.03 and np.abs(wout[wcore] - wall[wcore]).max() <= 2e-3 * float(wall.max()),
       'a Bento-recovered yellow wall without the worker\'s border pass keeps its colour: chroma %.3f -> %.3f, max |diff| %.2e'
       % (cin, cout, np.abs(wout[wcore] - wall[wcore]).max()))
+
+# 9) ... while a clip edge inside the Bento mask keeps the defringe (P396's compromise: it acts at an edge only): the wall against
+# a dark surface with a dotted red / blue line on the edge (each colour from another side), flags 3 + 4 without bit 6
+edge = wall.copy()
+edge[:, 64:] = 0.06
+dots = (wx == 63) & (wy >= 8) & (wy < WH - 8)
+edge[dots & (wy.astype(int) % 2 == 0)] = (2.2, 0.35, 0.30)
+edge[dots & (wy.astype(int) % 2 == 1)] = (0.35, 0.40, 1.60)
+eflags = np.where(wx < 68, 8 | 16, 0).astype(np.uint8)
+eout = recover((edge * WP).astype(np.float32), eflags)
+ea_in, ea_out = ab(edge[8:WH - 8, 63]), ab(eout[8:WH - 8, 63])
+alt_in = np.linalg.norm(ea_in[0::2].mean(0) - ea_in[1::2].mean(0))
+alt_out = np.linalg.norm(ea_out[0::2].mean(0) - ea_out[1::2].mean(0))
+check(alt_out < 0.3 * alt_in, 'a dotted line on a clip edge inside the Bento mask without the border pass is still defringed: '
+      'alternation %.3f -> %.3f' % (alt_in, alt_out))
 
 if REPORT:
     try:

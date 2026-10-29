@@ -147,6 +147,22 @@ vec4 localLight(ivec2 o) {
     return vec4(q, level);
 }
 
+// P396: inside the Bento mask the colour is the ultrashort's, measured; the defringe's fringe (colours from both sides of a
+// clip edge) lives at an edge only: its share from the luminance range of the white-balanced camera RGB 2 px round (max / min
+// 1.3 .. 2; a surface's texture stays under it)
+float bentoEdge(ivec2 p) {
+    ivec2 last = textureSize(InputBuffer, 0) - ivec2(1);
+    float lo = 1.0e30, hi = 0.0;
+    for (int dy = -2; dy <= 2; dy += 2)
+        for (int dx = -2; dx <= 2; dx += 2) {
+            vec3 v = texelFetch(InputBuffer, clamp(p + ivec2(dx, dy), ivec2(0), last), 0).rgb;
+            float y = dot(max(v, vec3(0.0)) / max(whitePoint, vec3(1.0e-6)), vec3(0.2126, 0.7152, 0.0722));
+            lo = min(lo, y);
+            hi = max(hi, y);
+        }
+    return smoothstep(1.3, 2.0, hi / max(lo, 1.0e-6));
+}
+
 void main(){
     ivec2 p=clamp(ivec2(gl_FragCoord.xy)+cropOffset,ivec2(0),textureSize(InputBuffer,0)-1);
     vec4 sites=texture(GainMap,vec2(p)*inverseSize);
@@ -196,13 +212,14 @@ void main(){
                 // research/hybrid5/review_fix_rim.md
                 vec3 rf = mix(vec3(1.0), rel, fl);
                 w = (1.0 - min(min(s.r, s.g), s.b)) * smoothstep(0.12, 0.25, min(min(rf.r, rf.g), rf.b));
-            } else if ((f & 7u) == 0u && (f & 64u) == 0u && (f & 16u) == 0u) {
-                // no worker pass: the blanket border defringe. Not inside the Bento mask (P58 for an ultrashort clipped below
-                // the worker's flag threshold, P396 for every shot): there bit 3 only marks the base frames' clipped samples at
-                // weight 1 - m and the colour is the ultrashort's, measured (a recoloured cell was a 5 % brighter blotch; on
-                // the native mosaic route, whose worker sets no bit 6, a whole sunlit yellow wall went 85 % of the way to the
-                // local light, near-neutral: cream-white, the owner's «засвет», vivo X200 Ultra 2026-10-29)
-                w = 1.0;
+            } else if ((f & 7u) == 0u && (f & 64u) == 0u && !(clipHiUnflaggedU != 0 && (f & 16u) != 0u)) {
+                // no worker pass: the blanket border defringe. Not inside the Bento mask when the ultrashort clipped below
+                // the worker's flag threshold (P58): there bit 3 only marks the base frames' clipped samples at weight
+                // 1 - m, the pixel is recovered like its unflagged neighbours (a recoloured cell was a 5 % brighter blotch).
+                // P396: elsewhere inside the Bento mask only at an edge (bentoEdge) - the native mosaic route's worker sets no
+                // bit 6, and the whole recovered area (bit 3 at weight 1 - m) took 85 % of the near-neutral local light: a
+                // sunlit yellow wall came out flat cream-white (the owner's «засвет», vivo X200 Ultra 2026-10-29)
+                w = (f & 16u) != 0u ? bentoEdge(p) : 1.0;
             }
             w *= clamp(fringe, 0.0, 1.0);
             if (w > 0.0) {
