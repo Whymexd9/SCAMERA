@@ -145,7 +145,7 @@
     <string name="prefs_scam_hybrid_merge_highlights_screen_title">Highlights and hot pixels</string>
     <string name="prefs_scam_hybrid_merge_highlights_screen_summary">Overexposed areas and stray coloured dots</string>
     <string name="prefs_scam_hybrid_cell_clip_title">Clip the whole 2×2 cell</string>
-    <string name="prefs_scam_hybrid_cell_clip_summary" formatted="false">Removes the magenta fringe around lamps and overexposed areas. On a still burst (tripod, table) and on 16-bit RAW the merge turns it off itself and clips per site. Off: the old handling.</string>
+    <string name="prefs_scam_hybrid_cell_clip_summary" formatted="false">A magenta-fringe guard around lamps and overexposed areas; it also takes the dark samples beside the light out of every frame, and edges against bright light come out toothed and dotted. Off by default: the merge clips per site.</string>
     <string name="prefs_scam_hybrid_hot_sigma_title">Hot pixels: threshold, σ</string>
     <string name="prefs_scam_hybrid_hot_sigma_summary">Hot pixel threshold (coloured dots at night). Lower: removes more, may touch detail; 0: off.</string>
     <string name="prefs_scam_hybrid_hot_base_sigma_title">Base frame outliers, σ</string>

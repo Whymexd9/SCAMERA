@@ -200,7 +200,7 @@ pref_scam_hybrid_mosaic_kernel_rb	com.particlesdevs.photoncamera.ui.settings.cus
 pref_scam_hybrid_mosaic_chroma_fill	ListPreference	0	-	-	-	-	@array/scam_hybrid_mosaic_chroma_fill_entries	@array/scam_hybrid_mosaic_chroma_fill_values	-	-	-	-
 pref_scam_hybrid_mosaic_fill_support	com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference	0.25	0	1	20	true	-	-	-	-	-	-
 pref_scam_hybrid_mosaic_tetra	ListPreference	1	-	-	-	-	@array/scam_hybrid_mosaic_tetra_entries	@array/scam_hybrid_mosaic_tetra_values	-	-	-	-
-pref_scam_hybrid_cell_clip	SwitchPreferenceCompat	true	-	-	-	-	-	-	-	-	-	-
+pref_scam_hybrid_cell_clip	SwitchPreferenceCompat	false	-	-	-	-	-	-	-	-	-	-
 pref_scam_hybrid_hot_sigma	com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference	5	0	12	10	true	-	-	-	-	-	-
 pref_scam_hybrid_hot_base_sigma	com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference	7	0	12	10	true	-	-	-	-	-	-
 pref_scam_hybrid_hot_max_key	com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference	30	5	100	1	true	-	-	-	-	-	-

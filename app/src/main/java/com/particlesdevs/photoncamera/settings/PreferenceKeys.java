@@ -995,7 +995,12 @@ public class PreferenceKeys {
         Float boostDev = scamDevValue("hybrid_motion_boost");
         out.append("boostEnable ").append(boostDev != null ? boostDev : hybridSwitch("motion_boost", true) ? 1f : 0f).append('\n');
         // Switches of the worker's round-5 fixes (on by default there): written only when turned off.
-        if (!hybridSwitch("cell_clip", true)) out.append("cellClip 0\n");
+        // P394 (owner, 2026-10-29, vivo X200 Ultra hand-held: «зубчатые артефакты» along a ship's window frame, a crane and a lamp's
+        // rim against a clipped light; P150 had seen the same dotted edges on a still burst): the whole-cell clip left the same Bayer
+        // phase of the dark side next to every clip out of every frame. Off by default, the merge clips per site (the magenta rim
+        // it once removed: host 0.41 -> 0.44 % of the clip band on a green-clipped sky, 52 -> 36 px on the lamp); on writes nothing
+        // (the worker's own default, the whole cell).
+        if (!hybridSwitch("cell_clip", false)) out.append("cellClip 0\n");
         if (!hybridSwitch("chroma_diff_clamp", true)) out.append("chromaDiffClamp 0\n");
         if (!hybridSwitch("bento_scam", true)) out.append("bentoScam 0\n");
         // P310 (owner, the LED fans and bar of a PC: «куча артефактов на подсветке», «проблема с маской бенто, ... исправлять

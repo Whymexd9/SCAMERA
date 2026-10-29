@@ -259,7 +259,11 @@ public class HybridSettingsTest {
         // Unset: the worker keeps its own defaults (cell clip, outlier sites, SCAM Bento checks); the Sabre 6.1 kernel has an app
         // default since P68 (always), written also when unset.
         String tuning=PreferenceKeys.hybridTuningText();
-        for(String k:new String[]{"hotSigma","cellClip","bentoScam","s61MaxKey"})assertFalse(tuning,tuning.contains(k+" "));
+        for(String k:new String[]{"hotSigma","bentoScam","s61MaxKey"})assertFalse(tuning,tuning.contains(k+" "));
+        // P394: the whole-cell clip off by default (per-site clip: no toothed edges against a clipped light)
+        assertTrue(tuning,tuning.contains("cellClip 0\n"));
+        manager.set("default_scope","pref_scam_hybrid_cell_clip",true);
+        assertFalse(PreferenceKeys.hybridTuningText().contains("cellClip "));
         assertTrue(tuning,tuning.contains("sabre61 1.0\n"));
         manager.set("default_scope","pref_scam_hybrid_sabre61","0");
         manager.set("default_scope","pref_scam_hybrid_s61_max_key","20");
@@ -1078,6 +1082,20 @@ public class HybridSettingsTest {
         assertTrue(SettingsMigration.migrateScamHybrid(prefs,false));
         assertEquals("1",prefs.getString("pref_scam_hybrid_mosaic_tetra",""));
         assertEquals(7,prefs.getInt("pref_scam_hybrid_defaults_rev",0));
+    }
+
+    @Test public void cellClipFormerDefaultMovesOffOnce() {
+        // P394: a stored «Клип ячейки 2×2 целиком» on (the former XML default) moves off once; turned on after the move it stays
+        prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putInt("pref_scam_hybrid_defaults_rev",7)
+                .putInt(SettingsMigration.P68_DEFAULTS_REV,1).putInt(SettingsMigration.DETAIL_DEFAULTS_REV,1)
+                .putBoolean("pref_scam_hybrid_cell_clip",true).commit();
+        assertTrue(SettingsMigration.migrateScamHybrid(prefs,false));
+        assertFalse(prefs.getBoolean("pref_scam_hybrid_cell_clip",true));
+        assertEquals(1,prefs.getInt(SettingsMigration.CELL_CLIP_REV,0));
+        assertTrue(PreferenceKeys.hybridTuningText().contains("cellClip 0\n"));
+        prefs.edit().putBoolean("pref_scam_hybrid_cell_clip",true).commit();
+        assertFalse(SettingsMigration.migrateScamHybrid(prefs,false));
+        assertTrue(prefs.getBoolean("pref_scam_hybrid_cell_clip",false));
     }
 
     @Test public void detailDefaultsMoveOnce() {

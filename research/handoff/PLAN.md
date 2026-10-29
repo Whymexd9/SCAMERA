@@ -8960,3 +8960,23 @@ Owner, same day: «сделай гпу выравнивание и дай воз
     holds their raised chroma there, so the turn does not act; the lightness of sunlit leaves and ArkCam's more saturated mid-tones as
     above.
   - After merging P393 A: re-run check_light_chroma (hlGainK is read from the vibHl block A reshapes).
+
+### P394 - teeth and dots along edges against a clipped light (owner, 2026-10-29, vivo X200 Ultra hand-held: a ship's window frame, a crane, a window rim against a white sky beside ArkCam; «зубчатые артефакты», «у нас такое уже было и мы это исправляли»): DONE (host), not tried on a phone
+- The owner's A/B on the phone (scam_dev.txt): the P391 bands, the P392 partial refusal and long scope, P393's opposed local, bento_blend,
+  rim_lift, clip_reject, shasta, us_set at 0 - none removed it. log-2026-10-29: plain Bayer (Sabre 6.1), 14 - 19 % of the cells
+  clipped in N, the burst hand-held (donors moved 0.3 - 17 px).
+- Host (the V2405A lamp burst of P392, cropped around the shade's rim, the app's tuning): the linear merge itself steps along the
+  clip with a light dot at every step - with the ultrashort frames, without them (bento 0), without the rim pass; gone with
+  cellClip 0. cellClip (round 5) leaves every site of a 2 x 2 cell out of a frame when one site is clipped: the dark site beside
+  the light is the same Bayer phase in every frame, so the edge loses it everywhere - P150's still-burst checker («dashed wires,
+  dotted edges» on a chandelier), which turned cellClip off for still bursts only. A threshold on the site's own level
+  (cellClipMin 0.3 - 0.95) removed it only at 0.95 (= per site).
+- DONE: «Клип ячейки 2×2 целиком» off by default (pref_scam_hybrid_cell_clip false; the app writes cellClip 0; on = the worker's
+  whole cell), SettingsMigration CELL_CLIP_REV moves a stored former default (on) off once. Edge roughness on the clip band
+  0.0118 -> 0.0092 (lamp); the magenta rim cellClip removed: lamp 52 -> 36 px of the band, a green-clipped synthetic sky 0.41 ->
+  0.44 %, the window burst 0 -> 0, the LED burst unchanged. Worker unchanged (replays bit for bit).
+- Tried and dropped: holding the ultrashort colour to N at the blend (bentoEdgeGuard: no effect on the teeth, stepped the lamp's rim,
+  2 x 2 blocks at a moving finger), the cellClipMin threshold.
+- Open: ArkCam's softer edges and weaker green lateral CA line (our RAW CA correction R -0.25 / B +0.39 px on these shots); the
+  native Quad path keeps the same switch (the app's line reaches it too) - not measured on a Quad burst.
+

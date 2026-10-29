@@ -145,7 +145,7 @@
     <string name="prefs_scam_hybrid_merge_highlights_screen_title">Света и горячие пиксели</string>
     <string name="prefs_scam_hybrid_merge_highlights_screen_summary">Пересвеченные места и цветные точки-выбросы</string>
     <string name="prefs_scam_hybrid_cell_clip_title">Клип ячейки 2×2 целиком</string>
-    <string name="prefs_scam_hybrid_cell_clip_summary" formatted="false">Убирает пурпурную кайму вокруг ламп и пересвеченных мест. На неподвижной серии (штатив, стол) и на 16-битном RAW склейка отключает его сама и клипует по отдельным точкам. Выкл — прежняя обработка.</string>
+    <string name="prefs_scam_hybrid_cell_clip_summary" formatted="false">Защита от пурпурной каймы вокруг ламп и пересвета; заодно выкидывает тёмные точки рядом со светом из всех кадров, и края на фоне яркого света выходят зубчатыми и пунктирными. По умолчанию выключено: склейка клипует по отдельным точкам.</string>
     <string name="prefs_scam_hybrid_hot_sigma_title">Горячие пиксели: порог, σ</string>
     <string name="prefs_scam_hybrid_hot_sigma_summary">Порог поиска горячих пикселей (цветных точек ночью). Меньше — убирает больше, может задеть детали; 0 — выкл.</string>
     <string name="prefs_scam_hybrid_hot_base_sigma_title">Выбросы базового кадра, σ</string>

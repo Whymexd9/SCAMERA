@@ -787,6 +787,17 @@ public final class SettingsMigration {
             e.putInt(GLOW_DEFAULTS_REV, 1);
             markOnly = true;
         }
+        // P394: «Клип ячейки 2×2 целиком» on -> off (the toothed edges against a clipped light): a stored former XML default (on)
+        // moves once, a switch turned off stays. Own marker.
+        if (!values.containsKey(CELL_CLIP_REV)) {
+            final Object v = values.get(ScamHybridKeys.PREFIX + "cell_clip");
+            if (Boolean.TRUE.equals(v)) {
+                ModuleProfiles.put(e, ScamHybridKeys.PREFIX + "cell_clip", false);
+                changed = true;
+            }
+            e.putInt(CELL_CLIP_REV, 1);
+            markOnly = true;
+        }
         // P164: the multiscale finish denoise's stored engine value has its own name; any value but "nlm" is that engine
         final Object engine = values.get(ScamHybridKeys.PREFIX + "dn_engine");
         if (engine instanceof String && !"nlm".equals(engine) && !"multiscale".equals(engine)) {
@@ -830,6 +841,8 @@ public final class SettingsMigration {
     static final String DETAIL_DEFAULTS_REV = "pref_scam_hybrid_detail_defaults_rev";
     /** P354: marker of the one-time move of the former second dark layer weight (0.4) to 0.1. */
     static final String GLOW_DEFAULTS_REV = "pref_scam_hybrid_glow_defaults_rev";
+    /** P394: marker of the one-time move of a stored «Клип ячейки 2×2 целиком» (on, the former default) to off. */
+    static final String CELL_CLIP_REV = "pref_scam_hybrid_cell_clip_rev";
 
     private static boolean isNumber(Object v, float expected) {
         try {
