@@ -1075,4 +1075,7 @@
     <!-- P409: the bracketed frames for deep shadows -->
     <string name="prefs_scam_hybrid_shasta_deep_title">Long frames for deep shadows</string>
     <string name="prefs_scam_hybrid_shasta_deep_summary">With deep shadows in the frame the long frames go to +2 EV, their light from the shutter up to 1/60 s.</string>
+    <!-- P410: the number of bracketed frames by the scene -->
+    <string name="prefs_scam_hybrid_shasta_auto_count_title">Long frames by the scene</string>
+    <string name="prefs_scam_hybrid_shasta_auto_count_summary">1 to 3 by the share of shadows in the frame; «Shadow frames: count» is the maximum.</string>
 </resources>

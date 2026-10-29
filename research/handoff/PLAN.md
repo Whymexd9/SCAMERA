@@ -9236,3 +9236,9 @@ wallpaper, speakers, board): DONE
   the one before (the plans of the logs unchanged, HybridPlanTest).
 - Expected: a x4 frame of real light at the weight the worker gives it (t^2 x the read ratio, 16) carries the deep shadows; the
   mid-tones slightly over-weighted (model: noise +3 % against the x2 frames). The merge (kHybMergeMain1) unchanged.
+
+### P410 - the number of long frames by the scene, 1 to 3 (owner, 2026-10-29: «Делаем также динамический подбор количества длинных
+кадров от 1 до 3»): DONE in code (host), not tried on a phone
+- zslClipFraction counts the ring frame's samples within 1/16 of the RAW range above black too (setShadow; NaN for a packed
+  stream). HybridPlan.bracketCountFor: 1 under 10 %, 2 from 10 %, 3 from 30 % or with P409's deep shadows; at most 2 while the
+  HAL reports motion; «Кадры теней: число» is the maximum; unknown share or «Число длинных кадров по сцене» off: the set count.

@@ -455,6 +455,49 @@ public class HybridPlanTest {
         }
     }
 
+    /**
+     * P410 (owner, 2026-10-29: «Делаем также динамический подбор количества длинных кадров от 1 до 3»): the bracketed frames by
+     * the ring frame's shadow share - 1 under 10 %, 2 from 10 %, 3 from 30 % or with deep shadows - within the set count, at
+     * most 2 under the HAL's motion; the set count when the share is unknown or the switch is off.
+     */
+    @Test public void bracketedFramesByTheShadows() {
+        pinned.put("shasta_frames", 3f);
+        try {
+            assertEquals("unknown: the set count", 3, countLongs(HybridPlan.build(10_000_000L, 659, 0f, camera(6400))));
+            HybridPlan.setShadow(0.05f);
+            HybridPlan p = HybridPlan.build(10_000_000L, 659, 0f, camera(6400));
+            assertEquals(1, countLongs(p));
+            assertTrue(p.description, p.description.contains("shadows 5%: 1 of 3 long frames"));
+            HybridPlan.setShadow(0.2f);
+            assertEquals(2, countLongs(HybridPlan.build(10_000_000L, 659, 0f, camera(6400))));
+            HybridPlan.setShadow(0.4f);
+            assertEquals(3, countLongs(HybridPlan.build(10_000_000L, 659, 0f, camera(6400))));
+            HybridPlan.setShadow(0.2f);
+            HybridPlan.setDeepShadow(0.2f);
+            assertEquals("deep shadows: 3", 3, countLongs(HybridPlan.build(10_000_000L, 659, 0f, camera(6400))));
+            HybridPlan.setMotionCap(8_000_000L);
+            assertEquals("motion: at most 2", 2, countLongs(HybridPlan.build(10_000_000L, 659, 0f, camera(6400))));
+            HybridPlan.setMotionCap(0);
+            pinned.put("shasta_frames", 2f);
+            assertEquals("the set count is the maximum", 2, countLongs(HybridPlan.build(10_000_000L, 659, 0f, camera(6400))));
+            pinned.put("shasta_frames", 3f);
+            HybridPlan.setDeepShadow(0f);
+            HybridPlan.setShadow(0.05f);
+            prefs.when(() -> PreferenceKeys.hybridSwitch(eq("shasta_auto_count"), anyBoolean())).thenReturn(false);
+            assertEquals("the switch off: the set count", 3, countLongs(HybridPlan.build(10_000_000L, 659, 0f, camera(6400))));
+        } finally {
+            HybridPlan.setShadow(Float.NaN);
+            HybridPlan.setDeepShadow(0f);
+            HybridPlan.setMotionCap(0);
+        }
+    }
+
+    private static int countLongs(HybridPlan p) {
+        int n = 0;
+        for (HybridPlan.Request r : p.requests) if (r.role == ImageFrame.CaptureRole.LONG) n++;
+        return n;
+    }
+
     private static HybridPlan.Request longOf(HybridPlan p) {
         for (HybridPlan.Request r : p.requests) if (r.role == ImageFrame.CaptureRole.LONG) return r;
         throw new AssertionError("no long frame: " + p.description);

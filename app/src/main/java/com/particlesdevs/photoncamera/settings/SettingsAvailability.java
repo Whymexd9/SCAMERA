@@ -234,7 +234,7 @@ public final class SettingsAvailability {
         // «Кадры теней» off: no long frame is planned. The whole category follows the switch in effect here, not by
         // android:dependency: in «Движение» the photo switch is greyed (the mode's own rules), which would grey its dependants too
         if (!shasta && any(key, "pref_scam_hybrid_shasta_mode", "pref_scam_hybrid_shasta_motion_max", "pref_scam_hybrid_shasta_frames",
-                "pref_scam_hybrid_shasta_ev", "pref_scam_hybrid_shasta_deep", "pref_scam_hybrid_shasta_sharpness", "pref_scam_hybrid_shasta_max_ratio", "pref_scam_hybrid_lut_sigma"))
+                "pref_scam_hybrid_shasta_ev", "pref_scam_hybrid_shasta_deep", "pref_scam_hybrid_shasta_auto_count", "pref_scam_hybrid_shasta_sharpness", "pref_scam_hybrid_shasta_max_ratio", "pref_scam_hybrid_lut_sigma"))
             return motion ? Lang.t("Включите «Кадры теней» на странице «Движение» (Для опытных › Другие тонкие настройки › Кадры склейки).",
                     "Turn on “Shadow frames” on the “Motion” page (For experts › More fine settings › Merge frames).")
                     : Lang.t("Включите «Кадры теней».", "Turn on “Shadow frames”.");

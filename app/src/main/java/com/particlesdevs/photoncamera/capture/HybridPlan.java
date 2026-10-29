@@ -69,6 +69,34 @@ public final class HybridPlan {
 
     public static void setDeepShadow(float share) { sDeepShadow = Float.isNaN(share) ? 0f : Math.max(0f, Math.min(1f, share)); }
 
+    /**
+     * P410 (owner, 2026-10-29: «Делаем также динамический подбор количества длинных кадров от 1 до 3»): the share of the ring
+     * frame's samples within 1/16 of the RAW range above black (the shadows the bracketed frames carry); NaN: unknown (a packed
+     * stream, no frame read) - the set count then.
+     */
+    static volatile float sShadow = Float.NaN;
+
+    public static void setShadow(float share) { sShadow = Float.isNaN(share) ? Float.NaN : Math.max(0f, Math.min(1f, share)); }
+
+    /** P410: shadow shares from which 2 / 3 bracketed frames are taken (below: 1). */
+    static final float SHADOW_TWO = 0.10f, SHADOW_THREE = 0.30f;
+
+    /** P410: «Число длинных кадров по сцене» (pref_scam_hybrid_shasta_auto_count, on by default). */
+    public static boolean shastaAutoCount() { return PreferenceKeys.hybridSwitch("shasta_auto_count", true); }
+
+    /**
+     * P410: the bracketed frames of a shot, 1 .. the set count («Кадров теней», its maximum): 1 under 10 % shadows, 2 from 10 %,
+     * 3 from 30 % or with deep shadows (P409); at most 2 while the HAL reports motion (they are dropped when they moved). The set
+     * count when the scene is unknown or the switch is off.
+     */
+    static int bracketCountFor(int set) {
+        final float s = sShadow;
+        if (set <= 1 || !shastaAutoCount() || Float.isNaN(s)) return set;
+        int n = s >= SHADOW_THREE || (shastaDeep() && sDeepShadow >= DEEP_SHADOW_SHARE) ? 3 : s >= SHADOW_TWO ? 2 : 1;
+        if (sMotionCapNs > 0) n = Math.min(n, 2);
+        return Math.max(1, Math.min(set, n));
+    }
+
     /** P409: the deep-shadow share from which the bracketed frames go to +2 EV. */
     static final float DEEP_SHADOW_SHARE = 0.15f;
     /**
@@ -196,7 +224,7 @@ public final class HybridPlan {
                 dcg ? " DCG: highlights kept in the frame" : ""));
         // Bracketed (Shasta): gain first at the N shutter (no extra motion blur), the shutter lengthens only beyond the sensor's
         // gain range, within the handheld cap. Never for DCG (above): its high-gain read holds the shadows.
-        final int count = shastaEnabled() && !dcg ? bracketCount() : 0;
+        final int count = shastaEnabled() && !dcg ? bracketCountFor(bracketCount()) : 0;
         if (count > 0) {
             // P409: deep shadows in the buffered frame: +2 EV (the frames' light first from the shutter, below)
             final boolean deep = shastaDeep() && sDeepShadow >= DEEP_SHADOW_SHARE;
@@ -215,6 +243,7 @@ public final class HybridPlan {
                 ns = snapAntibanding(Math.max(ns, Math.min(cap, Math.round(target / iso))), nShutterNs);
             }
             if (deep) why.append(String.format(Locale.ROOT, " deep shadows %.0f%%: +%.0f EV", 100f * sDeepShadow, ev));
+            if (count != bracketCount()) why.append(String.format(Locale.ROOT, " shadows %.0f%%: %d of %d long frames", 100f * sShadow, count, bracketCount()));
             double ratio = (double) ns * iso / n;
             if (ratio > maxBracketRatio() && !shastaForced()) why.append(String.format(Locale.ROOT, " brackets skipped (ratio %.1f)", ratio));
             else if (ratio < 1.2) why.append(String.format(Locale.ROOT, " brackets skipped (ratio %.2f)", ratio));
