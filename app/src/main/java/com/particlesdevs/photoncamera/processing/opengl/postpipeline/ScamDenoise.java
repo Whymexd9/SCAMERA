@@ -38,7 +38,7 @@ import static android.opengl.GLES20.GL_NEAREST;
  * <li>Chroma (the reference ChromaDenoise) on the luma-denoised YUV: {1,3,3,1} pyramid, 4 levels x 2 joint YUV bilateral 3x3
  *     passes, Y untouched; optional fade of the colour in the darkest pixels.</li>
  * </ol>
- * Runs for hybrid shots when pref_scam_hybrid_dn_engine = multiscale (default); {@link ScamHdrDenoise} delegates here and stays
+ * Runs for hybrid shots; {@link ScamHdrDenoise} delegates here and stays
  * the "nlm" engine and the SCAM HDR (SCAM) denoise.
  */
 public final class ScamDenoise extends Node {
@@ -60,23 +60,19 @@ public final class ScamDenoise extends Node {
         return film != null && FilmGrain.addsGrain(film) ? lumaGrain * (1f - film.strength) : lumaGrain;
     }
 
-    /** Noise reduction engine of the hybrid: "multiscale" (this node, default) or "nlm" ({@link ScamHdrDenoise}). */
-    static String engine() {
-        String v = PreferenceKeys.hybridString("dn_engine", "multiscale");
-        return "nlm".equals(v) ? "nlm" : "multiscale";
-    }
-
-    /** True for a shot merged by the SCAM Hybrid whose noise reduction engine is "multiscale". */
+    /**
+     * True for a shot merged by the SCAM Hybrid. P421: the NLM engine of the hybrid is gone as a choice (the reference app has the
+     * one finish denoise); {@link ScamHdrDenoise} stays the fallback when this node fails.
+     */
     public static boolean enabledFor(PostPipeline p) {
-        return p != null && p.mParameters != null && p.mParameters.scamRgb != null
-                && PreferenceKeys.isHybridShot() && "multiscale".equals(engine());
+        return p != null && p.mParameters != null && p.mParameters.scamRgb != null && PreferenceKeys.isHybridShot();
     }
 
     @Override
     public void Run() {
         PostPipeline pipeline = (PostPipeline) basePipeline;
         if (!enabledFor(pipeline)) {
-            // Added to a route directly while the engine is "nlm" (or not a hybrid shot): the NLM node does the work.
+            // Added to a route directly while not a hybrid shot: the NLM node does the work.
             ScamHdrDenoise nlm = new ScamHdrDenoise();
             nlm.basePipeline = basePipeline; nlm.glProg = glProg; nlm.previousNode = previousNode;
             nlm.glInt = glInt; nlm.glUtils = glUtils;

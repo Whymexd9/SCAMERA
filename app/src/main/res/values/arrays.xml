@@ -187,22 +187,6 @@
         <item>2</item>
         <item>3</item>
     </string-array>
-    <string-array name="scam_hybrid_dn_engine_entries">
-        <item>Multiscale</item>
-        <item>NLM (previous)</item>
-    </string-array>
-    <string-array name="scam_hybrid_dn_engine_values" translatable="false">
-        <item>multiscale</item>
-        <item>nlm</item>
-    </string-array>
-    <string-array name="scam_hybrid_dn_map_entries">
-        <item>Auto (frame map, if the merge made one)</item>
-        <item>Uniform</item>
-    </string-array>
-    <string-array name="scam_hybrid_dn_map_values" translatable="false">
-        <item>auto</item>
-        <item>uniform</item>
-    </string-array>
     <string-array name="scam_hybrid_local_align_entries">
         <item>Off</item>
         <item>Per-tile field (default)</item>

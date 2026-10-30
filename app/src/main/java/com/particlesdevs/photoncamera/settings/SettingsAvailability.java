@@ -34,11 +34,7 @@ public final class SettingsAvailability {
     private boolean bentoBlend = true;
     /** P320: the camera running now takes DCG frames (its shots take no shadow frames: HybridPlan). */
     private boolean dcg;
-    /** The settings hold a FULLRES 200 MP profile now (its page in «Настройки по модулям»); false unless told otherwise. */
-    private boolean editing200;
     public SettingsAvailability(Map<String, ?> values) { this.values = values; }
-    /** The fact behind the NLM rows of a 200 MP profile: the settings edited now are a FULLRES 200 MP profile's. */
-    public SettingsAvailability editing200(boolean on) { editing200 = on; return this; }
     /** The device fact behind «HEIC 10 бит»: the reason it is unavailable here (Android version, no Main10 / P010 encoder) or null. */
     public SettingsAvailability heic10Unavailable(String reason) { heic10Unavailable = reason; return this; }
     /** The device fact behind «HDR в HEIC / AVIF»: the reason it cannot act here (Android version) or null. */
@@ -163,21 +159,6 @@ public final class SettingsAvailability {
         if ((key.startsWith("pref_scam_hybrid_dn_") || any(key, "pref_scam_hybrid_why_bracket_denoise", "pref_scam_hybrid_why_chroma_denoise"))
                 && !on("pref_scam_hybrid_denoise", true)) return Lang.t("Включите «Все шумодавы» (Для опытных › SHDR › Шумоподавление: подробно).",
                 "Turn on “All denoisers” (For experts › SHDR › Noise reduction: details).");
-        // Denoise engine (pref_scam_hybrid_dn_engine): The reference finish (ScamDenoise) reads the dn_ rows, NLM (ScamHdrDenoise) its two strengths.
-        boolean nlm = text("pref_scam_hybrid_dn_engine", "multiscale").trim().equals("nlm");
-        if (key.startsWith("pref_scam_hybrid_dn_") && !key.equals("pref_scam_hybrid_dn_engine") && nlm)
-            return Lang.t("Только для многомасштабного шумодава в «Способ шумодава» (Для опытных › SHDR › Шумоподавление: подробно).",
-                    "Multiscale denoiser only (“Denoise method”, For experts › SHDR › Noise reduction: details).");
-        if (any(key, "pref_scam_hybrid_post_luma", "pref_scam_hybrid_post_chroma") && !nlm)
-            return Lang.t("Только для шумодава NLM в «Способ шумодава».", "NLM denoiser only (“Denoise method”).");
-        // P306: a 200 MP shot never takes the NLM denoise (ScamHdrDenoise: with "nlm" it keeps the merge alone)
-        if (any(key, "pref_scam_hybrid_post_luma", "pref_scam_hybrid_post_chroma") && editing200)
-            return Lang.t("На снимках 200 Мп NLM не работает: они остаются без шумодава. Выберите «Многомасштабный» в «Способ шумодава».",
-                    "NLM does not run on 200 MP shots: they keep no denoise. Choose “Multiscale” in “Denoise method”.");
-        // the multiscale denoise boosts few-frame areas through its strength map only (ScamDenoise wantMap); NLM always does
-        if (key.equals("pref_scam_hybrid_bento_denoise_max") && !nlm && text("pref_scam_hybrid_dn_strength_map", "auto").trim().equals("uniform"))
-            return Lang.t("Только при «Карта силы» = «Авто»: при «Равномерно» многомасштабный шумодав не усиливает места из малого числа кадров.",
-                    "Only with “Strength map” = “Auto”: with “Uniform” the multiscale denoiser does not boost few-frame areas.");
         // Output size (pref_scam_hybrid_output): every size but the sensor's merges on the Sabre 2x grid; 12 / 16 / 20 MP are
         // then made with the downsampler (HybridFinalResize), 2x is kept as it is.
         String output = text("pref_scam_hybrid_output", "sensor").trim();

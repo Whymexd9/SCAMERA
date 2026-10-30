@@ -192,12 +192,10 @@ public class SettingsModelCheck {
         active(sh,"pref_scam_hybrid_why_sharp_gain");active(sh,"pref_scam_hybrid_why_sharp_rl1_kernel");active(sh,"pref_scam_hybrid_why_sharp_note");
         sh.put("pref_scam_hybrid_sharp_mode","off"); // a stored value of the removed mode list changes nothing
         active(sh,"pref_scam_hybrid_why_sharp_usm_amount");active(sh,"pref_scam_hybrid_why_sharp_gain");
-        Map<String,Object> dn=new HashMap<>(); // denoise engine "gcam" (default)
-        active(dn,"pref_scam_hybrid_dn_luma_mult");active(dn,"pref_scam_hybrid_dn_luma_t1_snr");active(dn,"pref_scam_hybrid_dn_engine");
-        inactive(dn,"pref_scam_hybrid_post_luma");inactive(dn,"pref_scam_hybrid_post_chroma");
+        Map<String,Object> dn=new HashMap<>(); // P421: the one finish denoise (no engine choice); a stored "nlm" changes nothing
         dn.put("pref_scam_hybrid_dn_engine","nlm");
-        active(dn,"pref_scam_hybrid_post_luma");active(dn,"pref_scam_hybrid_post_chroma");active(dn,"pref_scam_hybrid_dn_engine");
-        inactive(dn,"pref_scam_hybrid_dn_luma_mult");inactive(dn,"pref_scam_hybrid_dn_dark_fade");active(dn,"pref_scam_hybrid_despeckle");
+        active(dn,"pref_scam_hybrid_dn_luma_mult");active(dn,"pref_scam_hybrid_dn_luma_t1_snr");active(dn,"pref_scam_hybrid_dn_dark_fade");
+        active(dn,"pref_scam_hybrid_despeckle");
         Map<String,Object> out=new HashMap<>(); // output "sensor" (default)
         inactive(out,"pref_scam_hybrid_downsampler");active(out,"pref_scam_hybrid_output");
         // the 2x colour share also acts on 200 MP shots (their 2x2 means): inactive at the sensor size only without them
@@ -251,7 +249,7 @@ public class SettingsModelCheck {
         active(po,"pref_scam_hybrid_bento_denoise_max");active(po,"pref_scam_hybrid_why_ccm_sat");
         po.put("pref_scam_hybrid_highlight_recovery","0");inactive(po,"pref_scam_hybrid_highlight_band");inactive(po,"pref_scam_hybrid_highlight_defringe");
         po.put("pref_scam_hybrid_why_sharp_gain","0");inactive(po,"pref_scam_hybrid_why_clarity");inactive(po,"pref_scam_hybrid_why_flat_protect");
-        po.put("pref_scam_hybrid_dn_strength_map","uniform");inactive(po,"pref_scam_hybrid_bento_denoise_max");
+        po.put("pref_scam_hybrid_dn_strength_map","uniform");active(po,"pref_scam_hybrid_bento_denoise_max"); // P421: a scam_dev key now
         po.put("pref_scam_hybrid_why_aces_on",true);inactive(po,"pref_scam_hybrid_why_ccm_sat");
         active(cu,"pref_scam_hybrid_why_bracket_denoise");cu.put("pref_scam_hybrid_denoise",false);
         inactive(cu,"pref_scam_hybrid_why_bracket_denoise");inactive(cu,"pref_scam_hybrid_why_chroma_denoise");

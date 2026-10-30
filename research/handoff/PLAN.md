@@ -9363,3 +9363,29 @@ emulation), not tried on a phone
   «Насыщенность матрицы» acts under AgX only (its summary says so).
 - Check: tools/check_ark_vibrance.py (every strength 0 bit for bit no vibrance under SKY 0 / 1, TONE_OP 0 / 1; each term on its
   colours; the skin's share of the gain 0.30 with protection 1, 1.0 with 0; the light tones not on a near-white's cast).
+
+### P420 - the denoise settings audit (owner, 2026-10-30: «Перепроверь наши параметры шумодава, удали лишние которые у нас не
+используются»): DONE
+- Every visible row of the denoise screens (the merge's noise model and kernel, «Шумоподавление», SNR / multipliers / safety
+  screens, the luma 5 x 4 and colour 4 x 3 tables, the pyramid denoise, the NLM strengths, «Сила шумоподавления») is read and
+  reaches a shader or the worker on its route (the dn_ rows under «multiscale», post_luma / post_chroma under NLM -
+  SettingsAvailability greys the other engine's rows). Every hidden scam_dev denoise key in DevKeys is read; every worker tuning
+  field the app sends is used.
+- Removed: the strings of the gone «Модель шума сенсора» and «Пирамидальный шумодав» screens (no reference left).
+
+### P421 - the denoise against the reference app's (owner, 2026-10-30: «Сравни с шумодавом арка и проверь что нам можно
+убрать»): DONE in code (unit tests), not tried on a phone
+- The reference app: three stages, ~15 rows - the Sabre resolve denoise in the merge (sabre_denoising_factor 0.4, global / reject
+  luma revert 0.85 / 0.5, grain 0.15; sabre_resolve_denoise.glsl, 3 passes), the pyramid denoise (ms_*: model scale, shadow
+  boost, luma / chroma strength and 3 levels; pyr_laplace_filter_msdenoise.glsl) and the bracket denoise. Its sharpening's
+  chroma denoise of lifted pixels is our why_chroma_denoise.
+- Ours: the same three (ScamDenoise = the resolve denoise with its SNR tier tables, WhyMsDenoise = ms_*, why_bracket_denoise)
+  plus a second engine for the finish (NLM, ScamHdrDenoise) with its own two strengths, and two diagnostics (manual SNR,
+  «Карта силы»). The reference app has no engine choice and no such diagnostics.
+- Removed: «Способ шумодава», «Шумодав NLM: яркость / цвет» (the finish denoise is the one engine; NLM stays its fallback on a
+  failure at the former defaults, and the SCAM HDR route's), the manual SNR and «Карта силы» (scam_dev hybrid_dn_snr,
+  hybrid_dn_strength_map). SettingsMigration drops their stored values once; SettingsAvailability's NLM / 200 MP rules and
+  FullResProfiles.is200 went with them.
+- Kept (with a reason): the tier tables, multipliers and safety rows - they are the resolve denoise's own parameters (the
+  reference app keeps the same tables in code behind its one factor; our «Сила шумоподавления» is that factor); despeckle and the
+  dark fade (the reference app's hot pixels sit in its merge); ms_motion (ours).

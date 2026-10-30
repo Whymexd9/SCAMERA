@@ -1123,8 +1123,7 @@ public class ScamLabFragment extends ModuleConceptFragment {
         // «Кадры теней»'s rows: the same (no android:dependency since the mode greys the photo switch: its own rules there)
         if (Arrays.asList(HYBRID + "shasta_mode", HYBRID + "shasta_motion_max", HYBRID + "shasta_frames", HYBRID + "shasta_ev").contains(key))
             return HYBRID + "shasta";
-        if ((key.startsWith(HYBRID + "dn_") && !key.equals(HYBRID + "dn_engine"))
-                || key.equals(HYBRID + "why_bracket_denoise") || key.equals(HYBRID + "why_chroma_denoise")) return DENOISE;
+        if (key.startsWith(HYBRID + "dn_") || key.equals(HYBRID + "why_bracket_denoise") || key.equals(HYBRID + "why_chroma_denoise")) return DENOISE;
         return null;
     }
 
