@@ -716,15 +716,12 @@ public final class WhyTone {
         c.tint = PreferenceKeys.hybridValue("colour_tint", 0f);
         c.keepWarm = PreferenceKeys.hybridValue("colour_keep_warm", 0f);
         c.keepCool = PreferenceKeys.hybridValue("colour_keep_cool", 0f);
-        // P419: the one skin protection (0..1 -> the look's 0..100); the look's shadow / light vibrance went into the vibrance
-        c.skinProtect = arkVibranceOn() ? 100f * skinProtect() : PreferenceKeys.hybridValue("colour_skin_protect", 0f);
+        // P419: the one skin protection (0..1 -> the look's 0..100); the look's shadow / light vibrance went into the vibrance (its
+        // rows are gone: "ark_vibrance 0" has their defaults, 0)
+        c.skinProtect = arkVibranceOn() ? 100f * skinProtect() : 0f;
         c.skinHue = PreferenceKeys.hybridValue("colour_skin_hue", 0f);
         c.skinEven = PreferenceKeys.hybridValue("colour_skin_even", 0f);
-        if (!arkVibranceOn()) {
-            c.protectsVibrance = true;
-            c.vibShadows = PreferenceKeys.hybridValue("colour_vib_shadows", 0f);
-            c.vibHighlights = PreferenceKeys.hybridValue("colour_vib_highlights", 0f);
-        }
+        c.protectsVibrance = !arkVibranceOn();
         final String[] parts = {"hue", "sat", "light"};
         for (int b = 0; b < ColourLook.BANDS.length; b++)
             for (int k = 0; k < 3; k++) c.mix[b * 3 + k] = PreferenceKeys.hybridValue("colour_mix_" + ColourLook.BANDS[b] + "_" + parts[k], 0f);
