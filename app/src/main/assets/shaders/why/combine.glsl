@@ -1391,7 +1391,8 @@ void main() {
         float keep = 1.0 - skinU.x * skinW;
         // skin protection: positive vibrance reaches skin only with (1 - protection)
         if (satMult > 1.0 && keep < 1.0) lab.yz *= (1.0 + (satMult - 1.0) * keep) / satMult;
-#if ARK_VIBRANCE == 0   // P419: the gain above has the shadows' and the light tones' terms
+        // P419 (ARK_VIBRANCE 1): the gain above has the shadows' and the light tones' terms
+#if ARK_VIBRANCE == 0
         if (vibLU != vec2(0.0)) {
             float mSh = (1.0 - smoothstep(0.25, 0.45, lab.x)) * smoothstep(0.05, 0.12, lab.x);
             float mHl = smoothstep(0.6, 0.8, lab.x) * (1.0 - smoothstep(0.88, 0.98, lab.x));
