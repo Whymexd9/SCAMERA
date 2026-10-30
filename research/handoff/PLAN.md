@@ -9290,3 +9290,33 @@ wallpaper, speakers, board): DONE
   from the burst instead of the models (the median offset hid the LED burst's real colour change, the MAD of a level band full
   of hand lost 50 - 80 % of its blocks); 2 x 2 pooled blocks in deep shadows (read black-level offsets of a static wall as motion).
 - scam_dev "hybrid_long_scope 0" takes all three lines out (as before P392).
+
+### P415 - colour clumps in the deep shadows with long frames (owner, 2026-10-30, OPPO Find X8 Ultra, SCA_20261030_102648: «Вот такие
+артефакты есть на некоторых телефонах из-за шаста кадров ... И есть они только с shasta кадрами»): DONE in code (host replays), not
+tried on a phone
+- Cause: the noise check's single factor is measured on flat blocks above 0.002 of white (x0.54 on this burst); the flat blocks
+  at or below it (median 0.0011) measured 2 x that model, the read term ~6.7 x low. The reject took the long frames' noise
+  difference there for motion and refused them in random 1 - 2 cell spots: N-frame noise in clumps inside the long frames'
+  cleaner surround (shadow tile-noise spread 0.40 against 0.13 without L).
+- Fix: hybridMeasureNoise also gives the deep shadows' point (median level and noise / model of the flat blocks <= 0.002, >= 50
+  of them); hybridDarkReadK turns it into the read factor that meets it on the pair's header model (never below the single factor,
+  at most 16 x); noiseU (the reject and guide noise) adds that read term below darkReadLo 0.002, fading out at darkReadHi 0.004.
+  The merge kernel and the motion map keep the single factor. Worker key noiseDarkRead (default 0), the app sends 1; scam_dev
+  "hybrid_dark_read 0" = before. Check: tools/check_hybrid_dark_noise.cpp.
+- Replays with the app's full tuning: the owner's burst shadow noise 9.2e-5 -> 6.4e-5, its spread 0.40 -> 0.30, the clumps gone in
+  the radiator crops; vivo m014303 (moving hand in the dark, x3.0) and m234300 (x6.6): nothing above 0.004 changes, the hand's
+  teal patch (an object in the N frames at 0.0045) keeps its shape.
+- Measured and not taken: the read factor for the whole merge or the whole reject (no level limit) - the same clumps gone, but a
+  hard-edged hand ghost from the long frames on m014303; the app's denoise model with the read factor (this shot's SNR 130 picks
+  the day tier: colour strength 0.25 on levels 0 - 1, nothing coarser - no effect on 8 - 16 px clumps); dilateFloor 0.6 / dilateOffset
+  1 (a third / a tenth of the effect); a 4 x 4 block-group motion test (missed the ghost, 40 % false blocks on the LED burst).
+
+### P416 - the noisy colour strip along the photo's edge (owner, 2026-10-30, OPPO Find X8 Ultra: «шумную цветную полосу, она
+возникает на оппо х8у давно, мы всё никак не исправим её, займись исправлением»): DONE in code (host emulation), not tried on a phone
+- The merge's outer 6 px (every edge of the OPPO replays; a step at exactly 6 px, gone without the local alignment) hold saturated
+  colour blots 3 - 6 px deep and 1.4 - 2.4 x the colour noise along the edge; the RAW's edge rows are normal (no hot sites, the same
+  noise). The day tiers' colour strength (0.25) and a floor on it did not reach them (the bilateral refuses the blotted neighbours).
+- Fix: scamdn/cbf edgeBandU in the last colour pass (modes 2 / 3): a pixel closer than 6 px (/ the output grid's scale) to an edge
+  takes the U, V of the nearest pixel of the band's inner border, the mean of 7 along the edge; Y kept. ScamDenoise
+  dn_edge_band (default 6, scam_dev "hybrid_dn_edge_band 0" = before). Check: tools/check_edge_band.py.
+- Not done: the merge itself at the border (kHybMergeMain1 stays untouched); the NLM / ms denoise routes keep the band.

@@ -29,6 +29,11 @@ uniform vec2 mapInvU;           // 1 / size of this level
 uniform int modeU;              // 0: YUV; 1: (U,V) - Orig.(U,V); 2: RGB (final, sensor grid);
                                 // 3 (2x grid): (Y - Y(Orig), UV - keepU * UV(Orig)) for scamdn/final2x
 uniform float keepU;            // modeU 3: share of the 2x-only colour kept by final2x (unset 0 = colour from this scale)
+// P416 (modes 2 / 3): the frame edge's band, this level's pixels (unset 0: off). The merge leaves its outer ~6 px with colour
+// errors (an OPPO Find X8 Ultra burst: saturated colour blots 3 - 6 px deep and colour noise 1.4 - 2.4 x the rest along the
+// edge - a coloured strip on every photo); a band pixel takes the U, V of the band's inner border (the nearest pixel b from the
+// edge), averaged over 2 EDGE_R + 1 pixels along the edge. Y is kept.
+uniform int edgeBandU;
 uniform int fadeU;              // modeU 2: colour fades to neutral in the darkest pixels (black-level error)
 uniform vec2 darkFadeU;         // mean RGB where the colour starts to fade / is fully kept
 uniform vec2 darkChromaU;       // fadeU: colour deviation |RGB - mean| from which a dark colour starts to stay / stays
@@ -38,6 +43,7 @@ uniform vec2 darkNoiseU;        // darkChromaU on: the keep floor follows the co
 // P320: a DCG shot (ScamDenoise sets 1) has two read-noise zones: noiseU.y below the knee (high gain), noiseHiU above it
 // (low gain), blended over 0.9 .. 1.1 x the knee in Y; 0 = the single curve, token for token as before.
 #define DCG_ZONES 0
+#define EDGE_R 3
 #if DCG_ZONES
 uniform float noiseHiU;         // noise.y of the low-gain zone (the same k * G * rho_r scaling as noiseU.y)
 uniform float kneeU;            // the zone switch in Y (> 0)
@@ -92,6 +98,15 @@ void main() {
             }
         }
         r = vec3(c.x, s0 > thrU ? a0 / s0 : a1 / max(s1, 1.0e-6));
+    }
+    if (edgeBandU > 0 && modeU >= 2 && all(greaterThan(last, ivec2(2 * edgeBandU)))) {
+        ivec2 q = clamp(p, ivec2(edgeBandU), last - edgeBandU);
+        if (q != p) {
+            ivec2 along = min(p.y, last.y - p.y) <= min(p.x, last.x - p.x) ? ivec2(1, 0) : ivec2(0, 1);
+            vec2 a = vec2(0.0);
+            for (int i = -EDGE_R; i <= EDGE_R; i++) a += fetchLevel(clamp(q + along * i, ivec2(0), last)).yz;
+            r.yz = a / float(2 * EDGE_R + 1);
+        }
     }
     if (grainU != 0 && modeU >= 2) r.x += texelFetch(Grain, p, 0).r;
     if (modeU == 1) {

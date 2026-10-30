@@ -674,6 +674,14 @@ struct HybridTuning {
     // bracketed frames are ISO x2 at the same shutter, 0.61 - 0.90 of an N frame's noise in base units against a header model of
     // 0.30 - 0.57 - the reject took their noise for motion in the shadows (raw 0.75 against 0.91 on the darkest flat cells).
     int noiseRoles=0;
+    // P415 (owner, 2026-10-30, OPPO Find X8 Ultra: colour clumps in the shadows «только с shasta кадрами»): 1 = the reject's noise
+    // (noiseU) below darkReadHi of white takes the read term the deep shadows measured (hybridMeasureNoise's flat blocks at or
+    // below 0.002 of white, >= 50 of them): the single factor, measured above 0.002, put it 2 - 4 x low there, and the reject
+    // refused the long frames in random 1 - 2 cell spots (clumps of N-frame noise in their cleaner surround). Full below
+    // darkReadLo, none from darkReadHi (a vivo hand ghost at 0.0045 of white stays refused). 0 = off (replays unchanged).
+    int noiseDarkRead=0;
+    float darkReadLo=0.002f,darkReadHi=0.004f;
+    float darkReadK=0.f;          // set by the noise check, not a key: the reject's read term x (1 + this) in the deep shadows
     // P80: 1 (default) = the chroma median of the mosaic results on the GPU (ChromaMedianGpu, float rounding only), 0 = CPU.
     int chromaGpu=1;
     // P213c: 1 (default) = the CPU chroma median of a native mosaic merge runs on the merged rows while the GPU merges the next
@@ -1077,7 +1085,7 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             ||set("mosaicNativePick",nullptr,&t.mosaicNativePick) // P219
             ||set("mosaicUsFill",nullptr,&t.mosaicUsFill)||set("mosaicUsFillShare",&t.mosaicUsFillShare) // P313
             // P27
-            ||set("gainMeasured",nullptr,&t.gainMeasured)||set("noiseMeasured",nullptr,&t.noiseMeasured)||set("noiseRoles",nullptr,&t.noiseRoles)||set("shastaNoiseWeight",&t.shastaNoiseWeight)||set("chromaGpu",nullptr,&t.chromaGpu)||set("dngDither",nullptr,&t.dngDither)||set("dngMosaic",nullptr,&t.dngMosaic)
+            ||set("gainMeasured",nullptr,&t.gainMeasured)||set("noiseMeasured",nullptr,&t.noiseMeasured)||set("noiseRoles",nullptr,&t.noiseRoles)||set("noiseDarkRead",nullptr,&t.noiseDarkRead)||set("darkReadLo",&t.darkReadLo)||set("darkReadHi",&t.darkReadHi)||set("shastaNoiseWeight",&t.shastaNoiseWeight)||set("chromaGpu",nullptr,&t.chromaGpu)||set("dngDither",nullptr,&t.dngDither)||set("dngMosaic",nullptr,&t.dngMosaic)
             ||set("chromaOverlap",nullptr,&t.chromaOverlap) // P213c
             ||set("auto2x",nullptr,&t.auto2x)||set("auto2xMaxGap",&t.auto2xMaxGap)||set("auto2xMinSnr",&t.auto2xMinSnr)
             ||set("mochi",nullptr,&t.mochi);
@@ -1147,6 +1155,7 @@ vec2 origin(int f,int x,int y){
 static const char* kHybHelpers=R"(
 uniform ivec4 phaseColor;
 uniform vec2 baseNoise;      // slope, offset of the base frame (normalised units)
+uniform vec3 darkReadU;      // P415 noiseDarkRead: x the read term's extra factor in noiseU, full below y, none from z (0: off)
 // Per-frame parameters (fParam, fNoiseP, fCells) are in the FrameTable block of kHybCommon.
 uniform float clipLevel;
 layout(std430,binding=5) buffer Cells{vec4 cells[];};    // donor cell colours (u domain) and clip flag, donor geometry
@@ -1173,6 +1182,7 @@ float epsU(){ return max(baseNoise.y/max(baseNoise.x,1.0e-9),1.0e-5); }
 float noiseU(int f,float L){
     float g=fParam[f].x;float l=max(L,0.0);
     float var=fNoiseP[f].xy.x*l*g+fNoiseP[f].xy.y*g*g;
+    if(darkReadU.x>0.0)var+=darkReadU.x*fNoiseP[f].xy.y*g*g*(1.0-smoothstep(darkReadU.y,darkReadU.z,l));
     return var/(4.0*(l+epsU()));
 }
 // Colour of cell (i,j) of frame f in the u domain (base units); clipped = any of its (valid) sites at white. An outlier site
@@ -6227,6 +6237,7 @@ public:
             glUniform4f(loc(program,"inv"),in.inv[0],in.inv[1],in.inv[2],in.inv[3]);
             glUniform4i(loc(program,"phaseColor"),in.phaseColor[0],in.phaseColor[1],in.phaseColor[2],in.phaseColor[3]);
             glUniform2f(loc(program,"baseNoise"),in.baseSlope,in.baseOffset);
+            glUniform3f(loc(program,"darkReadU"),tune.darkReadK,tune.darkReadLo,tune.darkReadHi);
             glUniform1f(loc(program,"clipLevel"),tune.clipLevel);
             glUniform4f(loc(program,"k61aU"),in.k61a[0],in.k61a[1],in.k61a[2],in.k61a[3]);
             glUniform4f(loc(program,"k61bU"),in.k61b[0],in.k61b[1],in.k61b[2],in.k61b[3]);
@@ -9885,8 +9896,17 @@ inline GridCoverage gridCoverage(const std::vector<BackwardHomography>& H,const 
 
 struct HybridNoiseCheck {
     double ratio=0; long flat=0,blocks=0; int frame=-1;
+    double darkLevel=0,darkRatio=0; long dark=0; // P415: the flat blocks at or below 0.002 (the ratio leaves them out): median level, noise / model
     std::vector<std::array<float,2>> dcgBlocks; // P320 a DCG burst: (mean, noise) of every flat block, for the two-zone fit
 };
+// P415 noiseDarkRead: the read factor ko that puts the pair's header model (slope pS, offset pO) at the deep shadows' measured point
+// (m, r) = (c.darkLevel, c.darkRatio): ks pS m + ko pO = r (pS m + pO), never below the single factor ks, at most 16 x it; returns
+// K = ko / ks - 1 (the reject's read term x (1 + K) on the ks-scaled model); 0 when not measured.
+inline float hybridDarkReadK(const HybridNoiseCheck& c,double pS,double pO,double ks){
+    if(c.dark<50||!(pO>0)||!(ks>0))return 0.f;
+    const double ko=std::clamp((c.darkRatio*(pS*c.darkLevel+pO)-ks*pS*c.darkLevel)/pO,ks,16.0*ks);
+    return float(ko/ks-1.0);
+}
 inline HybridNoiseCheck hybridMeasureNoise(const HybridInput& in){
     HybridNoiseCheck res;
     const int n=int(in.frames.size());
@@ -9897,7 +9917,7 @@ inline HybridNoiseCheck hybridMeasureNoise(const HybridInput& in){
     const float black=in.black[phase],range=std::max(in.white-black,1.f);
     const double slope=0.5*(double(a.slope)+b.slope),offset=0.5*(double(a.offset)+b.offset);
     const int bw=in.w/64,bh=in.h/64; // 32x32 sites of the phase
-    std::vector<float> ratio(size_t(bw)*bh,-1.f);
+    std::vector<float> ratio(size_t(bw)*bh,-1.f),darkM(size_t(bw)*bh,-1.f),darkR(size_t(bw)*bh,-1.f);
     std::vector<std::array<float,2>> dcgAt(in.dcg?size_t(bw)*bh:0); // P320: the flat blocks' (mean, noise), DCG only
     mergeRowBands(bh,[&](int y0,int y1){
         for(int by=y0;by<y1;++by)for(int bx=0;bx<bw;++bx){
@@ -9914,6 +9934,7 @@ inline HybridNoiseCheck hybridMeasureNoise(const HybridInput& in){
             if(bad)continue;
             const double m=s0/1024,var0=s00/1024-m*m,noise=0.5*(sdd/1024-(sd/1024)*(sd/1024));
             const double model=slope*std::max(m,0.0)+offset;
+            if(m>0&&m<=0.002&&model>0&&noise>0&&var0<=1.5*noise){darkM[size_t(by)*bw+bx]=float(m);darkR[size_t(by)*bw+bx]=float(noise/model);}
             if(m<=0.002||model<=0||noise<=0||var0>1.5*noise)continue;
             ratio[size_t(by)*bw+bx]=float(noise/model);
             if(in.dcg)dcgAt[size_t(by)*bw+bx]={float(m),float(noise)};
@@ -9923,6 +9944,13 @@ inline HybridNoiseCheck hybridMeasureNoise(const HybridInput& in){
     for(float r:ratio)if(r>0)flat.push_back(r);
     if(in.dcg)for(size_t i=0;i<ratio.size();++i)if(ratio[i]>0)res.dcgBlocks.push_back(dcgAt[i]);
     res.blocks=long(bw)*bh;res.flat=long(flat.size());
+    std::vector<float> dm,dr;
+    for(size_t i=0;i<darkM.size();++i)if(darkM[i]>0){dm.push_back(darkM[i]);dr.push_back(darkR[i]);}
+    res.dark=long(dm.size());
+    if(res.dark>=50){
+        std::nth_element(dm.begin(),dm.begin()+dm.size()/2,dm.end());res.darkLevel=dm[dm.size()/2];
+        std::nth_element(dr.begin(),dr.begin()+dr.size()/2,dr.end());res.darkRatio=dr[dr.size()/2];
+    }
     if(flat.empty())return res;
     std::nth_element(flat.begin(),flat.begin()+flat.size()/2,flat.end());
     res.ratio=flat[flat.size()/2];
@@ -10778,6 +10806,20 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
                 report(line);
                 if(use)roleK=r.factor;
             }
+        }
+        // P415 noiseDarkRead: the reject's read term x (1 + K) in the deep shadows (hybridDarkReadK)
+        if(tune.noiseDarkRead>0&&c.frame>=0){
+            const double ks=scale?k:1.0;
+            const HybridFrame& a=input.frames[0];const HybridFrame& bf=input.frames[size_t(c.frame)];
+            const double pS=0.5*(double(a.slope)+bf.slope),pO=0.5*(double(a.offset)+bf.offset);
+            char line[300];
+            if(c.dark>=50&&pO>0){
+                t2.darkReadK=hybridDarkReadK(c,pS,pO,ks);
+                std::snprintf(line,sizeof(line),"HYBRID NOISE CHECK DARK: %ld flat blocks at or below 0.002 (median level %.5f, noise %.3f x the"
+                    " model) -> the reject's read term x%.3f below %.4f, none from %.4f",c.dark,c.darkLevel,c.darkRatio,1.0+t2.darkReadK,
+                    double(tune.darkReadLo),double(tune.darkReadHi));
+            } else std::snprintf(line,sizeof(line),"HYBRID NOISE CHECK DARK: not measured (%ld flat blocks at or below 0.002 of the 50 needed)",c.dark);
+            report(line);
         }
         if(scale||roleK!=1){
             HybridInput measured=input;
