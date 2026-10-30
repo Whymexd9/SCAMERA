@@ -1042,6 +1042,11 @@ public class PreferenceKeys {
         // t^2 read_b / read_f (lamp: A 3.32 -> 1.48, the optimum 1.46; X7U long shutter 4.00 -> 2.63). OPPO replays: flat noise -1 to
         // -4 %, detail -0.1 % or less, no ghosts. scam_dev.txt "hybrid_long_set 0" = before.
         if (hybridValue("long_set", 1f) > 0f) out.append("noiseRoles 1\nshastaNoiseWeight 0.005\n");
+        // P415 (owner, 2026-10-30, OPPO Find X8 Ultra: colour clumps in the shadows «только с shasta кадрами»): the reject's noise
+        // below 0.002 - 0.004 of white with the read term the deep shadows measured (the single factor, measured above 0.002, put it
+        // 2 - 4 x low: the long frames refused in random 1 - 2 cell spots). Replay of the owner's burst: shadow noise -33 %, its
+        // spread 0.40 -> 0.28; the vivo hand ghost at 0.0045 unchanged. scam_dev.txt "hybrid_dark_read 0" = before.
+        if (hybridValue("dark_read", 1f) > 0f) out.append("noiseDarkRead 1\n");
         // P392 (owner, 2026-10-28: «Без отказа целиком. Отсекать только пятна и ячейки, где есть движение ... Замену выбирать по
         // пикселю ... Без швов ... Без ложного движения»): after the P350 set (later lines win in the worker). The ultrashort
         // frames refused per moved region (hysteresis on the noise-normalised check, closed and grown; alias damping of its colour

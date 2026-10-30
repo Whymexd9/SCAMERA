@@ -657,6 +657,11 @@ public class HybridSettingsTest {
             t=PreferenceKeys.hybridTuningText();
             assertFalse(t,t.contains("shastaMotionScope")||t.contains("shastaScopeAll")||t.contains("shastaScopeLone"));
             assertTrue(t,t.contains("bentoPartial 1\nbentoAliasDamp 1\n"));
+            java.nio.file.Files.write(file.toPath(),"hybrid_dark_read 0\n".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            stamp.setLong(null,-1);
+            t=PreferenceKeys.hybridTuningText();
+            assertFalse("P415: scam_dev hybrid_dark_read 0 = before",t.contains("noiseDarkRead"));
+            assertTrue(t,t.contains("noiseRoles 1\n"));
         }finally{
             java.nio.file.Files.deleteIfExists(file.toPath());
             stamp.setLong(null,-1);
@@ -684,6 +689,7 @@ public class HybridSettingsTest {
                 tuning.contains("bentoPartial 1\nbentoAliasDamp 1\n")&&tuning.contains("shastaMotionScope 1\n")
                 &&tuning.indexOf("bentoPartial 1\n")>tuning.indexOf("bentoRefuseScope 1\n"));
         assertTrue("P414: the long frames' moved blocks out of every kept long frame",tuning.contains("shastaMotionScope 1\nshastaScopeAll 1\nshastaScopeLone 1\n"));
+        assertTrue("P415: the reject's deep-shadow read term",tuning.contains("noiseRoles 1\nshastaNoiseWeight 0.005\nnoiseDarkRead 1\n"));
         assertTrue("P344: the spread floor over the untouched default",tuning.lastIndexOf("dilateFloor ")==tuning.indexOf("dilateFloor 0.35\n"));
         assertEquals(2,PreferenceKeys.getHybridShastaMode());
         assertEquals(20,PreferenceKeys.getHybridZslFrames());
