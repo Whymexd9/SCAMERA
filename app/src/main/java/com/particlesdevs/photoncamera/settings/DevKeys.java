@@ -239,6 +239,8 @@ public final class DevKeys {
                 "Ultrashort frames: refusal only in the moved regions, the replacement chosen per pixel, the clip filled without seams (0: as before)")));
         k.add(n(merge, "hybrid_long_scope", "1", Lang.t("Длинные кадры: при движении убираются только сдвинутые блоки, а не весь кадр (0 — как раньше)",
                 "Long frames: under motion only the moved blocks are left out, not the whole frame (0: as before)")));
+        k.add(n(merge, "hybrid_rej_edge", "1", Lang.t("Реджекты: ячейка за краем кадра не считается движением и не расширяет отказ (без полосы у края; 0 — как раньше)",
+                "Rejection: a cell beyond the frame's edge is no motion and does not spread the refusal (no strip at the edge; 0: as before)")));
         // P415: the reject's read term in the deep shadows as they measured
         k.add(n(merge, "hybrid_dark_read", "1", Lang.t("Длинные кадры: шум глубоких теней по замеру в реджекте (без цветных пятен; 0 — как раньше)",
                 "Long frames: the deep shadows' measured noise in the rejection (no colour clumps; 0: as before)")));
@@ -323,6 +325,8 @@ public final class DevKeys {
         k.add(n(post, "hybrid_dn_chroma_day", "0.5", Lang.t("Шумодав цвета днём: множитель при SNR 80 и выше (1 — как раньше; до SNR 20 всегда 1)", "Daylight colour denoise: multiplier at SNR 80 and above (1: as before; up to SNR 20 always 1)")));
         k.add(n(post, "hybrid_dn_dark_chroma_hi", "4", Lang.t("Шумодав: цвет в тенях, верхний порог (x1e-4)", "Denoise: colour in the shadows, upper threshold (x1e-4)")));
         k.add(n(post, "hybrid_dn_dark_chroma_lo", "1.5", Lang.t("Шумодав: цвет в тенях, нижний порог (x1e-4)", "Denoise: colour in the shadows, lower threshold (x1e-4)")));
+        k.add(n(post, "hybrid_dn_dark_tier", "0.1", Lang.t("Шумодав цвета в глубоких тенях: доля самых тёмных блоков, по уровню которых выбирается сила (0 — как раньше)",
+                "Colour denoise in the deep shadows: the share of the darkest blocks whose level picks its strength (0: as before)")));
         k.add(n(post, "hybrid_dn_edge_band", "6", Lang.t("Шумодав: цвет крайних пикселей кадра из соседней области, ширина полосы (0 — как раньше)",
                 "Denoise: the frame edge's colour from the area beside it, the band's width (0: as before)")));
         k.add(n(post, "hybrid_dn_huge_map", "4.3", Lang.t("Шумодав 200 МП: сила (карта силы; 1 — как при всех склеенных кадрах)", "Denoise 200 MP: strength (strength map; 1: as with every frame merged)")));

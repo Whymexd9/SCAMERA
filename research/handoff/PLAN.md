@@ -9319,4 +9319,27 @@ tried on a phone
 - Fix: scamdn/cbf edgeBandU in the last colour pass (modes 2 / 3): a pixel closer than 6 px (/ the output grid's scale) to an edge
   takes the U, V of the nearest pixel of the band's inner border, the mean of 7 along the edge; Y kept. ScamDenoise
   dn_edge_band (default 6, scam_dev "hybrid_dn_edge_band 0" = before). Check: tools/check_edge_band.py.
-- Not done: the merge itself at the border (kHybMergeMain1 stays untouched); the NLM / ms denoise routes keep the band.
+- The NLM route (chromadn/apply edgeBandU, hybrid shots on the "nlm" engine or the fallback of a failed SCAM denoise) takes the
+  same band colour (7 inner-border pixels along the edge). Check: tools/check_edge_band.py covers both shaders.
+- The merge's own share of the band: P418.
+
+### P417 - small colour blots in the deep shadows (owner, 2026-10-30: «На трубе снизу мелкие шумовые пятна»): DONE in code (host
+emulation), not tried on a phone
+- The colour tier follows the SNR at mu (mid-tones: 130 on SCA_20261030_102648, the day tier - 0.25 on levels 0 - 1, nothing on the
+  coarse levels), so the deep shadows (0.001, SNR ~10 with the measured read term) kept their 4 - 8 px colour blots; the merge-level
+  fix (P415) evens the noise but leaves them.
+- ScamDenoise: pDark = the dn_dark_tier quantile (0.1) of the 16 px block means; a dark tier at its SNR (the read term x the worker's
+  HYBRID NOISE CHECK DARK factor, ScamHybridBurst.lastNoiseDarkRead) where it is stronger: each colour pass runs at the stronger k,
+  and scamdn/cbf darkMixU brings sigma^2 back to the day tier's from 4 x pDark up (Y at and below pDark: the dark tier's). The colour
+  passes' read term takes the measured factor while the dark tier runs. LabFrame keeps pDark for the lab fragments.
+- lmcdn emulation of the owner's radiator: the blots on the radiator and its shadow gone, the day tier alone did nothing there.
+  Check: tools/check_edge_band.py (darkMixU unset = bit for bit; shadow at the pass's k, mid-tone at the day tier's).
+
+### P418 - the reject at the frame edge (owner, 2026-10-30: «Проверь реджекты, возможно из-за них на Oppo x8 Ultra вылазит эта
+полоса»): DONE in code (host replays), not tried on a phone
+- Stage dump of the owner's burst: a donor cell warped beyond its frame gets weight 0 (P12, right), and kHybDilate spread that 0 as
+  motion over 5 x 5 cells: every N frame refused on the outer cell row, 0.19 / 0.62 on the next ones (a 6 px band at 2 - 9 x the
+  colour noise and 2.5 x the luma noise on the dark right edge).
+- kHybReject writes -1 there with rejEdge 1 (sent by the app), kHybDilate does not spread it (its own weight stays 0); the merge
+  kernel untouched. Replay: the band 6 px -> 2 - 4 px (luma 2.5 x -> 1.2 - 1.45 x beyond 2 px), 16+ px in bit for bit (40+ px:
+  float rounding); the vivo hand burst unchanged. Check: tools/check_hybrid_stages.cpp (cells 2 - 3 from the edge 0.49 -> 0.98).

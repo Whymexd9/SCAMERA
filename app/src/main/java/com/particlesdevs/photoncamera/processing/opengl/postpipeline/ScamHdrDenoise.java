@@ -425,6 +425,8 @@ public final class ScamHdrDenoise extends Node {
             glProg.setVar("darkFade", 0.0008f, 0.003f);
             glProg.setVar("darkChroma", darkChroma[0], darkChroma[1]);
             glProg.setVar("signedU", signed ? 1 : 0);
+            // P416: the merge's edge band on this route too (hybrid shots: the "nlm" engine and the fallback of a failed SCAM denoise)
+            glProg.setVar("edgeBandU", hybrid ? Math.round(Math.max(0f, Math.min(32f, PreferenceKeys.hybridValue("dn_edge_band", 6f)))) * s : 0);
             WorkingTexture = out;
             glProg.drawBlocks(WorkingTexture);
             glProg.closed = true;

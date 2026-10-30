@@ -58,7 +58,15 @@ def dezip(donors, expected, t):
 
 def main():
     # the four sources of the merge program before P402 (fc15982a), as one stream: unchanged while the dezipper is off
-    got = hashlib.sha256(''.join(body(SRC, n) for n in ('kHybCommon', 'kHybHelpers', 'kHybMergeCommon', 'kHybMergeMain1')).encode()).hexdigest()
+    # P415: noiseU's deep-shadow read term (its uniform and one line, a no-op while darkReadU.x is 0: noiseDarkRead off) is the only
+    # change since; both lines must be there exactly once and are taken out of the stream
+    p415 = ('uniform vec3 darkReadU;      // P415 noiseDarkRead: x the read term\'s extra factor in noiseU, full below y, none from z (0: off)\n',
+            '    if(darkReadU.x>0.0)var+=darkReadU.x*fNoiseP[f].xy.y*g*g*(1.0-smoothstep(darkReadU.y,darkReadU.z,l));\n')
+    stream = ''.join(body(SRC, n) for n in ('kHybCommon', 'kHybHelpers', 'kHybMergeCommon', 'kHybMergeMain1'))
+    check(all(stream.count(line) == 1 for line in p415), 'P415: the deep-shadow read term in noiseU, once')
+    for line in p415:
+        stream = stream.replace(line, '')
+    got = hashlib.sha256(stream.encode()).hexdigest()
     check(got == MERGE_SOURCES, 'the merge program\'s sources unchanged without the dezipper (%s)' % got[:12])
     spec = re.search(r'inline std::string hybridPartialSpec\(.*?\n\}', SRC, re.S).group(0)
     check('+(t.dezipper>0.f?"#define DEZIP 1\\n":"")' in spec, 'hybridPartialSpec: DEZIP only for dezipper > 0')

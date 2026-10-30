@@ -906,6 +906,11 @@ public final class ScamHybridBurst implements ScamTransport {
     /** P77: noise model factor the worker measured and merged with (HYBRID NOISE CHECK "-> model xK"), 1 = HAL model kept. */
     public static volatile float lastNoiseFactor = 1f;
     /**
+     * P417: the deep shadows' read-term factor the worker measured (HYBRID NOISE CHECK DARK "read term xR", on top of
+     * lastNoiseFactor), for the colour denoise of the dark pixels; 1 = not measured.
+     */
+    public static volatile float lastNoiseDarkRead = 1f;
+    /**
      * P320: the DCG shot's noise the worker measured («HYBRID NOISE CHECK DCG: slope= hcg= lcg= knee=», normalised units):
      * {slope, high-gain offset, low-gain offset, knee}; null when the shot was not DCG or the worker could not measure it.
      */
@@ -1456,7 +1461,7 @@ public final class ScamHybridBurst implements ScamTransport {
         out.position(0);
         // Nothing of an earlier shot may apply to this one: sensor-grid output, no Bento, no clip flags, no frame map.
         lastOutputSize = new android.graphics.Point(w, h);
-        lastBentoApplied = false; lastBentoFactor = 1f; lastBentoUsClipped = 0f; lastNoiseFactor = 1f; lastRgbHalf = false;
+        lastBentoApplied = false; lastBentoFactor = 1f; lastBentoUsClipped = 0f; lastNoiseFactor = 1f; lastNoiseDarkRead = 1f; lastRgbHalf = false;
         lastDcgNoise = null;
         lastMergeFrames = Double.NaN;
         ScamRgb.dropClipFlags();

@@ -584,6 +584,8 @@ public final class ScamNeuralClient {
                 ScamHybridBurst.lastBentoUsClipped=reportNumber(rep,"HYBRID BENTO: applied","usClippedRatio=",0f);
                 final float noiseK=reportNumber(rep,"HYBRID NOISE CHECK:","-> model x",1f);
                 ScamHybridBurst.lastNoiseFactor=noiseK>=1f/16&&noiseK<=4f?noiseK:1f;
+                final float darkRead=reportNumber(rep,"HYBRID NOISE CHECK DARK:","read term x",1f); // P417
+                ScamHybridBurst.lastNoiseDarkRead=darkRead>=1f&&darkRead<=16f?darkRead:1f;
                 ScamHybridBurst.lastDcgNoise=dcgNoise(rep); // P320
                 ScamHybridBurst.lastRgbHalf=rgbHalf;}
             final long readStart=android.os.SystemClock.elapsedRealtime();
