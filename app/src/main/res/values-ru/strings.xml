@@ -88,7 +88,7 @@
     <string name="prefs_scam_motion_shutter_title">Выдержка не длиннее</string>
     <string name="prefs_scam_motion_shutter_summary">%s. Самая длинная выдержка в режиме «Движение». Короче — чётче движение, но шумнее (камера поднимает чувствительность, ISO).</string>
     <string name="prefs_scam_motion_flicker_title">Без мерцания ламп</string>
-    <string name="prefs_scam_motion_flicker_summary">Не даёт выдержке стать короче мерцания ламп, чтобы на фото не было полос.</string>
+    <string name="prefs_scam_motion_flicker_summary">Защищает от полос в неподвижной сцене. При обнаружении движения приоритет у короткой выдержки; полосы могут остаться.</string>
     <string name="prefs_scam_motion_frames_title">Кадров в склейке</string>
     <string name="prefs_scam_motion_frames_summary">Сколько кадров склеивать в режиме «Движение». Больше — меньше шума, но дольше; меньше — быстрее.</string>
     <string name="prefs_scam_motion_shasta_summary">Светлые кадры после нажатия в режиме «Движение»: меньше шума в тенях, но движущееся смазывается.</string>

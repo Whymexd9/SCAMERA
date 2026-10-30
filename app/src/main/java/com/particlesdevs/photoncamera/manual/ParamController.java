@@ -231,6 +231,7 @@ public class ParamController implements Observer {
     private final MotionShutter.Levels motionLevels = new MotionShutter.Levels();
     /** P111: the ceiling of the last viewfinder result (the setting lowered by the motion level). */
     private long motionCapNs;
+    private long motionBandLogNs;
     private boolean motionNoLevelLogged, motionUnsafeLogged;
     private int motionUnlearned;
     private volatile boolean motionTap, motionActive;
@@ -460,7 +461,10 @@ public class ParamController implements Observer {
                     levelBefore, motionLevels.level(), moving.subjectPxPerS, moving.cameraPxPerS, moving.moved, moving.textured, cap));
         // the top ISO: the rulers' range, at most what the HAL honours for AE-off requests (P27, paired with their requests)
         motionLimits.set(cap, motionMaxNs(), isoMin(), Math.min(isoMax(), captureController.honouredIsoCap()), flickerSafe,
-                evStops()).under(motionLevels.level() > 0 ? MotionShutter.MOTION_UNDER_STOPS : 0);
+                evStops()).under(motionLevels.level() > 0 ? MotionShutter.MOTION_UNDER_STOPS : 0)
+                .motionPriority(com.particlesdevs.photoncamera.settings.MotionMode.captureV2()
+                        && (motionLevels.level() > 0 || moving != null && moving.pxPerS() > 0
+                        && System.nanoTime() - moving.atNs >= 0 && System.nanoTime() - moving.atNs <= 250_000_000L));
         final boolean wasActive = motion.active();
         final long oldShutter = motion.shutterNs(), flickerBefore = motion.flickerHalfNs();
         final com.particlesdevs.photoncamera.capture.MotionMeter.Profile rows = com.particlesdevs.photoncamera.capture.MotionMeter.profile();
@@ -472,7 +476,13 @@ public class ParamController implements Observer {
         if (motion.suspectHalfNs() != suspectBefore && motion.suspectHalfNs() > 0)
             Log.i(TAG, "motion shutter: the AE's shutters suggest mains flicker (" + motion.suspectHalfNs() + " ns), the frames decide");
         if (motion.flickerHalfNs() != flickerBefore)
-            Log.i(TAG, "motion shutter: mains flicker, shutters in whole " + motion.flickerHalfNs() + " ns");
+            Log.i(TAG, "motion shutter: mains flicker " + motion.flickerHalfNs() + " ns; motion priority=" + motionLimits.motionPriority);
+        final long bandNow = System.nanoTime();
+        if (motionLimits.motionPriority && motion.bands() > MotionShutter.BAND_MAX
+                && bandNow - motionBandLogNs > 2_000_000_000L) {
+            motionBandLogNs = bandNow;
+            Log.i(TAG, "motion shutter: short exposure kept; row-band amplitude=" + motion.bands());
+        }
         if (motion.bandFree() && !bandFreeBefore)
             Log.i(TAG, "motion shutter: no lamp bands on the short frames, short shutters stay");
         if (!wasActive && !aeOff && exposure > cap && Double.isNaN(motion.target()) && !motionNoLevelLogged
@@ -486,7 +496,8 @@ public class ParamController implements Observer {
         if (action == MotionShutter.APPLY) {
             if (!wasActive)
                 Log.i(TAG, "motion shutter ceiling on: AE " + exposure + " ns at ISO " + iso + " -> " + motion.shutterNs()
-                        + " ns at ISO " + motion.iso() + " (ceiling " + motion.capNs(cap) + " ns, motion level " + motionLevels.level()
+                        + " ns at ISO " + motion.iso() + " (ceiling " + (motionLimits.motionPriority ? cap : motion.capNs(cap))
+                        + " ns, motion level " + motionLevels.level()
                         + String.format(java.util.Locale.ROOT, ", %.2f stops under, viewfinder gain)", Math.log(motion.underRatio()) / Math.log(2)));
             else if (motion.shutterNs() != oldShutter)
                 Log.i(TAG, "motion shutter " + oldShutter + " -> " + motion.shutterNs() + " ns at ISO " + motion.iso()

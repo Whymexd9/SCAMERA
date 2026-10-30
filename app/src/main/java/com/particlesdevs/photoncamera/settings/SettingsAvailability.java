@@ -204,21 +204,21 @@ public final class SettingsAvailability {
                 "pref_scam_hybrid_shasta_max_ratio", "pref_scam_hybrid_lut_sigma"))
             return Lang.t("С DCG кадры теней не снимаются: один DCG-кадр держит тени сам. Кадры светов — только если он клипует.",
                     "With DCG no shadow frames are taken: one DCG frame holds the shadows itself. Highlight frames only where it clips.");
-        final String bento = (motion ? text("pref_scam_hybrid_mm_bento", "1") : text("pref_scam_hybrid_bento", "2")).trim();
-        final boolean shasta = motion ? on("pref_scam_hybrid_mm_shasta", false) : on("pref_scam_hybrid_shasta", true);
+        if (motion && any(key, "pref_scam_hybrid_mm_bento", "pref_scam_hybrid_mm_shasta"))
+            return Lang.t("В режиме «Движение» брекетинг отключён.", "Exposure bracketing is disabled in Motion mode.");
+        final String bento = motion ? "0" : text("pref_scam_hybrid_bento", "2").trim();
+        final boolean shasta = !motion && on("pref_scam_hybrid_shasta", true);
         // «Кадры светов» off: no ultrashort frame is planned (HybridPlan) and the worker runs none of their passes
         if (bento.equals("0") && any(key, "pref_scam_hybrid_bento_frames", "pref_scam_hybrid_bento_validate",
                 "pref_scam_hybrid_bento_motion_max", "pref_scam_hybrid_bento_factor", "pref_scam_hybrid_bento_trigger",
                 "pref_scam_hybrid_bento_sigma", "pref_scam_hybrid_bento_ramp", "pref_scam_hybrid_bento_chroma_sigma", "pref_scam_hybrid_bento_scam"))
-            return motion ? Lang.t("Включите «Кадры светов» на странице «Движение» (Для опытных › Другие тонкие настройки › Кадры склейки).",
-                    "Turn on “Highlight frames” on the “Motion” page (For experts › More fine settings › Merge frames).")
+            return motion ? Lang.t("В режиме «Движение» кадры светов не снимаются.", "Motion mode takes no highlight brackets.")
                     : Lang.t("Включите «Кадры светов».", "Turn on “Highlight frames”.");
         // «Кадры теней» off: no long frame is planned. The whole category follows the switch in effect here, not by
         // android:dependency: in «Движение» the photo switch is greyed (the mode's own rules), which would grey its dependants too
         if (!shasta && any(key, "pref_scam_hybrid_shasta_mode", "pref_scam_hybrid_shasta_motion_max", "pref_scam_hybrid_shasta_frames",
                 "pref_scam_hybrid_shasta_ev", "pref_scam_hybrid_shasta_deep", "pref_scam_hybrid_shasta_auto_count", "pref_scam_hybrid_shasta_sharpness", "pref_scam_hybrid_shasta_max_ratio", "pref_scam_hybrid_lut_sigma"))
-            return motion ? Lang.t("Включите «Кадры теней» на странице «Движение» (Для опытных › Другие тонкие настройки › Кадры склейки).",
-                    "Turn on “Shadow frames” on the “Motion” page (For experts › More fine settings › Merge frames).")
+            return motion ? Lang.t("В режиме «Движение» кадры теней не снимаются.", "Motion mode takes no shadow brackets.")
                     : Lang.t("Включите «Кадры теней».", "Turn on “Shadow frames”.");
         // the worker reads the motion limit of the long frames under shastaForce only («Всегда»)
         if (key.equals("pref_scam_hybrid_shasta_motion_max") && !text("pref_scam_hybrid_shasta_mode", "2").trim().equals("2"))

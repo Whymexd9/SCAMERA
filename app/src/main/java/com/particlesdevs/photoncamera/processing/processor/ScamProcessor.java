@@ -110,6 +110,7 @@ public class ScamProcessor extends ProcessorBase {
     private com.particlesdevs.photoncamera.processing.opengl.postpipeline.LensFilter.Choice lensFilterAtPress;
     /** The film, LUT and «Цвет» at the press (ImageSaver.lookAtPress; null: the settings). */
     public com.particlesdevs.photoncamera.processing.opengl.postpipeline.ShotLook ownedLook;
+    public com.particlesdevs.photoncamera.settings.MotionMode.Snapshot ownedMotion;
     private com.particlesdevs.photoncamera.processing.opengl.postpipeline.ShotLook lookAtPress;
     /** P212g (W6 = M6): the mosaic white balance's route at the press of the queued shot (null: none). */
     public com.particlesdevs.photoncamera.processing.color.MosaicNeutralResolver.Press ownedMosaicWb;
@@ -172,9 +173,12 @@ public class ScamProcessor extends ProcessorBase {
         this.fullpairs = ownedPairs != null ? ownedPairs : IsoExpoSelector.fullpairs;
         Log.d(TAG, "start()");
         PreferenceKeys.beginShotProfile(hybridShot);
+        com.particlesdevs.photoncamera.settings.MotionMode.beginShot(ownedMotion);
+        ownedMotion = null;
         try {
             Run();
         } finally {
+            com.particlesdevs.photoncamera.settings.MotionMode.endShot();
             PreferenceKeys.endShotProfile();
         }
     }

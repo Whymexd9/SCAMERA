@@ -241,16 +241,38 @@ public class HybridSettingsTest {
         assertArrayEquals(new float[]{1,2},PreferenceKeys.hybridList("test_list",new float[]{1,2}),0f);
     }
 
+    @Test public void motionSnapshotSurvivesAToggleAndDoesNotAffectTheCameraThread() throws Exception {
+        PreferenceKeys.setMotionMode(true);
+        MotionMode.Snapshot shot = MotionMode.snapshot();
+        PreferenceKeys.setMotionMode(false);
+        MotionMode.beginShot(shot);
+        try {
+            assertTrue(MotionMode.on());
+            assertTrue(MotionMode.captureV2());
+            assertTrue(MotionMode.sharpPriority());
+            assertEquals(0f, PreferenceKeys.hybridValue("bento", 2f), 0f);
+            java.util.concurrent.atomic.AtomicBoolean other = new java.util.concurrent.atomic.AtomicBoolean(true);
+            Thread camera = new Thread(() -> other.set(MotionMode.on()));
+            camera.start(); camera.join();
+            assertFalse(other.get());
+        } finally { MotionMode.endShot(); }
+        assertFalse(MotionMode.on());
+    }
+
     @Test public void motionModeMergeValuesReachTheWorker() {
         // P86: the «Движение» values of boost / motion threshold / Bento went through hybridString, which knows no mode: the
         // worker merged with the photo values
         manager.set("default_scope","pref_scam_hybrid_boost_value","6");
         manager.set("default_scope","pref_scam_hybrid_motion_threshold","1.5");
         manager.set("default_scope","pref_scam_hybrid_bento","2");
+        manager.set("default_scope","pref_scam_hybrid_mm_bento","2");
+        manager.set("default_scope","pref_scam_hybrid_mm_shasta",true);
         PreferenceKeys.setMotionMode(true);
+        assertEquals(0f, PreferenceKeys.hybridValue("bento", 2f), 0f);
+        assertFalse(PreferenceKeys.hybridSwitch("shasta", true));
         String tuning=PreferenceKeys.hybridTuningText();
         assertTrue(tuning,tuning.contains("boost 10.0\n"));assertTrue(tuning,tuning.contains("motionThreshold 0.5\n"));
-        assertTrue(tuning,tuning.contains("bento 1.0\n"));assertTrue(tuning,tuning.contains("widenBelow 0.0\n"));
+        assertTrue(tuning,tuning.contains("bento 0.0\n"));assertTrue(tuning,tuning.contains("widenBelow 0.0\n"));
         // P344: «Движение» catches motion first - the hard knee and cdm 0.3 last (the worker keeps a key's last value)
         assertTrue(tuning,tuning.contains("rejKneeLo 0.1\nrejKneeHi 0.6\ncdm 0.3\n")&&tuning.lastIndexOf("cdm ")==tuning.lastIndexOf("cdm 0.3\n"));
         assertFalse(tuning,tuning.contains("dilateFloor 0.35\n"));
@@ -311,9 +333,9 @@ public class HybridSettingsTest {
         // P316: Auto's daylight rule and the boost's texture threshold read the F6 motion too
         assertNotNull(new SettingsAvailability(s).reason("pref_scam_hybrid_s61_min_motion"));
         assertNotNull(new SettingsAvailability(s).reason("pref_scam_hybrid_boost_threshold"));
-        // Motion mode's own Bento (Auto) uses the trigger
+        // Motion mode never takes highlight brackets, even with an old saved Auto value.
         Map<String,Object> m=new HashMap<>();m.put("pref_motion_mode",true);
-        assertNull(new SettingsAvailability(m).reason("pref_scam_hybrid_bento_trigger"));
+        assertNotNull(new SettingsAvailability(m).reason("pref_scam_hybrid_bento_trigger"));
     }
 
     /**
@@ -377,10 +399,10 @@ public class HybridSettingsTest {
         for(String k:bentoRows)assertNotNull(k,new SettingsAvailability(b).reason(k));
         assertNotNull(new SettingsAvailability(b).reason("pref_scam_hybrid_bento_trigger"));
         assertNotNull(new SettingsAvailability(b).mosaicStreams(true).reason("pref_scam_hybrid_bento_sigma"));
-        // «Движение»: its own Bento (Auto by default) rules them; the photo rows it replaces are greyed
+        // Motion never brackets; stale per-mode settings cannot enable the dependent controls.
         b.put("pref_motion_mode",true);
-        for(String k:bentoRows)assertNull(k,new SettingsAvailability(b).reason(k));
-        assertNull(new SettingsAvailability(b).reason("pref_scam_hybrid_bento_trigger"));
+        for(String k:bentoRows)assertNotNull(k,new SettingsAvailability(b).reason(k));
+        assertNotNull(new SettingsAvailability(b).reason("pref_scam_hybrid_bento_trigger"));
         for(String k:new String[]{"pref_scam_hybrid_zsl_frames","pref_scam_hybrid_bento","pref_scam_hybrid_shasta"})
             assertNotNull(k,new SettingsAvailability(b).reason(k));
         b.put("pref_scam_hybrid_mm_bento","0");
@@ -393,7 +415,7 @@ public class HybridSettingsTest {
             assertNull(k,new SettingsAvailability(s).reason(k));
             s.put("pref_scam_hybrid_shasta",false);assertNotNull(k,new SettingsAvailability(s).reason(k));
             s.put("pref_scam_hybrid_shasta",true);s.put("pref_motion_mode",true);assertNotNull(k,new SettingsAvailability(s).reason(k));
-            s.put("pref_scam_hybrid_mm_shasta",true);assertNull(k,new SettingsAvailability(s).reason(k));
+            s.put("pref_scam_hybrid_mm_shasta",true);assertNotNull(k,new SettingsAvailability(s).reason(k));
             s.remove("pref_motion_mode");s.remove("pref_scam_hybrid_mm_shasta");
         }
         // the rest of the category the same way, with no android:dependency on the photo switch («Движение» greys that one, which
@@ -404,7 +426,7 @@ public class HybridSettingsTest {
             assertNull(k,new SettingsAvailability(v).reason(k));
             v.put("pref_scam_hybrid_shasta",false);assertNotNull(k,new SettingsAvailability(v).reason(k));
             v.put("pref_scam_hybrid_shasta",true);v.put("pref_motion_mode",true);assertNotNull(k,new SettingsAvailability(v).reason(k));
-            v.put("pref_scam_hybrid_mm_shasta",true);assertNull(k,new SettingsAvailability(v).reason(k));
+            v.put("pref_scam_hybrid_mm_shasta",true);assertNotNull(k,new SettingsAvailability(v).reason(k));
         }
         assertNull(inflate().findPreference("pref_scam_hybrid_shasta_motion_max").getDependency());
         // the motion limit of the long frames: «Всегда» only

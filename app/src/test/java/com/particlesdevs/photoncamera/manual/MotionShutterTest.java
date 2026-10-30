@@ -9,6 +9,30 @@ import org.junit.Test;
 import java.util.ArrayDeque;
 
 public class MotionShutterTest {
+    @Test
+    public void bandsRemainMeasuredAfterPriorityOverridesLatchedFlicker() {
+        Sim loop = new Sim(true, 0.03);
+        loop.lamps = true;
+        loop.engage(20 * MS, 500);
+        for (int i = 0; i < 20; i++) loop.held();
+        assertEquals(10 * MS, loop.c.flickerHalfNs());
+        loop.l.motionPriority(true);
+        loop.l.settingNs = 707_107L;
+        for (int i = 0; i < 30; i++) loop.held();
+        assertEquals(707_107L, loop.c.shutterNs());
+        assertTrue(loop.c.bands() > MotionShutter.BAND_MAX);
+    }
+    @Test
+    public void actionExposureRemainsShortUnderALatchedSixtyHzLamp() {
+        Sim loop = new Sim(true, 0.03);
+        loop.l.motionPriority(true);
+        loop.l.settingNs = 707_107L;
+        for (int i = 0; i < 20; i++)
+            loop.frame(8_333_333L, 500, false, CONVERGED, MotionShutter.FLICKER_60HZ, loop.level(8_333_333L, 500));
+        assertTrue(loop.c.active());
+        assertEquals(707_107L, loop.c.shutterNs());
+        assertEquals(8_333_333L, loop.c.flickerHalfNs());
+    }
     private static final long MS = 1_000_000L;
     // X500 Pro Max: ISO range of the rulers 50..62509, ring frame 33.3 ms, ceiling 1/250 s
     private static final int ISO_MIN = 50, ISO_MAX = 62509;

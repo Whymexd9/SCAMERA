@@ -108,6 +108,8 @@ public final class DevKeys {
         final String pixel = Lang.t("Pixel 10 Pro / Pro XL", "Pixel 10 Pro / Pro XL");
         final String diag = Lang.t("Диагностика и A/B", "Diagnostics and A/B");
         List<Key> k = new ArrayList<>();
+        k.add(s(cap, "motion_capture_v2", true, Lang.t("Движение: короткая выдержка важнее мерцания, опорный кадр за два кадра до нажатия, ограничение возраста доноров", "Motion: short exposures before flicker avoidance, base two frames before the press, bounded donor age")));
+        k.add(s(merge, "motion_sharp_priority", true, Lang.t("Движение: приоритет резкости, строгий отбор доноров и сохранение яркостных деталей в областях отсева", "Motion: sharpness priority, strict donor selection and retained luminance detail in rejected regions")));
         // capture and session
         k.add(s(cap, "zsl_memfd_ring", true, Lang.t("ZSL-кольцо в общей памяти (memfd): кадры копируются сразу, камере возвращаются буферы. Выкл — старое кольцо из буферов камеры", "ZSL ring in shared memory (memfd): frames copied on arrival, buffers go back to the camera. Off: the old ring of camera buffers")));
         k.add(n(cap, "vf_min_fps", String.valueOf(com.particlesdevs.photoncamera.capture.ViewfinderFps.DEFAULT_FLOOR),

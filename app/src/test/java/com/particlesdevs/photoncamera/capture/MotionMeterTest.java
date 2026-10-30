@@ -97,6 +97,45 @@ public class MotionMeterTest {
     }
 
     @Test
+    public void motionBelowOneThumbnailPixelIsMeasured() {
+        MotionMeter.Sample s = measure(frame(0, 0, 1, 1), frame(4, 4, 1, 2));
+        assertNotNull(s);
+        assertEquals(120, s.cameraPxPerS, 40);
+    }
+
+    @Test
+    public void quadAndTetraThumbnailsSampleEveryColourPhase() {
+        for (int block : new int[]{2, 4}) {
+            short[] raw = new short[W * H];
+            for (int y = 0; y < H; y++) for (int x = 0; x < W; x++)
+                raw[y * W + x] = (short) (BLACK + 100 + 100 * (((y / block) & 1) * 2 + ((x / block) & 1)));
+            MotionMeter.Thumb t = MotionMeter.thumb(ShortBuffer.wrap(raw), W, H, W, BLACK, 0, block);
+            assertNotNull(t);
+            for (float value : t.v) assertEquals(1, value, 1e-6);
+        }
+    }
+
+    @Test
+    public void oneReliableSubjectTileInsideTheFocusRegionIsNotDiscarded() {
+        final int side = 64;
+        float[] a = new float[side * side], b = new float[side * side];
+        java.util.Arrays.fill(a, 1f);
+        java.util.Arrays.fill(b, 1f);
+        for (int y = 30; y < 38; y++) for (int x = 30; x < 38; x++) {
+            float v = 1f + (float) (0.4 * Math.sin(x * 1.1) * Math.cos(y * 0.7));
+            a[y * side + x] = v;
+            b[y * side + x + 1] = v;
+        }
+        MotionMeter.Thumb ta = new MotionMeter.Thumb(a, side, side, 0);
+        MotionMeter.Thumb tb = new MotionMeter.Thumb(b, side, side, FRAME);
+        MotionMeter.Sample s = MotionMeter.compare(ta, tb, FRAME, 123,
+                new MotionMeter.Region(28f / side, 28f / side, 40f / side, 40f / side));
+        assertNotNull(s);
+        assertEquals(480, s.subjectPxPerS, 60);
+        assertEquals(123, s.atNs);
+    }
+
+    @Test
     public void rowProfilesShowLampBandsNotASubject() {
         final float[] clean = rows(frame(0, 0, 1, 1));
         // a short frame under flickering lamps: 15 % bands

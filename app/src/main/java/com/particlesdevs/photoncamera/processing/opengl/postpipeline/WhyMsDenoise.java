@@ -100,11 +100,12 @@ public final class WhyMsDenoise extends Node {
         final float shadow = Math.max(0f, WhyTone.value("ms_shadow", 1.5f));
         final List<GLTexture> owned = new ArrayList<>();
         final float[] motion = motionBoost(WhyTone.value("ms_motion", 1f));
+        if (com.particlesdevs.photoncamera.settings.MotionMode.sharpPriority()) motion[0] = -0.75f;
         final java.nio.ByteBuffer eff = ScamHybridBurst.lastEffectiveFrames;
         final float effScale = effScale(ScamHybridBurst.lastEffectiveMedian);
         try {
             GLTexture effMap = null;
-            if (motion[0] > 0f && eff != null && !Float.isNaN(effScale) && eff.capacity() == input.mSize.x * input.mSize.y) {
+            if ((motion[0] != 0f || motion[1] != 0f) && eff != null && !Float.isNaN(effScale) && eff.capacity() == input.mSize.x * input.mSize.y) {
                 effMap = ScamDenoise.effectiveFramesTexture(input.mSize, eff);
                 owned.add(effMap);
             }

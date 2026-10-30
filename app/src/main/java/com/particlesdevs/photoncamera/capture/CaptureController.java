@@ -502,6 +502,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     private com.particlesdevs.photoncamera.processing.opengl.postpipeline.LensFilter.Choice mShutterLensFilter;
     /** The film, LUT and «Цвет» at the press (ShotLook.now), carried to the shot's processing as its lens filter. */
     private com.particlesdevs.photoncamera.processing.opengl.postpipeline.ShotLook mShutterLook;
+    private com.particlesdevs.photoncamera.settings.MotionMode.Snapshot mShutterMotion;
     /** P212g (W6): the still-only session's viewfinder neutrals (its normal mode), and whether this session feeds them. */
     private final com.particlesdevs.photoncamera.processing.color.MosaicNeutralResolver.Ring mVfNeutrals =
             new com.particlesdevs.photoncamera.processing.color.MosaicNeutralResolver.Ring();
@@ -4350,6 +4351,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             mShutterMosaicWb = mosaicWbAtPress(); // P212g (W6 = M6)
             mShutterLensFilter = com.particlesdevs.photoncamera.processing.opengl.postpipeline.LensFilter.Choice.now();
             mShutterLook = com.particlesdevs.photoncamera.processing.opengl.postpipeline.ShotLook.now();
+            mShutterMotion = com.particlesdevs.photoncamera.settings.MotionMode.snapshot();
             if (mVivoSdkRawSession != null) {
                 mBackgroundHandler.post(this::captureVivoSdkFullRes);
                 return true;
@@ -4945,8 +4947,39 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         // P365 (review): a RAW10 / RAW12 stream's frame too, unpacked (meterSamples)
         if (img == null || mPayloadBad || !mPreviewLayouts.isEmpty()) return;
         final java.nio.ByteBuffer samples = meterSamples(img);
-        if (samples != null)
-            RawLevel.observe(samples, img.getWidth(), img.getHeight(), mMeterStride, img.getTimestamp(), levels.meanBlack(), levels.white);
+        if (samples != null) {
+            final CaptureResult newest = mPreviewCaptureResult;
+            motionRegion(result != null ? result : newest, c);
+            final Long newestTs = newest == null ? null : newest.get(CaptureResult.SENSOR_TIMESTAMP);
+            final long observed = MotionPolicy.observedAtNs(System.nanoTime(), img.getTimestamp(), newestTs == null ? 0 : newestTs);
+            final int block = com.particlesdevs.photoncamera.processing.MosaicStream.block();
+            RawLevel.observe(samples, img.getWidth(), img.getHeight(), mMeterStride, img.getTimestamp(), levels.meanBlack(), levels.white,
+                    observed, block);
+        }
+    }
+
+    private void motionRegion(CaptureResult result, CameraCharacteristics characteristics) {
+        MotionMeter.region(0, 0, 0, 0);
+        if (result == null) return;
+        android.graphics.Rect active = mCroppedRawSession ? CroppedRaw.of(result, physicalID, logicalID)
+                : characteristics.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
+        if (active == null || active.isEmpty()) return;
+        android.graphics.Rect subject = null;
+        final android.hardware.camera2.params.Face[] faces = result.get(CaptureResult.STATISTICS_FACES);
+        if (faces != null) for (android.hardware.camera2.params.Face face : faces) {
+            android.graphics.Rect bounds = face.getBounds();
+            if (face.getScore() >= 50 && (subject == null || (long) bounds.width() * bounds.height() > (long) subject.width() * subject.height()))
+                subject = bounds;
+        }
+        final android.hardware.camera2.params.MeteringRectangle[] af = result.get(CaptureResult.CONTROL_AF_REGIONS);
+        if (subject == null && af != null) for (android.hardware.camera2.params.MeteringRectangle r : af) {
+            android.graphics.Rect bounds = r.getRect();
+            if (r.getMeteringWeight() > 0 && !bounds.isEmpty()
+                    && (long) bounds.width() * bounds.height() < 0.5 * active.width() * active.height()) { subject = bounds; break; }
+        }
+        if (subject != null) MotionMeter.region((subject.left - active.left) / (float) active.width(),
+                (subject.top - active.top) / (float) active.height(), (subject.right - active.left) / (float) active.width(),
+                (subject.bottom - active.top) / (float) active.height());
     }
 
     /** P365 (review): the unpacked packed frame of meterSamples (reused; released with the camera), its frame and row stride. */
@@ -7304,6 +7337,22 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
     /** P27: the Hybrid's ring selection (see drainZslNormalFrames); closes the frames it does not keep. */
     private void selectHybridRing(List<RingFrame> rawImages, java.util.Map<Long,TotalCaptureResult> metadata, int requestedCount) {
+        if (com.particlesdevs.photoncamera.settings.MotionMode.captureV2()) {
+            rawImages.sort(java.util.Comparator.comparingLong(RingFrame::getTimestamp).reversed());
+            final int skip = Math.min(2, rawImages.size() - 1);
+            for (int i = 0; i < skip; i++) rawImages.remove(0).close();
+            final long anchor = rawImages.get(0).getTimestamp();
+            final MotionMeter.Sample motion = MotionMeter.sample();
+            final boolean fresh = motion != null && System.nanoTime() - motion.atNs >= 0
+                    && System.nanoTime() - motion.atNs <= 250_000_000L;
+            final long window = MotionPolicy.windowNs(fresh ? motion.pxPerS() : Double.NaN);
+            for (java.util.Iterator<RingFrame> it = rawImages.iterator(); it.hasNext();) {
+                RingFrame f = it.next();
+                if (anchor - f.getTimestamp() > window) { f.close(); it.remove(); }
+            }
+            Log.i("SCAM_HDR", "motion ring: anchor " + anchor + ", " + skip + " frames before press, window "
+                    + window / 1_000_000 + " ms, meter " + (fresh ? "fresh" : "unavailable"));
+        }
         RingFrame base = null;
         for (RingFrame image : rawImages) if (base == null || image.getTimestamp() > base.getTimestamp()) base = image;
         // P100: with CROPPED_RAW every frame says which part of the sensor it holds; frames of another crop (the in-sensor zoom
@@ -7374,7 +7423,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             Log.w("SCAM_HDR", "hybrid ZSL: " + stale + " frames at the newest exposure dropped: older than a gap of more than "
                     + maxGap / 1_000_000 + " ms in the ring");
         }
-        steadiestFirst(exact, metadata, requestedCount);
+        if (!com.particlesdevs.photoncamera.settings.MotionMode.captureV2()) steadiestFirst(exact, metadata, requestedCount);
         List<RingFrame> keep = new ArrayList<>(exact.subList(0, Math.min(exact.size(), Math.max(1, requestedCount))));
         for (RingFrame image : exact.subList(keep.size(), exact.size())) rest.add(image);
         final int fill = Math.min(Math.max(1, requestedCount), 8);
@@ -7700,6 +7749,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         saver.planNote = pslPlan != null ? pslPlan.description : zsl != null ? zsl.plan.description : null;
         saver.lensFilterAtPress = mShutterLensFilter;
         saver.lookAtPress = mShutterLook;
+        saver.motionAtPress = mShutterMotion;
         saver.setFrameCount(count);
         saver.fullResSeries = seriesMode ? total : 0; // P190: the merge keeps a series whole
         saver.fullResRequested = requested;
@@ -8163,6 +8213,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             // SCAM HDR's plan: four N, short S and ES, long L (the N normally come from the ZSL ring); the hybrid
             // takes its own N count from the ring and its Bento / Shasta requests from HybridPlan.
             int denoiseFrameCount = 4, shortFrameCount = 2, longFrameCount = 1;
+            if (com.particlesdevs.photoncamera.settings.MotionMode.on()) shortFrameCount = longFrameCount = 0;
             if (manualPsl) {
                 // as an empty ring: every frame after the shutter, the viewfinder keeps running, RAWs routed by their timestamp
                 mHybridZslCapture = false;
@@ -8311,7 +8362,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                         plan=HybridPlan.single(nNs,nIso);
                     }
                 } else {
-                    plan=manualPsl && stockPlan!=null
+                    plan=com.particlesdevs.photoncamera.settings.MotionMode.on()
+                            ? HybridPlan.autoExposure(Math.min(4, PreferenceKeys.getHybridZslFrames()))
+                            : manualPsl && stockPlan!=null
                             ? HybridPlan.manualLong(stockPlan.shutter(0),stockPlan.iso(0),mLastZslClipFraction,mCameraCharacteristics,mExposureLimits)
                             : stockPlan!=null
                             ? HybridPlan.buildNormalBack(stockPlan.shutter(0),stockPlan.iso(0),mLastZslClipFraction,mCameraCharacteristics,4,mExposureLimits,
@@ -8321,7 +8374,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 } finally { HybridPlan.setMotionCap(0); HybridPlan.setDeepShadow(0f); HybridPlan.setShadow(Float.NaN); }
                 // P219: a full-resolution session (Pixel / Snapdragon MAXIMUM_RESOLUTION) asks for one long frame; its colour block
                 // is the stream's (0 here: «Наш ремозаик» off keeps every frame for the binned merge)
-                if(mFullResSession) plan=plan.withLongFrames(HybridPlan.fullResLongFrames(true,0,PreferenceKeys.isHybridMosaicRemosaic()));
+                if(mFullResSession && !com.particlesdevs.photoncamera.settings.MotionMode.on())
+                    plan=plan.withLongFrames(HybridPlan.fullResLongFrames(true,0,PreferenceKeys.isHybridMosaicRemosaic()));
                 plan=plan.withNote(ettrNote()); // P377: the shot's ETTR (the stamp's line, the log)
                 hybridPlanHolder[0]=plan;
                 Log.i("SCAM_CAPTURE",plan.description);
@@ -8418,6 +8472,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             mImageSaver.planNote = hybridPlanHolder[0] != null ? hybridPlanHolder[0].description : null;
             mImageSaver.lensFilterAtPress = mShutterLensFilter;
             mImageSaver.lookAtPress = mShutterLook;
+            mImageSaver.motionAtPress = mShutterMotion;
             final ScamCaptureSequence scamSequence = hybridPlanHolder[0]!=null
                         ? (hybridZsl ? ScamCaptureSequence.hybridZsl(captures,mPendingZslNormalFrames,scamZslShutterTimestamp)
                                      : ScamCaptureSequence.hybridFuture(captures,scamZslShutterTimestamp))

@@ -35,6 +35,7 @@ public class SaverImplementation {
     public com.particlesdevs.photoncamera.processing.opengl.postpipeline.LensFilter.Choice lensFilterAtPress;
     /** The shot's film, LUT and «Цвет» at the press (ImageSaver.lookAtPress). */
     public com.particlesdevs.photoncamera.processing.opengl.postpipeline.ShotLook lookAtPress;
+    public com.particlesdevs.photoncamera.settings.MotionMode.Snapshot motionAtPress;
     private int imageFormat;
     public final ProcessingEventsListener processingEventsListener;
 

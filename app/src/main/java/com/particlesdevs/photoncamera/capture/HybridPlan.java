@@ -130,19 +130,26 @@ public final class HybridPlan {
     public final String description;
 
     private HybridPlan(List<Request> requests, long nShutterNs, int nIso, String description) {
+        if (com.particlesdevs.photoncamera.settings.MotionMode.on()) {
+            List<Request> normals = new ArrayList<>();
+            for (Request r : requests) if (r.role == ImageFrame.CaptureRole.NORMAL) normals.add(r);
+            if (normals.size() != requests.size()) description = "motion N-only: " + normals;
+            requests = normals;
+        }
         this.requests = Collections.unmodifiableList(requests);
         this.nShutterNs = nShutterNs; this.nIso = nIso; this.description = description;
     }
 
     /** Preferences of the plan: the hybrid's own pref_scam_hybrid_* (scam_dev.txt "hybrid_<key>" overrides), never SCAM HDR's. */
-    public static boolean shastaEnabled() { return PreferenceKeys.hybridSwitch("shasta", true); }
+    public static boolean shastaEnabled() { return !com.particlesdevs.photoncamera.settings.MotionMode.on() && PreferenceKeys.hybridSwitch("shasta", true); }
     /** P313 (owner, 2026-10-21: «длинных достаточно 2-3, 5 не нужны»): at most 3, a stored 4 or 5 takes 3. */
     public static int bracketCount() { return Math.max(0, Math.min(3, Math.round(PreferenceKeys.hybridValue("shasta_frames", 3f)))); }
     /** P68: Shasta "always": the frames are taken whatever their ratio to N (above 1.2) and merged unless they moved (worker). */
     public static boolean shastaForced() { return PreferenceKeys.getHybridShastaMode() == 2; }
     public static double bracketEv() { return Math.max(1, Math.min(4, PreferenceKeys.hybridValue("shasta_ev", 1f))); }
     /** 0 off, 1 auto (needs clipping in the buffered frame), 2 force. */
-    public static int bentoMode() { return Math.max(0, Math.min(2, Math.round(PreferenceKeys.hybridValue("bento", 2f)))); }
+    public static int bentoMode() { return com.particlesdevs.photoncamera.settings.MotionMode.on() ? 0
+            : Math.max(0, Math.min(2, Math.round(PreferenceKeys.hybridValue("bento", 2f)))); }
     /** Ultrashort exposure = N / factor; SCAM ultrashort_tet_factor 8 (default). */
     public static double ultrashortFactor() { return Math.max(2, Math.min(16, PreferenceKeys.hybridValue("bento_factor", 8f))); }
     /**

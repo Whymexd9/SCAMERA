@@ -19,19 +19,22 @@ precision highp usampler2D;
 uniform usampler2D EffMap;      // effective-frame codes on the output grid
 uniform int factorU;            // output pixels per map texel (unset: 2)
 uniform float effRefU;          // median code
+uniform float sharpRefU;        // coverage reference for motion detail; 0 uses the median
 uniform float effMaxU;          // sigma clamp (unset: 3)
 uniform int noEffU;             // 1: no effective-frame map (unset 0: the map, as before)
 uniform float flatU;            // P306: f without a map (the 200 MP shot, ScamDenoise dn_huge_map; unset 0: 1)
 uniform sampler2D GainMap;      // lens-shading gains (r, g_even, g_odd, b) as ScamRgb uploaded them (lscU.x > 0)
 uniform vec2 lscU;              // x: 1 / reference gain (0: no lens-shading term), y: cap of g^2
 uniform vec2 fullInvU;          // 1 / size of the output grid (GainMap coordinates, as scamrgb samples it)
-out float Output;
+out vec2 Output;
 void main() {
     int F = factorU > 0 ? factorU : 2;
     float ref = effRefU > 0.0 ? effRefU : 64.0;
+    float sharpRef = sharpRefU > 0.0 ? sharpRefU : ref;
     float hi = effMaxU > 0.0 ? effMaxU : 3.0;
     ivec2 o = ivec2(gl_FragCoord.xy) * F;
     float f = flatU > 0.0 ? flatU : 1.0;
+    float rejected = 0.0;
     if (noEffU == 0) {
         ivec2 last = textureSize(EffMap, 0) - 1;
         float s = 0.0;
@@ -42,9 +45,11 @@ void main() {
                 // approximate reciprocal (ref / ref slightly above 1 would strengthen the median pixels)
                 float r = (v > 0u && float(v) < ref) ? clamp(sqrt(ref / float(v)), 1.0, hi) : 1.0;
                 s += r * r;
+                if (v > 0u) rejected += clamp(1.0 - float(v) / sharpRef, 0.0, 1.0);
             }
         }
         f = s / float(F * F);
+        rejected /= float(F * F);
     }
     if (lscU.x > 0.0) {
         // the mean pixel position of this texel's block, in scamrgb's coordinates (pixel * inverseSize)
@@ -53,5 +58,5 @@ void main() {
         // NaN or g <= 1: 1 (a broken site never weakens or blows up the filter)
         f *= g > 1.0 ? min(g * g, max(lscU.y, 1.0)) : 1.0;
     }
-    Output = f;
+    Output = vec2(f, rejected);
 }

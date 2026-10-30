@@ -120,7 +120,7 @@
     <string name="prefs_scam_motion_shutter_title">Shutter at most</string>
     <string name="prefs_scam_motion_shutter_summary">%s. Longest shutter in Motion mode. Shorter: sharper motion but more noise (the camera raises the sensitivity, ISO).</string>
     <string name="prefs_scam_motion_flicker_title">No lamp flicker</string>
-    <string name="prefs_scam_motion_flicker_summary">Keeps the shutter no shorter than the lamp flicker, so the photo has no stripes.</string>
+    <string name="prefs_scam_motion_flicker_summary">Avoids lamp bands while the scene is still. When motion is detected, short exposures take priority and bands may remain.</string>
     <string name="prefs_scam_motion_frames_title">Frames to merge</string>
     <string name="prefs_scam_motion_frames_summary">Frames merged in Motion mode. Higher: less noise but slower; lower: faster.</string>
     <string name="prefs_scam_motion_shasta_summary">Bright frames after the press in Motion mode: less shadow noise, but moving things smear.</string>

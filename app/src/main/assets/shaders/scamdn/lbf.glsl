@@ -25,6 +25,7 @@ uniform vec2 noiseU;
 uniform float thrU;             // outlier threshold * 16
 uniform int stageU;             // 0: filter only; 1: filter + revert
 uniform float rfU;              // revert factor of this level
+uniform float sharpU;           // motion mode: retain reconstruction detail where donors were rejected
 uniform int modeU;              // 0: den; 1: den - Base; 2: level-0 output (den + Up2(LowFreq.g), U, V)
 uniform int useYinU;
 uniform int useMapU;
@@ -106,6 +107,10 @@ void main() {
     if (stageU == 1) {
         float rf = rfU * (f > 8.0 ? 0.35355339 : f > 4.0 ? 0.5 : f > 2.0 ? 0.70710678 : 1.0);
         den = d + rf * (texelFetch(Recon, p, 0).r - d);
+    }
+    if (sharpU > 0.0 && useMapU != 0) {
+        float rejected = texture(StrMap, (vec2(p) + 0.5) * mapInvU).g;
+        den = mix(den, texelFetch(Recon, p, 0).r, sharpU * smoothstep(0.1, 0.8, rejected));
     }
     if (modeU == 1) den -= texelFetch(Base, p, 0).r;
     if (modeU == 2) {

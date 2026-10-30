@@ -9389,3 +9389,40 @@ emulation), not tried on a phone
 - Kept (with a reason): the tier tables, multipliers and safety rows - they are the resolve denoise's own parameters (the
   reference app keeps the same tables in code behind its one factor; our «Сила шумоподавления» is that factor); despeckle and the
   dark fade (the reference app's hot pixels sit in its merge); ms_motion (ours).
+
+### P422 - motion capture and sharpness priority (owner, 2026-10-30: «Делаем это всё», «Приоритет максимальной резкости»): DONE in code and basic capture on OPPO PHY110
+- Motion is N-only in every HybridPlan constructor, including manual / FULLRES fallback. Old Bento / Shasta settings and
+  developer overrides cannot enable brackets in this mode. Photo keeps its own settings.
+- Capture v2 anchors the newest eligible ring frame minus two, keeps that base through processing, and limits older donors
+  to 64 RAW pixels of measured displacement (16-250 ms). No new frames are requested for a usable ZSL ring. An empty ring
+  still uses the existing N-only post-shutter fallback; this fallback cannot provide a pre-shutter anchor.
+- Subpixel flow is checked even at zero integer displacement. A reliable focus / face tile can represent a small moving
+  subject. Thumbnails cover the full CFA period for Bayer / Quad / Tetra. Measurement freshness uses source-frame time,
+  accounts for sensor-relative lag, and never subtracts an absolute sensor timestamp from the host clock.
+- Motion exposure takes priority over mains flicker and the ISO ceiling (noise / underexposure allowed). Row-band amplitude
+  remains measured after flicker has latched. This does not guarantee band-free LED/display photos.
+- Sharpness rejection now applies to 8/4/2-frame bursts, protects the base, and uses a threshold of at least 0.85 of the
+  base/positive-median score. Rejected areas retain more luma detail in resolve and pyramid denoise; chroma filtering stays.
+  Single-base / short merges use absolute coverage when available. No changes to kHybMergeMain1 or sensor modes.
+- The Motion policy is frozen at the press and carried through ImageSaver / DefaultSaver into a thread-local processing
+  scope, released in finally. Switching Motion off while a shot processes cannot change that shot or the camera thread.
+- Hidden rollback keys: motion_capture_v2 and motion_sharp_priority, both default on. They are listed in the developer UI.
+  A file-based A/B override was not observed taking effect on this phone, so no device A/B quality claim is made.
+- Host: 164 targeted Java tests pass; settings model and motion / ms-denoise / protected-merge GPU checks pass. Full CI-selected
+  suite: 2266 tests, four EditorViewModelTest failures reproduced unchanged on main 5582cfbd on Windows. Tests were not disabled.
+- Device: local QA APK 31193, SHA-256 d88621f2220e582b7a4af849f958da83fe8b3e2156553bdc010508a06f03bce1. PHY110,
+  serial fb27034c, camera 2: actual base 988701 ns at ISO 6400, N-2 anchor, futureRequests=0, bracketed=0, ultrashort=0,
+  successful JPEG SCA_20261030_193426.jpg. Fast display motion retained one frame; a prior capture retained two.
+  Switch-off during processing also saved SCA_20261030_194722.jpg with Motion denoise retained.
+  No claim of 8/4/2 queue behavior or Quad / Tetra quality validation on this phone. Not a CI delivery APK; nothing pushed.
+
+### P423 - compare SCAMERA and original Google demosaic on motion RAW (owner, 2026-10-30: «Покажи разницу ... на фото»): DONE as a host comparison
+- tools/compare_motion_demosaic.py executes the supplied Google OpenCL stages directly and the verbatim SCAMERA Bayer function
+  on the same base RAW. Constant-colour calibration passes for both. Same WB / matrix / display curve, no denoise or sharpening;
+  Google WB-before and WB-after and SCAMERA anisotropy 0.6 / 1 are kept separately. This is not the full GCam photo pipeline.
+- Two Moving bursts 172851 / 172902 rendered. Actual 100% hand / cloth crops are saved in the sibling evidence directory
+  motion-demosaic-comparison-20261030/SCAMERA-vs-Google-Moving.png. No clear finger-edge sharpness improvement was observed,
+  so production demosaic was not replaced. No sharp ground truth or measured image-quality ranking is claimed.
+- New Drive bursts 173124 / 173152 downloaded concurrently to D:/burst/Moving (1661009920 bytes each). RAW bounds and
+  reread SHA-256 verified against local transfer receipts. NCH v12 Bayer 4096x3072: 20 N + 3 L + 3 ES and 8 N respectively.
+  MotionMeter replay completed on both; no external source checksum or new colour calibration was supplied.

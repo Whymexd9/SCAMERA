@@ -236,7 +236,7 @@ public class SettingsModelCheck {
         // motion limit of the long frames «Всегда»; the highlight kernel the native mosaic merge; the edge colour from 0.5
         Map<String,Object> fr=new HashMap<>();active(fr,"pref_scam_hybrid_bento_frames");active(fr,"pref_scam_hybrid_zsl_frames");
         fr.put("pref_scam_hybrid_bento","0");inactive(fr,"pref_scam_hybrid_bento_frames");inactive(fr,"pref_scam_hybrid_bento_ramp");
-        fr.put("pref_motion_mode",true);active(fr,"pref_scam_hybrid_bento_frames");inactive(fr,"pref_scam_hybrid_zsl_frames");
+        fr.put("pref_motion_mode",true);inactive(fr,"pref_scam_hybrid_bento_frames");inactive(fr,"pref_scam_hybrid_zsl_frames");
         inactive(fr,"pref_scam_hybrid_bento");inactive(fr,"pref_scam_hybrid_shasta");inactive(fr,"pref_scam_hybrid_shasta_sharpness");
         Map<String,Object> lu=new HashMap<>();inactive(lu,"pref_scam_hybrid_lut_sigma");active(lu,"pref_scam_hybrid_shasta_motion_max");
         lu.put("pref_scam_hybrid_shasta_ev","2");active(lu,"pref_scam_hybrid_lut_sigma");

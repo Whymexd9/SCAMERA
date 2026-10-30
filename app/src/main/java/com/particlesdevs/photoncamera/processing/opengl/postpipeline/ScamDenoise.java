@@ -788,7 +788,8 @@ public final class ScamDenoise extends Node {
                 // a map is made for it also when the worker sent no effective-frame map
                 final float[] lsc = lscTerm(pipeline);
                 if (eff != null || lsc != null || hugeMap > 1f) {
-                    final GLTexture strMap = tex(owned, half(size0), GLFormat.DataType.FLOAT_16, 1, GL_LINEAR);
+                    final GLTexture strMap = tex(owned, half(size0), GLFormat.DataType.FLOAT_16,
+                            com.particlesdevs.photoncamera.settings.MotionMode.sharpPriority() ? 2 : 1, GL_LINEAR);
                     // Both samplers are always bound, each on a unit of its own: an unset one reads unit 0, where the
                     // other sampler type would sit (GL_INVALID_OPERATION at the draw). The 1 x 1 placeholders are never
                     // read (noEffU 1 / lscU.x 0).
@@ -801,6 +802,11 @@ public final class ScamDenoise extends Node {
                     glProg.setTexture("GainMap", gainTex);
                     glProg.setVar("factorU", 2 * s);
                     glProg.setVar("effRefU", effRef[0]);
+                    final float medianFrames = ScamHybridBurst.lastEffectiveMedian;
+                    // A two-frame or base-only shot can have code 64 everywhere; relative coverage alone hides that loss.
+                    glProg.setVar("sharpRefU", com.particlesdevs.photoncamera.settings.MotionMode.sharpPriority()
+                            && Float.isFinite(medianFrames) && medianFrames > 0f
+                            ? effRef[0] * Math.max(1f, 4f / medianFrames) : 0f);
                     glProg.setVar("effMaxU", effMax);
                     glProg.setVar("noEffU", eff != null ? 0 : 1);
                     glProg.setVar("flatU", eff != null ? 0f : hugeMap); // P306: the 200 MP flat strength (unset 0: 1)
@@ -1166,6 +1172,7 @@ public final class ScamDenoise extends Node {
         glProg.setVar("thrU", thr);
         glProg.setVar("stageU", stage);
         glProg.setVar("rfU", rf);
+        glProg.setVar("sharpU", com.particlesdevs.photoncamera.settings.MotionMode.sharpPriority() ? 0.85f : 0f);
         glProg.setVar("modeU", mode);
         glProg.setVar("useYinU", useYin ? 1 : 0);
         glProg.setVar("useMapU", strMap != null ? 1 : 0);

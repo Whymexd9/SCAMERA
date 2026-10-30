@@ -915,7 +915,7 @@ public class PreferenceKeys {
         for (String[] k : TUNING_KEYS) {
             Float dev = scamDevValue("hybrid_" + k[1]);
             // P86: in «Движение» the mode's own merge values (boost, motion threshold, Bento), as hybridValue gives them
-            String v = dev != null ? dev.toString()
+            String v = motion && ("bento".equals(k[1]) || "shasta".equals(k[1])) ? "0.0" : dev != null ? dev.toString()
                     : motion && MotionMode.replaces(k[1]) ? Float.toString(hybridValue(k[1], 0f)) : storedTuningValue(k[1]);
             // P68: a key with an app default (HYBRID_DEFAULTS) is written also when unset; any other keeps the worker default
             if ((v == null || v.isEmpty()) && HYBRID_DEFAULTS.containsKey(k[1])) v = HYBRID_DEFAULTS.get(k[1]).toString();
@@ -1086,6 +1086,7 @@ public class PreferenceKeys {
             out.append("usDaylightEv ").append(Math.max(0f, daylightEv)).append('\n');
         if (incoherent != com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.US_INCOHERENT)
             out.append("usIncoherent ").append(Math.max(0f, incoherent)).append('\n');
+        if (MotionMode.sharpPriority()) out.append("widenBelow 0\nbaseDemosaicAniso 1\n");
         return out.toString();
     }
     /**
@@ -1130,6 +1131,7 @@ public class PreferenceKeys {
      * ratio limit) or 2 always (default: the frames skip both and fall back only on motion, pref_scam_hybrid_shasta_motion_max).
      */
     public static int getHybridShastaMode() {
+        if (isMotionMode()) return 0;
         if (!hybridSwitch("shasta", true)) return 0;
         return Math.max(1, Math.min(2, Math.round(hybridValue("shasta_mode", 2f))));
     }
@@ -1287,6 +1289,7 @@ public class PreferenceKeys {
     private static float clamp01(float v) { return Float.isNaN(v) ? 0f : Math.max(0f, Math.min(1f, v)); }
 
     public static float hybridValue(String key, float fallback) {
+        if (isMotionMode() && ("bento".equals(key) || "shasta".equals(key))) return 0f;
         Float override = scamDevValue("hybrid_" + key);
         if (override != null) return override;
         // P86: in the «Движение» mode its own value of the key (pref_scam_hybrid_mm_<key>, the mode's default)
@@ -1295,6 +1298,7 @@ public class PreferenceKeys {
     }
     /** SCAM Hybrid switch pref_scam_hybrid_&lt;key&gt; (Boolean or "0"/"1"); scam_dev.txt "hybrid_&lt;key&gt; 0/1" overrides it. */
     public static boolean hybridSwitch(String key, boolean fallback) {
+        if (isMotionMode() && ("bento".equals(key) || "shasta".equals(key))) return false;
         Float override = scamDevValue("hybrid_" + key);
         if (override != null) return override > 0f;
         if (MotionMode.replaces(key) && isMotionMode()) return hybridStoredSwitch(MotionMode.PREFIX + key, MotionMode.DEFAULTS.get(key) > 0f);
@@ -1313,6 +1317,8 @@ public class PreferenceKeys {
 
     /** P86: the «Движение» photo mode (global switch beside the settings gear). */
     public static boolean isMotionMode() {
+        Boolean shot = MotionMode.shotOn();
+        if (shot != null) return shot;
         try {
             return preferenceKeys != null && preferenceKeys.settingsManager.getBoolean("default_scope", MotionMode.PREF, false);
         } catch (RuntimeException e) {

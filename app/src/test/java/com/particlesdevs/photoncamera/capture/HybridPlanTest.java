@@ -46,6 +46,17 @@ public class HybridPlanTest {
     }
     @After public void cleanup() { prefs.close(); appStatic.close(); }
 
+    @Test public void motionCannotReenableBracketsThroughSavedOrManualSettings() {
+        prefs.when(PreferenceKeys::isMotionMode).thenReturn(true);
+        pinned.put("bento", 2f);
+        pinned.put("shasta", 1f);
+        assertEquals(0, HybridPlan.bentoMode());
+        assertFalse(HybridPlan.shastaEnabled());
+        HybridPlan plan = HybridPlan.buildNormalBack(8_333_333L, 500, .2f, camera(6400), 4, null);
+        assertFalse(plan.requests.isEmpty());
+        for (HybridPlan.Request r : plan.requests) assertEquals(ImageFrame.CaptureRole.NORMAL, r.role);
+    }
+
     private static CameraCharacteristics camera(int isoMax) {
         CameraCharacteristics c = mock(CameraCharacteristics.class);
         when(c.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE)).thenReturn(new Range<>(10_000L, 500_000_000L));

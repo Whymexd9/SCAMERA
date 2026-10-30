@@ -286,6 +286,10 @@ public final class ScamHybridBurst implements ScamTransport {
             normal.add(promoted);
             Log.w("SCAM_HDR", "hybrid: no N frame arrived, frame " + promoted.number + " (" + promoted.getCaptureRole() + ") is the base");
         }
+        if (com.particlesdevs.photoncamera.settings.MotionMode.on()) {
+            bracketed.clear();
+            shorts.clear();
+        }
         if (dcg && !bracketed.isEmpty()) {
             // P320: a DCG frame holds the high- and the low-gain read of one exposure; a longer frame brings motion, not range
             Log.i("SCAM_HDR", "hybrid DCG: " + bracketed.size() + " bracketed frame(s) left out (no exposure brackets for DCG)");
@@ -327,7 +331,9 @@ public final class ScamHybridBurst implements ScamTransport {
         final int start = moment ? from : 0;
         final long anchor = normal.get(start).timestamp;
         ImageFrame best = normal.get(start); double bestScore = -1;
-        for (int i = start; i < Math.min(start + (moment ? MOTION_BASE_CANDIDATES : BASE_CANDIDATES), normal.size()); i++) {
+        final int candidates = moment && com.particlesdevs.photoncamera.settings.MotionMode.captureV2() ? 1
+                : moment ? MOTION_BASE_CANDIDATES : BASE_CANDIDATES;
+        for (int i = start; i < Math.min(start + candidates, normal.size()); i++) {
             ImageFrame f = normal.get(i);
             if (anchor - f.timestamp > (moment ? MOTION_BASE_WINDOW_NS : BASE_WINDOW_NS)) break;
             if (Float.isNaN(f.sharpness)) f.computeSharpness();
@@ -432,7 +438,8 @@ public final class ScamHybridBurst implements ScamTransport {
     private java.util.Set<ImageFrame> blurredNormals(List<ImageFrame> normal, ImageFrame base) {
         final java.util.Set<ImageFrame> out = new java.util.HashSet<>();
         final float ratio = PreferenceKeys.hybridValue("sharp_select", SHARP_SELECT);
-        if (!(ratio > 0f) || normal.size() <= SHARP_KEEP) return out;
+        final boolean sharpMotion = com.particlesdevs.photoncamera.settings.MotionMode.sharpPriority();
+        if (!(ratio > 0f) || normal.size() <= (sharpMotion ? 1 : SHARP_KEEP)) return out;
         final float[] scores = new float[normal.size()];
         int baseIndex = -1;
         for (int i = 0; i < scores.length; i++) {
@@ -441,7 +448,9 @@ public final class ScamHybridBurst implements ScamTransport {
             scores[i] = f.sharpness;
             if (f == base) baseIndex = i;
         }
-        final List<Integer> drop = blurredDonors(scores, baseIndex, Math.min(ratio, 1f), SHARP_KEEP, SHARP_MAX_SHARE);
+        final List<Integer> drop = sharpMotion
+                ? com.particlesdevs.photoncamera.capture.MotionPolicy.blurredDonors(scores, baseIndex, Math.max(0.85f, Math.min(ratio, 1f)))
+                : blurredDonors(scores, baseIndex, Math.min(ratio, 1f), SHARP_KEEP, SHARP_MAX_SHARE);
         if (drop.isEmpty()) return out;
         final StringBuilder log = new StringBuilder("hybrid sharpness: median ").append(medianFinite(scores))
                 .append(", below x").append(ratio).append(" left out:");

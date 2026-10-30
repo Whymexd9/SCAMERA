@@ -54,12 +54,17 @@ public final class RawLevel {
      * CaptureController.meterSamples) of sensor timestamp {@code timestampNs}.
      */
     static void observe(java.nio.ByteBuffer samples, int width, int height, int rowStride, long timestampNs, float black, float white) {
+        observe(samples, width, height, rowStride, timestampNs, black, white, System.nanoTime(), 1);
+    }
+
+    static void observe(java.nio.ByteBuffer samples, int width, int height, int rowStride, long timestampNs, float black, float white,
+                        long observedAtNs, int mosaicBlock) {
         if (samples == null) return;
         try {
             ShortBuffer s = samples.duplicate().order(ByteOrder.nativeOrder()).asShortBuffer();
             double m = mean(s, width, height, rowStride / 2, black, white);
             if (!Double.isNaN(m)) latest = new Sample(m, timestampNs);
-            MotionMeter.observe(s, width, height, rowStride / 2, black, timestampNs); // P111
+            MotionMeter.observe(s, width, height, rowStride / 2, black, timestampNs, observedAtNs, mosaicBlock);
         } catch (RuntimeException ignored) {
             // a frame closed under us or an odd layout: no level from it
         }

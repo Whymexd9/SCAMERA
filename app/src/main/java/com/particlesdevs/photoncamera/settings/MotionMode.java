@@ -22,11 +22,11 @@ import java.util.Map;
  *       the photo mode's own indoor shutter);</li>
  *   <li>P111, after the stock vivo «Моментальный снимок» (motion deblur): the ceiling drops by how fast the scene moves
  *       (capture/MotionMeter on the ring's RAW, MotionShutter.Levels), the moment is the frame on the screen at the touch of the
- *       shutter, the merge's base is that frame, ring frames with a longer shutter stay out, the frames after the shutter keep
+ *       shutter (capture v2 anchors two ring frames earlier), ring frames with a longer shutter stay out, the frames after the shutter keep
  *       the ceiling, the moving subject keeps its detail (no widened base kernel), lamp flicker is checked on the frames;</li>
  *   <li>the hybrid takes its own values for the merge (pref_scam_hybrid_mm_&lt;key&gt;, the «Движение» group of the Hybrid
- *       settings) instead of the photo values: fewer N frames (a short time span, a fast merge), no Shasta (long frames smear
- *       what moves), Bento only where the frame clips, the strongest motion robustness.</li>
+ *       settings) instead of the photo values: fewer N frames, a speed-limited donor window, no bracketed frames,
+ *       and the strongest motion robustness. Sharpness priority reduces luma filtering where donors were rejected.</li>
  * </ul>
  * The mode flag is global (not per module); its merge values follow the module profiles like every hybrid setting.
  */
@@ -34,14 +34,43 @@ public final class MotionMode {
     public static final String PREF = "pref_motion_mode";
     /** Prefix (after pref_scam_hybrid_) of the mode's own merge values. */
     static final String PREFIX = "mm_";
+    private static final ThreadLocal<Snapshot> SHOT = new ThreadLocal<>();
+
+    public static final class Snapshot {
+        final boolean on, captureV2, sharpPriority;
+        Snapshot(boolean on, boolean captureV2, boolean sharpPriority) {
+            this.on = on;
+            this.captureV2 = captureV2;
+            this.sharpPriority = sharpPriority;
+        }
+    }
+
+    public static Snapshot snapshot() {
+        Snapshot s = SHOT.get();
+        if (s != null) return s;
+        final boolean enabled = on();
+        return new Snapshot(enabled, enabled && PreferenceKeys.scamDevSwitch("motion_capture_v2", true),
+                enabled && PreferenceKeys.scamDevSwitch("motion_sharp_priority", true));
+    }
+
+    public static void beginShot(Snapshot snapshot) {
+        SHOT.set(snapshot != null ? snapshot : snapshot());
+    }
+
+    public static void endShot() { SHOT.remove(); }
+
+    static Boolean shotOn() {
+        Snapshot s = SHOT.get();
+        return s == null ? null : s.on;
+    }
 
     /** The hybrid keys the mode replaces and their defaults (values of the «Движение» group). */
     static final Map<String, Float> DEFAULTS;
     static {
         Map<String, Float> d = new HashMap<>();
-        d.put("zsl_frames", 8f);        // 8 of the ring's newest frames: ~0.13-0.27 s span, a fast merge
+        d.put("zsl_frames", 8f);        // up to 8 ring frames, before the temporal and sharpness filters
         d.put("shasta", 0f);            // switch: no bracketed long frames
-        d.put("bento", 1f);             // ultrashort frames only where the buffered frame clips
+        d.put("bento", 0f);             // no extra-short frames in motion mode
         d.put("boost_value", 10f);      // motion robustness boost at its maximum
         d.put("motion_threshold", 0.5f); // tiles count as moving from 0.5 RAW px of local flow (photo: 1.5)
         d.put("motion_boost", 1f);      // switch: the robustness boost on
@@ -54,6 +83,18 @@ public final class MotionMode {
 
     public static boolean on() {
         return PreferenceKeys.isMotionMode();
+    }
+
+    public static boolean captureV2() {
+        Snapshot s = SHOT.get();
+        if (s != null) return s.captureV2;
+        return on() && PreferenceKeys.scamDevSwitch("motion_capture_v2", true);
+    }
+
+    public static boolean sharpPriority() {
+        Snapshot s = SHOT.get();
+        if (s != null) return s.sharpPriority;
+        return on() && PreferenceKeys.scamDevSwitch("motion_sharp_priority", true);
     }
 
     public static void set(boolean value) {

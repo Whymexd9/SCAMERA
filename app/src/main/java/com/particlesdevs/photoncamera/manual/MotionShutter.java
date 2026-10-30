@@ -123,7 +123,7 @@ public final class MotionShutter {
     public static final class Limits {
         long settingNs, maxNs;
         int isoMin, isoMax;
-        boolean flickerSafe;
+        boolean flickerSafe, motionPriority;
         double evStops, underStops;
 
         public Limits set(long settingNs, long maxNs, int isoMin, int isoMax, boolean flickerSafe, double evStops) {
@@ -134,6 +134,12 @@ public final class MotionShutter {
             this.flickerSafe = flickerSafe;
             this.evStops = evStops;
             this.underStops = 0;
+            this.motionPriority = false;
+            return this;
+        }
+
+        public Limits motionPriority(boolean value) {
+            motionPriority = value;
             return this;
         }
 
@@ -156,6 +162,7 @@ public final class MotionShutter {
         private int votes50, votes60, bandHits, bandMisses;
         private boolean bandFree;
         private float[] refProfile;
+        private double bands = Double.NaN;
         private long usedLevelTs, lastLevelAtNs;
         private final long[] recTs = new long[RECORDS], recNs = new long[RECORDS];
         private final int[] recIso = new int[RECORDS];
@@ -170,6 +177,7 @@ public final class MotionShutter {
         public long suspectHalfNs() { return suspectHalfNs; }
         /** Short frames showed no row bands: the suggested flicker is cleared for the session. */
         public boolean bandFree() { return bandFree; }
+        public double bands() { return bands; }
         public double target() { return target0; }
 
         /**
@@ -189,6 +197,7 @@ public final class MotionShutter {
             flickerHalfNs = suspectHalfNs = 0;
             bandFree = false;
             refProfile = null;
+            bands = Double.NaN;
             usedLevelTs = lastLevelAtNs = usedProfileTs = 0;
             java.util.Arrays.fill(recTs, 0);
         }
@@ -252,7 +261,7 @@ public final class MotionShutter {
                 final double at0 = level / Math.pow(2, l.evStops);
                 target0 = Double.isNaN(target0) ? at0 : target0 + TARGET_EMA * (at0 - target0);
             }
-            final long cap = capNs(l.settingNs);
+            final long cap = l.motionPriority ? l.settingNs : capNs(l.settingNs);
             if (cap <= 0 || ns <= 0 || aeIso <= 0 || Double.isNaN(target0) || !settled) {
                 over = 0;
                 return NONE;
@@ -273,7 +282,7 @@ public final class MotionShutter {
         private int hold(int frame, double level, Limits l, long nowNs) {
             // a suggested flicker no frame has decided on in time: latched (no stripes rather than a guess)
             if (suspectHalfNs > 0 && flickerHalfNs == 0 && nowNs - engagedAtNs > BAND_WAIT_NS) latchSuspect();
-            final long cap = capNs(l.settingNs);
+            final long cap = l.motionPriority ? l.settingNs : capNs(l.settingNs);
             if (cap <= 0) {
                 drop();
                 return RELEASE;
@@ -324,8 +333,10 @@ public final class MotionShutter {
             final int top = Math.max(l.isoMin, l.isoMax);
             final long frame = Math.max(cap, l.maxNs);
             long s = Math.round(product / top / Math.pow(2, l.underStops) * 1e9);
-            s = Math.max(cap, Math.min(frame, s));
-            s = l.underStops > 0 ? quantizeDown(s, flickerHalfNs) : quantize(s, flickerHalfNs, frame);
+            s = l.motionPriority ? cap : Math.max(cap, Math.min(frame, s));
+            // Keep measuring bands, but a mains latch must not lengthen an action exposure.
+            final long period = l.motionPriority && cap < flickerHalfNs ? 0 : flickerHalfNs;
+            s = l.motionPriority || l.underStops > 0 ? quantizeDown(s, period) : quantize(s, period, frame);
             shutterNs = Math.max(1, s);
             iso = (int) Math.max(l.isoMin, Math.min(top, Math.round(product / (shutterNs / 1e9))));
         }
@@ -390,8 +401,8 @@ public final class MotionShutter {
                     refProfile = profile;
                 return;
             }
+            bands = recAeOff[f] ? bandAmplitude(profile, refProfile) : Double.NaN;
             if (suspectHalfNs <= 0 || flickerHalfNs > 0 || !recAeOff[f] || multiple(recNs[f], suspectHalfNs)) return;
-            final double bands = bandAmplitude(profile, refProfile);
             if (Double.isNaN(bands)) {
                 latchSuspect(); // no band-free reference to judge by
             } else if (bands > BAND_MAX) {
