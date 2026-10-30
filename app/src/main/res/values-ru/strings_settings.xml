@@ -477,8 +477,6 @@
     <string name="prefs_raw_stream_format_summary">%s. В каком виде камера отдаёт RAW. Авто — 16 бит, если есть, иначе RAW10 или RAW12.</string>
     <string name="prefs_expert_sensor_screen_title">RAW-метаданные</string>
     <string name="prefs_expert_sensor_screen_summary">Динамический уровень чёрного и белого</string>
-    <string name="prefs_noise_model_screen_title">Модель шума сенсора</string>
-    <string name="prefs_noise_model_screen_summary">Профиль шума сенсора, импорт и экспорт</string>
     <string name="prefs_noise_model_note_summary">Выбранный профиль (кроме «Авто») заменяет шум камеры в склейке, в шумодаве SHDR, в выравнивании и в DNG.</string>
     <string name="prefs_theme_gallery_title">Тема галереи</string>
     <string name="prefs_viewfinder_settings_screen_title">Видоискатель</string>
@@ -946,8 +944,6 @@
     <string name="prefs_scam_hybrid_artifacts_screen_summary">Восстановление пересветов, кайма и полосы у ярких краёв</string>
     <string name="prefs_scam_hybrid_why_cct_sat_title">Общая насыщенность матрицы</string>
     <string name="prefs_scam_hybrid_why_cct_sat_summary">Насыщенность цветовой матрицы уже при чтении RAW, яркость сохраняется. Больше — все цвета сочнее, меньше — приглушённее.</string>
-    <string name="prefs_scam_hybrid_ms_screen_title">Пирамидальный шумодав</string>
-    <string name="prefs_scam_hybrid_ms_screen_summary">Дополнительная многоуровневая чистка зерна и цветных пятен после склейки</string>
     <string name="prefs_scam_hybrid_ms_general_category_title">Общие настройки</string>
     <string name="prefs_scam_hybrid_ms_luma_category_title">Яркостный шум</string>
     <string name="prefs_scam_hybrid_ms_chroma_category_title">Цветовой шум</string>

@@ -9363,3 +9363,12 @@ emulation), not tried on a phone
   «Насыщенность матрицы» acts under AgX only (its summary says so).
 - Check: tools/check_ark_vibrance.py (every strength 0 bit for bit no vibrance under SKY 0 / 1, TONE_OP 0 / 1; each term on its
   colours; the skin's share of the gain 0.30 with protection 1, 1.0 with 0; the light tones not on a near-white's cast).
+
+### P420 - the denoise settings audit (owner, 2026-10-30: «Перепроверь наши параметры шумодава, удали лишние которые у нас не
+используются»): DONE
+- Every visible row of the denoise screens (the merge's noise model and kernel, «Шумоподавление», SNR / multipliers / safety
+  screens, the luma 5 x 4 and colour 4 x 3 tables, the pyramid denoise, the NLM strengths, «Сила шумоподавления») is read and
+  reaches a shader or the worker on its route (the dn_ rows under «multiscale», post_luma / post_chroma under NLM -
+  SettingsAvailability greys the other engine's rows). Every hidden scam_dev denoise key in DevKeys is read; every worker tuning
+  field the app sends is used.
+- Removed: the strings of the gone «Модель шума сенсора» and «Пирамидальный шумодав» screens (no reference left).

@@ -477,8 +477,6 @@
     <string name="prefs_raw_stream_format_summary">%s. How the camera delivers RAW. Auto: 16-bit if offered, otherwise RAW10 or RAW12.</string>
     <string name="prefs_expert_sensor_screen_title">RAW metadata</string>
     <string name="prefs_expert_sensor_screen_summary">Dynamic black and white levels</string>
-    <string name="prefs_noise_model_screen_title">Sensor noise model</string>
-    <string name="prefs_noise_model_screen_summary">Sensor noise profile, import and export</string>
     <string name="prefs_noise_model_note_summary">The chosen profile (anything but Auto) replaces the camera noise in the merge, the SHDR denoise, the alignment and the DNG.</string>
     <string name="prefs_theme_gallery_title">Gallery theme</string>
     <string name="prefs_viewfinder_settings_screen_title">Viewfinder</string>
@@ -947,8 +945,6 @@
     <string name="prefs_scam_hybrid_artifacts_screen_summary">Clipped highlight recovery, fringes and bands at bright edges</string>
     <string name="prefs_scam_hybrid_why_cct_sat_title">Matrix saturation</string>
     <string name="prefs_scam_hybrid_why_cct_sat_summary">Saturation of the colour matrix right at the RAW stage, the brightness kept. Higher: all colours more vivid; lower: more muted.</string>
-    <string name="prefs_scam_hybrid_ms_screen_title">Pyramid denoise</string>
-    <string name="prefs_scam_hybrid_ms_screen_summary">Extra multi-scale cleaning of grain and colour blotches after the merge</string>
     <string name="prefs_scam_hybrid_ms_general_category_title">General</string>
     <string name="prefs_scam_hybrid_ms_luma_category_title">Luminance noise</string>
     <string name="prefs_scam_hybrid_ms_chroma_category_title">Colour noise</string>
