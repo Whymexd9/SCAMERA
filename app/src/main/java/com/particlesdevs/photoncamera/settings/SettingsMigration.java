@@ -829,6 +829,28 @@ public final class SettingsMigration {
             e.putInt(CCT_SAT_REV, 1);
             markOnly = true;
         }
+        // P419: «Цвет»'s shadow / light vibrance and its skin protection went into the reference app's vibrance rows: a set value
+        // adds to «Сочность в тенях» / «Сочность в светах» (from its default 0.25) once; the old rows' values are dropped
+        if (!values.containsKey(VIBRANCE_REV)) {
+            final String pre = ScamHybridKeys.PREFIX;
+            final double sh = PreferenceNumber.read(values.get(pre + "colour_vib_shadows"), 0),
+                    hl = PreferenceNumber.read(values.get(pre + "colour_vib_highlights"), 0);
+            if (sh != 0) {
+                final float v = (float) Math.max(-1, Math.min(1, PreferenceNumber.read(values.get(pre + "why_vibrance_shadows"), 0) + sh));
+                ModuleProfiles.put(e, pre + "why_vibrance_shadows", values.get(pre + "why_vibrance_shadows") instanceof String
+                        ? PreferenceNumber.format(v, true) : (Object) v);
+                changed = true;
+            }
+            if (hl != 0) {
+                final float v = (float) Math.max(0, Math.min(1.5, 0.25 + hl));
+                ModuleProfiles.put(e, pre + "why_vibrance_hl_str", PreferenceNumber.format(v, true));
+                changed = true;
+            }
+            for (String k : new String[]{"colour_vib_shadows", "colour_vib_highlights", "colour_skin_protect"})
+                if (values.containsKey(pre + k)) { e.remove(pre + k); changed = true; }
+            e.putInt(VIBRANCE_REV, 1);
+            markOnly = true;
+        }
         // P164: the multiscale finish denoise's stored engine value has its own name; any value but "nlm" is that engine
         final Object engine = values.get(ScamHybridKeys.PREFIX + "dn_engine");
         if (engine instanceof String && !"nlm".equals(engine) && !"multiscale".equals(engine)) {
@@ -875,6 +897,8 @@ public final class SettingsMigration {
     /** P394: marker of the one-time move of a stored «Клип ячейки 2×2 целиком» (on, the former default) to off. */
     static final String CELL_CLIP_REV = "pref_scam_hybrid_cell_clip_rev";
 
+    /** P419: marker of the one-time move of the «Цвет» shadow / light vibrance into the reference app's vibrance rows. */
+    static final String VIBRANCE_REV = "pref_scam_hybrid_vibrance_rev";
     /** P407: marker of the one-time move of the matrix saturation 1.25 to 1.1. */
     static final String CCT_SAT_REV = "pref_scam_hybrid_cct_sat_rev";
 

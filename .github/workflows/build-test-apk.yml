@@ -117,6 +117,8 @@ jobs:
           LIBGL_ALWAYS_SOFTWARE=1 /tmp/tetra-gpu-check/bin/python tools/check_why_noise.py
           LIBGL_ALWAYS_SOFTWARE=1 /tmp/tetra-gpu-check/bin/python tools/check_why_sky.py
           LIBGL_ALWAYS_SOFTWARE=1 /tmp/tetra-gpu-check/bin/python tools/check_vibrance_hl.py
+          # P419: the reference app's vibrance in one gain (every strength 0 bit for bit no vibrance; each term on its own colours)
+          LIBGL_ALWAYS_SOFTWARE=1 /tmp/tetra-gpu-check/bin/python tools/check_ark_vibrance.py
           # P395: the saturated orange-yellows towards yellow (skin, oranges, pale colours, greens, blues bit for bit)
           LIBGL_ALWAYS_SOFTWARE=1 /tmp/tetra-gpu-check/bin/python tools/check_yellow_hue.py
           # P398: pale light at the top of the tone towards white (blue near-whites and saturated colours bit for bit)

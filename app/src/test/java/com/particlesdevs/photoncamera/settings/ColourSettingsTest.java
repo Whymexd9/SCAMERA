@@ -156,8 +156,8 @@ public class ColourSettingsTest {
                 "pref_scam_hybrid_why_shadow_str", "pref_scam_hybrid_why_highlight_str", "pref_scam_hybrid_why_weight_mid",
                 "pref_scam_hybrid_why_weight_center", "pref_scam_hybrid_why_blend_smoothness", "pref_scam_hybrid_why_ef_coarse",
                 "pref_scam_hybrid_why_sharp_gf_lc", "pref_scam_hybrid_why_sharp_film_grain", "pref_scam_hybrid_colour_mono",
-                "pref_scam_hybrid_colour_mix_red_hue", "pref_scam_hybrid_colour_grade_mids_str", "pref_scam_hybrid_colour_skin_protect",
-                "pref_scam_hybrid_colour_gamut", "pref_scam_hybrid_colour_hue_lock", "pref_scam_hybrid_colour_vib_shadows"};
+                "pref_scam_hybrid_colour_mix_red_hue", "pref_scam_hybrid_colour_grade_mids_str", "pref_scam_hybrid_why_skin_protect",
+                "pref_scam_hybrid_colour_gamut", "pref_scam_hybrid_colour_hue_lock", "pref_scam_hybrid_why_vibrance_hl_str"};
         final String[] acting = {"pref_scam_hybrid_colour_warmth", "pref_scam_hybrid_colour_tint", "pref_scam_hybrid_colour_keep_warm",
                 "pref_scam_hybrid_colour_keep_cool", "pref_scam_hybrid_colour_cal_red_hue", "pref_scam_hybrid_why_ae_target",
                 "pref_scam_hybrid_why_hl_overflow", "pref_scam_hybrid_why_sharp_gain", "pref_scam_hybrid_why_clarity",

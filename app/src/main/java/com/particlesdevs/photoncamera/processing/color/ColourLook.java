@@ -32,6 +32,8 @@ public final class ColourLook {
     public float warmth, tint, keepWarm, keepCool;
     // saturation (0..100 %, -100..100, 0..100 %; -1..1, -1..1)
     public float skinProtect, skinHue, skinEven, vibShadows, vibHighlights;
+    /** P419: true with scam_dev "ark_vibrance 0" - the skin protection also holds back the overall / sky / green vibrance here. */
+    public boolean protectsVibrance;
     /** Mixer: band * 3 + {0 hue, 1 saturation, 2 lightness}, -100..100. */
     public final float[] mix = new float[24];
     /** Grading per zone: hue on the colour wheel in degrees (0 red, 60 yellow, 120 green ...), strength 0..100. */
@@ -44,7 +46,8 @@ public final class ColourLook {
 
     /** No shader stage to run: every G1 / G2 value at its default. */
     public boolean shaderNeutral() {
-        if (skinProtect != 0f || skinHue != 0f || skinEven != 0f || vibShadows != 0f || vibHighlights != 0f) return false;
+        // P419: the skin protection alone changes nothing (it holds back the other rows' positive gains; the vibrance has its own)
+        if ((protectsVibrance && skinProtect != 0f) || skinHue != 0f || skinEven != 0f || vibShadows != 0f || vibHighlights != 0f) return false;
         for (float v : mix) if (v != 0f) return false;
         for (float s : gradeStr) if (s != 0f) return false;
         return mono == 0 && hueLock == 0 && gamut == 0f;

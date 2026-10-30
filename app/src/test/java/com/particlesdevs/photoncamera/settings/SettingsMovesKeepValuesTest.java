@@ -41,8 +41,13 @@ public class SettingsMovesKeepValuesTest {
     private static final String[][] COLUMNS = {{"defaultValue", ANDROID}, {"minValue", APP}, {"maxValue", APP}, {"stepPerUnit", APP},
             {"isFloat", APP}, {"entries", ANDROID}, {"entryValues", ANDROID}, {"dependency", ANDROID}, {"persistent", ANDROID},
             {"inputType", ANDROID}, {"selectable", ANDROID}};
-    /** The rows the 2026-10-27 layout removed on purpose (no stored value, no action left). */
-    private static final List<String> REMOVED = java.util.Collections.singletonList("photo_style_lut");
+    /**
+     * The rows removed on purpose: the 2026-10-27 layout's empty LUT link (no stored value, no action left); P419 the «Цвет» shadow /
+     * light vibrance and its skin protection, duplicates of the reference app's vibrance rows (SettingsMigration moves their values
+     * into why_vibrance_shadows / why_vibrance_hl_str once; why_skin_protect is the one protection).
+     */
+    private static final List<String> REMOVED = java.util.Arrays.asList("photo_style_lut", "pref_scam_hybrid_colour_vib_shadows",
+            "pref_scam_hybrid_colour_vib_highlights", "pref_scam_hybrid_colour_skin_protect");
 
     private static File src(String path) {
         File f = new File(path);

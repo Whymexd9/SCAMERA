@@ -386,6 +386,9 @@ public final class DevKeys {
         // P393: the light-tone vibrance's shape for pale colour (why/combine.glsl vibHlShapeU)
         k.add(s(post, "vibrance_hl_shape", true, Lang.t("Тон: насыщенность светлых тонов не усиливает оттенок баланса белого на бледных стенах, потолке, фасадах (выкл — как раньше, P341)",
                 "Tone: the light-tone vibrance leaves the white balance's tint of pale walls, ceilings and facades as it is (off: as before, P341)")));
+        // P419: the reference app's vibrance in one gain (why/combine.glsl ARK_VIBRANCE)
+        k.add(s(post, "ark_vibrance", true, Lang.t("Цвет: сочность как в Арк — одна формула с защитой кожи (выкл — прежние формы P341 / P404 и сочность «Цвета»)",
+                "Colour: the vibrance as in Ark, one gain with the skin protection (off: the former P341 / P404 forms and the look's vibrance)")));
         // P378: the WHY tone's sky term (WhySky / WhySkyMask; why/combine.glsl SKY)
         k.add(n(post, "hybrid_why_sky", "1.0", Lang.t("Тон: небо (облака нейтральные, небо ниже и объёмнее, без белой пелены на облаках; в контровом свете яркость неба не меняется), сила; 0 — выкл., как раньше",
                 "Tone: the sky (neutral clouds, a lower and more modelled sky, no white veil on the clouds; a backlit sky keeps its brightness), strength; 0 = off, as before")));

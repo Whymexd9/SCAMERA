@@ -427,7 +427,39 @@ public final class WhyTone {
     }
 
     static float vibranceHl() {
-        return Math.max(0f, value("vibrance_hl", 1.0f));
+        // P419: the visible «Сочность в светах» in the reference app's units (its config 0.25 = P407's factor 1), x the dev factor
+        return Math.max(0f, value("vibrance_hl", 1.0f) * value("vibrance_hl_str", VIBRANCE_HL_STR) / VIBRANCE_HL_STR);
+    }
+
+    /** P419: the default «Сочность в светах» (the reference app's config: pref_vibrance_hl_strength_key 0.25). */
+    static final float VIBRANCE_HL_STR = 0.25f;
+
+    /**
+     * P419 (owner, 2026-10-30: «Исправь настройку вайбранса, можешь взять её из Арк камеры»): the reference app's vibrance in one gain
+     * (why/combine ARK_VIBRANCE). Ours was four stacked forms - the overall / sky / green gain tapered by (1 - 2 chroma), P404's
+     * saturated / mid / shadow terms with a skin protection of their own, P341's light tones behind a hidden factor and «Цвет»'s
+     * shadow / light vibrance with a second skin protection (0 by default: the sky and green gains reached faces). scam_dev.txt
+     * "ark_vibrance 0" = the forms before.
+     */
+    public static boolean arkVibranceOn() {
+        return PreferenceKeys.scamDevSwitch("ark_vibrance", true);
+    }
+
+    /** P419: why/combine vibArkU - saturated, light tones (the reference's strength), mid-tones, shadows. */
+    static float[] vibranceArkUniform() {
+        return new float[]{value("vibrance_saturated", 0f), VIBRANCE_HL_STR * vibranceHl(), value("vibrance_mid", 0f),
+                value("vibrance_shadows", 0f)};
+    }
+
+    /** P419: why/combine vibSkinU - skin protection 0..1, the skin hue centre (radians), its lower luminance, its saturation shift. */
+    static float[] vibranceSkinUniform() {
+        return new float[]{skinProtect(), (float) Math.toRadians(value("skin_hue_center", 41.2f)), value("skin_luma_min", 0.16f),
+                value("skin_sat_shift", 0f)};
+    }
+
+    /** P419: «Защита кожи в сочности» 0..1 (the reference app's 1 by default), the one skin protection of the vibrance and the look. */
+    public static float skinProtect() {
+        return Math.max(0f, Math.min(1f, value("skin_protect", 1f)));
     }
 
     /**
@@ -625,6 +657,7 @@ public final class WhyTone {
      * are 0 (no define).
      */
     static float[][] arkVibrance() {
+        if (arkVibranceOn()) return null;   // P419: inside ARK_VIBRANCE
         final float sat = value("vibrance_saturated", 0f), mid = value("vibrance_mid", 0f), sh = value("vibrance_shadows", 0f),
                 skinSat = value("skin_sat_shift", 0f);
         if (Math.abs(sat) < 1e-4f && Math.abs(mid) < 1e-4f && Math.abs(sh) < 1e-4f && Math.abs(skinSat) < 1e-4f) return null;
@@ -683,11 +716,12 @@ public final class WhyTone {
         c.tint = PreferenceKeys.hybridValue("colour_tint", 0f);
         c.keepWarm = PreferenceKeys.hybridValue("colour_keep_warm", 0f);
         c.keepCool = PreferenceKeys.hybridValue("colour_keep_cool", 0f);
-        c.skinProtect = PreferenceKeys.hybridValue("colour_skin_protect", 0f);
+        // P419: the one skin protection (0..1 -> the look's 0..100); the look's shadow / light vibrance went into the vibrance (its
+        // rows are gone: "ark_vibrance 0" has their defaults, 0)
+        c.skinProtect = arkVibranceOn() ? 100f * skinProtect() : 0f;
         c.skinHue = PreferenceKeys.hybridValue("colour_skin_hue", 0f);
         c.skinEven = PreferenceKeys.hybridValue("colour_skin_even", 0f);
-        c.vibShadows = PreferenceKeys.hybridValue("colour_vib_shadows", 0f);
-        c.vibHighlights = PreferenceKeys.hybridValue("colour_vib_highlights", 0f);
+        c.protectsVibrance = !arkVibranceOn();
         final String[] parts = {"hue", "sat", "light"};
         for (int b = 0; b < ColourLook.BANDS.length; b++)
             for (int k = 0; k < 3; k++) c.mix[b * 3 + k] = PreferenceKeys.hybridValue("colour_mix_" + ColourLook.BANDS[b] + "_" + parts[k], 0f);

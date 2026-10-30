@@ -157,6 +157,7 @@ public final class SettingsNumericRules {
             case "pref_scam_hybrid_why_curve_boost": return new double[]{0,2,0};
             case "pref_scam_hybrid_why_ms_motion": return new double[]{0,3,0};
             case "pref_scam_hybrid_why_vibrance_saturated": return new double[]{0,1,0};
+            case "pref_scam_hybrid_why_vibrance_hl_str": return new double[]{0,1.5,0};   // P419
             case "pref_scam_hybrid_why_vibrance_mid": return new double[]{-1,1.5,0};
             case "pref_scam_hybrid_why_vibrance_shadows": return new double[]{-1,1,0};
             case "pref_scam_hybrid_why_skin_protect": return new double[]{0,1,0};
