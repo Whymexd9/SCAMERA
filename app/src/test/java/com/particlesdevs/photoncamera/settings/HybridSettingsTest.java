@@ -314,9 +314,6 @@ public class HybridSettingsTest {
         // Motion mode's own Bento (Auto) uses the trigger
         Map<String,Object> m=new HashMap<>();m.put("pref_motion_mode",true);
         assertNull(new SettingsAvailability(m).reason("pref_scam_hybrid_bento_trigger"));
-        prefs.edit().clear().putString("pref_scam_hybrid_dn_strength_map","frames").commit();
-        assertTrue(SettingsMigration.removeObsolete(prefs));
-        assertEquals("auto",prefs.getString("pref_scam_hybrid_dn_strength_map",null));
     }
 
     /**
@@ -458,19 +455,8 @@ public class HybridSettingsTest {
         s.put("pref_scam_hybrid_output","16");
         assertNull(new SettingsAvailability(s).fullResSizes(false,false).reason("pref_scam_hybrid_dn_chroma_2x_keep"));
         assertNotNull("auto 2x keeps its own rule",new SettingsAvailability(new HashMap<>()).fullResSizes(false,true).reason("pref_scam_hybrid_auto2x"));
-        // NLM on a FULLRES 200 MP profile: its shots keep the merge alone
-        Map<String,Object> n=new HashMap<>();n.put("pref_scam_hybrid_dn_engine","nlm");
-        assertNull(new SettingsAvailability(n).reason("pref_scam_hybrid_post_chroma"));
-        assertNotNull(new SettingsAvailability(n).editing200(true).reason("pref_scam_hybrid_post_chroma"));
-        assertNotNull(new SettingsAvailability(n).editing200(true).reason("pref_scam_hybrid_post_luma"));
-        assertNull(new SettingsAvailability(n).editing200(true).reason("pref_scam_hybrid_dn_engine"));
-        // the few-frame boost limit: the multiscale denoise's strength map only, NLM always
-        Map<String,Object> d=new HashMap<>();
-        assertNull(new SettingsAvailability(d).reason("pref_scam_hybrid_bento_denoise_max"));
-        d.put("pref_scam_hybrid_dn_strength_map","uniform");
-        assertNotNull(new SettingsAvailability(d).reason("pref_scam_hybrid_bento_denoise_max"));
-        d.put("pref_scam_hybrid_dn_engine","nlm");
-        assertNull(new SettingsAvailability(d).reason("pref_scam_hybrid_bento_denoise_max"));
+        // P421: the few-frame boost limit has no engine / strength map rows to follow any more
+        assertNull(new SettingsAvailability(new HashMap<>()).reason("pref_scam_hybrid_bento_denoise_max"));
         // the OPPO matrix's saturation is AgX's: greyed under ACES, Uchimura and the own curve, live with every AgX look
         Map<String,Object> t=new HashMap<>();
         assertNull(new SettingsAvailability(t).reason("pref_scam_hybrid_why_ccm_sat"));
@@ -761,14 +747,22 @@ public class HybridSettingsTest {
         prefs.edit().remove("pref_scam_hybrid_profile").commit();
     }
 
-    /** P164: the multiscale finish denoise has its own stored name; a former value becomes it, «nlm» stays. */
-    @Test public void theDenoiseEngineValueTakesItsOwnName() {
-        prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putString("pref_scam_hybrid_dn_engine","former").commit();
+    /**
+     * P421: the hybrid's NLM engine, its two strengths, the manual SNR and «Карта силы» left the menu: their stored values go
+     * once (the finish denoise at its defaults; the last two stay scam_dev keys), every other denoise value stays.
+     */
+    @Test public void theRemovedDenoiseRowsLeaveTheirValuesOnce() {
+        prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putString("pref_scam_hybrid_dn_engine","nlm")
+                .putString("pref_scam_hybrid_post_luma","0.3").putString("pref_scam_hybrid_post_chroma","1.5")
+                .putString("pref_scam_hybrid_dn_snr","40").putString("pref_scam_hybrid_dn_strength_map","uniform")
+                .putString("pref_scam_hybrid_dn_luma_mult","1.4").commit();
         assertTrue(SettingsMigration.migrateScamHybrid(prefs,false));
-        assertEquals("multiscale",prefs.getString("pref_scam_hybrid_dn_engine",""));
-        prefs.edit().putString("pref_scam_hybrid_dn_engine","nlm").commit();
-        SettingsMigration.migrateScamHybrid(prefs,false);
-        assertEquals("nlm",prefs.getString("pref_scam_hybrid_dn_engine",""));
+        for(String k:new String[]{"dn_engine","post_luma","post_chroma","dn_snr","dn_strength_map"})
+            assertFalse(k,prefs.contains("pref_scam_hybrid_"+k));
+        assertEquals("1.4",prefs.getString("pref_scam_hybrid_dn_luma_mult",""));
+        assertEquals("auto",PreferenceKeys.hybridString("dn_strength_map","auto"));
+        assertEquals(0f,PreferenceKeys.hybridValue("dn_snr",0f),0f);
+        assertFalse(SettingsMigration.migrateScamHybrid(prefs,false));
     }
 
     @Test public void p68FormerDefaultsMoveOnce() {
@@ -899,7 +893,7 @@ public class HybridSettingsTest {
         assertTrue(SettingsMigration.migrateScamHybrid(prefs,false));
         assertEquals("hybrid",prefs.getString(PreferenceKeys.ROUTE_KEY,""));
         for(String old:new String[]{"pref_scam_hybrid_enabled","pref_scamroute_enabled","pref_scamhdr_enabled"})assertFalse(old,prefs.contains(old));
-        assertEquals("0.3",prefs.getString("pref_scam_hybrid_post_luma",""));
+        assertFalse("P421: the NLM strength is no row any more",prefs.contains("pref_scam_hybrid_post_luma"));
         assertFalse(prefs.contains("pref_scam_hybrid_bento_factor"));assertFalse(prefs.contains("pref_scam_hybrid_soft_tone"));
         assertFalse(prefs.getBoolean("pref_scam_hybrid_shasta",true));assertEquals("20",prefs.getString("pref_scam_hybrid_output",""));
         assertEquals("20",prefs.getString("pref_scam_hybrid_zsl_frames",""));
@@ -915,7 +909,7 @@ public class HybridSettingsTest {
         // SCAM HDR keeps its own values.
         assertEquals("0.1",prefs.getString("pref_scamhdr_post_luma",""));assertEquals("1.5",prefs.getString("pref_scamhdr_fusion_dark_ev",""));
         assertFalse(SettingsMigration.migrateScamHybrid(prefs,false));
-        assertEquals(.3f,PreferenceKeys.hybridValue("post_luma",.6f),1e-6f);
+        assertEquals(20f,PreferenceKeys.hybridValue("zsl_frames",8f),0f);
         assertEquals(8f,PreferenceKeys.hybridValue("bento_factor",8f),0f);
 
         prefs.edit().clear().putBoolean("pref_scamroute_enabled",true).putBoolean("pref_scamhdr_enabled",true)

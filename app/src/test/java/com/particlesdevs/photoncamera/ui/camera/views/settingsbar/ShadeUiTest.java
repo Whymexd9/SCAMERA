@@ -265,22 +265,22 @@ public class ShadeUiTest {
         assertEquals(ShadeCatalog.VIRTUAL, view.shownKeys().subList(0, ShadeCatalog.VIRTUAL.size()));
         android.widget.EditText search = view.findViewWithTag("shade_catalog_search");
         search.setText("Luma");
-        assertTrue(view.shownKeys().contains("pref_scam_hybrid_post_luma"));
+        assertTrue(view.shownKeys().contains("pref_scam_hybrid_why_ms_luma"));
         assertTrue(view.shownKeys().contains("pref_scam_hybrid_dn_luma_mult"));
         assertFalse(view.shownKeys().contains("pref_show_grid_key"));
         String counter = ((android.widget.TextView) view.findViewWithTag("shade_catalog_count")).getText().toString();
         assertTrue(counter, counter.trim().endsWith(" 7"));   // P167: «in the panel: 7», no «of 12»
-        // P406: the pyramid denoise's luma rows lead the noise page now; the NLM row is further down the results
+        // P406: the pyramid denoise's luma rows lead the noise page (P421: the NLM rows are gone)
         int width = dp(360), height = dp(1400);
         view.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY));
         view.layout(0, 0, width, height);
-        View row = view.findViewWithTag("catalog_row_pref_scam_hybrid_post_luma");
+        View row = view.findViewWithTag("catalog_row_pref_scam_hybrid_why_ms_luma");
         assertNotNull(row);
         row.performClick();
-        assertTrue(sheet.pinnedKeys().contains("pref_scam_hybrid_post_luma"));
+        assertTrue(sheet.pinnedKeys().contains("pref_scam_hybrid_why_ms_luma"));
         assertEquals(sheet.pinnedKeys(), ShadeTiles.stored(prefs));
-        // the NLM and GCam luma rows of one page have distinct names since the settings audit (H5)
-        assertEquals(activity.getString(R.string.shade_added, "NLM denoise: luma"), messages.get(messages.size() - 1));
+        // the luma rows of one page have distinct names since the settings audit (H5)
+        assertEquals(activity.getString(R.string.shade_added, "Overall luminance denoise"), messages.get(messages.size() - 1));
         view.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY));
         view.layout(0, 0, width, height);
         Bitmap image = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
@@ -292,7 +292,7 @@ public class ShadeUiTest {
         }
         // SIMPLE_UI §2: the pinned setting is a tile (no rows of pinned settings under the tiles any more)
         layoutFull();
-        assertTrue(sheet.pinnedKeys().contains("pref_scam_hybrid_post_luma"));
+        assertTrue(sheet.pinnedKeys().contains("pref_scam_hybrid_why_ms_luma"));
         ((View) view.findViewWithTag("shade_catalog_close")).performClick();
         assertEquals(1, closed[0]);
     }

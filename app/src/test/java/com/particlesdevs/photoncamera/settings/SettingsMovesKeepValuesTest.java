@@ -47,7 +47,10 @@ public class SettingsMovesKeepValuesTest {
      * into why_vibrance_shadows / why_vibrance_hl_str once; why_skin_protect is the one protection).
      */
     private static final List<String> REMOVED = java.util.Arrays.asList("photo_style_lut", "pref_scam_hybrid_colour_vib_shadows",
-            "pref_scam_hybrid_colour_vib_highlights", "pref_scam_hybrid_colour_skin_protect");
+            "pref_scam_hybrid_colour_vib_highlights", "pref_scam_hybrid_colour_skin_protect",
+            // P421: the hybrid's NLM engine and its two strengths, the manual SNR and «Карта силы» (scam_dev keys now)
+            "pref_scam_hybrid_dn_engine", "pref_scam_hybrid_post_luma", "pref_scam_hybrid_post_chroma", "pref_scam_hybrid_dn_snr",
+            "pref_scam_hybrid_dn_strength_map");
 
     private static File src(String path) {
         File f = new File(path);

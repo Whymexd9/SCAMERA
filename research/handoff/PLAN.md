@@ -9372,3 +9372,20 @@ emulation), not tried on a phone
   SettingsAvailability greys the other engine's rows). Every hidden scam_dev denoise key in DevKeys is read; every worker tuning
   field the app sends is used.
 - Removed: the strings of the gone «Модель шума сенсора» and «Пирамидальный шумодав» screens (no reference left).
+
+### P421 - the denoise against the reference app's (owner, 2026-10-30: «Сравни с шумодавом арка и проверь что нам можно
+убрать»): DONE in code (unit tests), not tried on a phone
+- The reference app: three stages, ~15 rows - the Sabre resolve denoise in the merge (sabre_denoising_factor 0.4, global / reject
+  luma revert 0.85 / 0.5, grain 0.15; sabre_resolve_denoise.glsl, 3 passes), the pyramid denoise (ms_*: model scale, shadow
+  boost, luma / chroma strength and 3 levels; pyr_laplace_filter_msdenoise.glsl) and the bracket denoise. Its sharpening's
+  chroma denoise of lifted pixels is our why_chroma_denoise.
+- Ours: the same three (ScamDenoise = the resolve denoise with its SNR tier tables, WhyMsDenoise = ms_*, why_bracket_denoise)
+  plus a second engine for the finish (NLM, ScamHdrDenoise) with its own two strengths, and two diagnostics (manual SNR,
+  «Карта силы»). The reference app has no engine choice and no such diagnostics.
+- Removed: «Способ шумодава», «Шумодав NLM: яркость / цвет» (the finish denoise is the one engine; NLM stays its fallback on a
+  failure at the former defaults, and the SCAM HDR route's), the manual SNR and «Карта силы» (scam_dev hybrid_dn_snr,
+  hybrid_dn_strength_map). SettingsMigration drops their stored values once; SettingsAvailability's NLM / 200 MP rules and
+  FullResProfiles.is200 went with them.
+- Kept (with a reason): the tier tables, multipliers and safety rows - they are the resolve denoise's own parameters (the
+  reference app keeps the same tables in code behind its one factor; our «Сила шумоподавления» is that factor); despeckle and the
+  dark fade (the reference app's hot pixels sit in its merge); ms_motion (ours).

@@ -29,8 +29,8 @@ import static android.opengl.GLES20.GL_NEAREST;
  * spectrum like a reference render) instead of a denoiser's cloudy mid-frequency residue.
  * Runs on the white-balanced linear image after ScamRgb.
  * <p>
- * SCAM Hybrid shots go to {@link ScamDenoise} (SCAM 9.6 finish denoise, pref_scam_hybrid_dn_engine = multiscale, default);
- * this NLM route stays the hybrid's "nlm" engine and the SCAM HDR (SCAM) denoise, unchanged.
+ * SCAM Hybrid shots go to {@link ScamDenoise} (SCAM 9.6 finish denoise); this NLM route stays its fallback on a failure (at the
+ * former defaults, P421) and the SCAM HDR (SCAM) denoise, unchanged.
  */
 public final class ScamHdrDenoise extends Node {
     public ScamHdrDenoise() { super("", "ScamHdrDenoise"); }
@@ -216,17 +216,17 @@ public final class ScamHdrDenoise extends Node {
                 return;
             }
         }
-        // SCAM Hybrid shots: the SCAM finish denoise (pref_scam_hybrid_dn_engine = multiscale, default); this NLM route
-        // stays the "nlm" engine and the SCAM HDR (SCAM) denoise. A failure there falls back to the NLM route.
-        // P306: never on a 200 MP shot: its full-grid textures (~3.6 GB) are what P179 took away; the "nlm" engine and a failure of
-        // the 2x2-means denoise leave it the merge alone.
+        // SCAM Hybrid shots: the SCAM finish denoise; this NLM route stays the SCAM HDR (SCAM) denoise. A failure there falls back
+        // to the NLM route.
+        // P306: never on a 200 MP shot: its full-grid textures (~3.6 GB) are what P179 took away; a failure of the 2x2-means
+        // denoise leaves it the merge alone.
         // (a lab fragment of a 200 MP shot as the shot: its whole size)
         final com.particlesdevs.photoncamera.processing.render.Parameters par = pipeline.mParameters;
         final boolean huge = par != null && par.labWholeSize != null ? huge(par.labWholeSize.x, par.labWholeSize.y) : huge(par);
         if (huge && !ScamDenoise.enabledFor(pipeline)) {
             WorkingTexture = previousNode.WorkingTexture;
             glProg.closed = true;
-            Log.i("SCAM_PIPELINE", "denoise skipped: the NLM denoise does not run on a 200 MP shot (pref_scam_hybrid_dn_engine)");
+            Log.i("SCAM_PIPELINE", "denoise skipped: the NLM denoise does not run on a 200 MP shot");
             return;
         }
         if (ScamDenoise.enabledFor(pipeline)) {
@@ -288,7 +288,7 @@ public final class ScamHdrDenoise extends Node {
         }
     }
 
-    /** The NLM route (SCAM HDR shots, or the hybrid with dn_engine = nlm). */
+    /** The NLM route (SCAM HDR shots, or the hybrid's fallback when its finish denoise fails). */
     void runNlm() {
         PostPipeline pipeline = (PostPipeline) basePipeline;
         WorkingTexture = previousNode.WorkingTexture;
@@ -296,14 +296,14 @@ public final class ScamHdrDenoise extends Node {
         // by s and the half/quarter stages run at 1/(2s), 1/(4s), so the processing is the same in sensor
         // pixels on either grid; at s = 1 nothing changes.
         final int s = Math.max(1, Math.round(pipeline.mParameters.outputScale));
-        // The SCAM-hybrid engine has its own strengths («Шумоподавление после склейки» in the hybrid section).
+        // P421: the hybrid's fallback at the former NLM rows' defaults (chroma 1, luma 0.6)
         final boolean hybrid = PreferenceKeys.isHybridShot();
         final float[] darkChroma = ScamDenoise.darkChroma(pipeline.signedRgb);
         // Signed input (the SCAM Hybrid: ScamRgb signedU): chromadn/luma and chromadn/apply clip nothing per pixel (the
         // hybrid clips once, after averaging, downstream); the output may keep negative values, so signedRgb stays set.
         final boolean signed = pipeline.signedRgb;
-        float chroma = Math.max(0f, Math.min(2f, hybrid ? PreferenceKeys.hybridValue("post_chroma", 1f) : PreferenceKeys.routeInternalValue("post_chroma", 1f)));
-        float luma = Math.max(0f, Math.min(2f, hybrid ? PreferenceKeys.hybridValue("post_luma", 0.6f) : PreferenceKeys.routeInternalValue("post_luma", 0.6f)));
+        float chroma = Math.max(0f, Math.min(2f, hybrid ? 1f : PreferenceKeys.scamHdrValue("post_chroma", 1f)));
+        float luma = Math.max(0f, Math.min(2f, hybrid ? 0.6f : PreferenceKeys.scamHdrValue("post_luma", 0.6f)));
         boolean despeckle = hybrid ? PreferenceKeys.hybridSwitch("despeckle", true) : PreferenceKeys.isScamDespeckleEnabled();
         effMax = hybrid ? Math.max(1f, Math.min(12f, PreferenceKeys.hybridValue("bento_denoise_max", 3f))) : 3f;
         if (chroma <= 0f && luma <= 0f && !despeckle) { glProg.closed = true; return; }

@@ -83,7 +83,7 @@ public class ShadeTilesTest {
     @Test
     public void orderSurvivesSaveAndLoad() {
         List<String> order = Arrays.asList("pref_scam_hybrid_cdm", ShadeCatalog.FORMAT, "pref_show_grid_key", ShadeCatalog.FLASH,
-                "pref_scam_hybrid_dn_luma_mult", "pref_scam_hybrid_post_luma");
+                "pref_scam_hybrid_dn_luma_mult", "pref_scam_hybrid_why_ms_luma");
         ShadeTiles.save(prefs, order);
         assertEquals(order, ShadeTiles.stored(prefs));
         assertEquals(order, load());

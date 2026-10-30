@@ -227,10 +227,6 @@ public final class SettingsMigration {
         // the Quad stream is set in «Quad Bayer — совместимость»); a stored one of them becomes «Авто» (-1).
         Object cfa = prefs.getAll().get(CFA_KEY);
         if (cfa != null && isRemovedCfa(cfa)) { e.putString(CFA_KEY, "-1"); changed = true; }
-        // P118: «Карта силы» lost «Карта эффективных кадров» (it did exactly what «Авто» does)
-        if ("frames".equals(prefs.getAll().get("pref_scam_hybrid_dn_strength_map"))) {
-            e.putString("pref_scam_hybrid_dn_strength_map", "auto"); changed = true;
-        }
         // P316: «Радиус окна, px» of the native mosaic lost 5 and 6 (a Tetra T1 window is at most 8 sensor px, which 4 gives
         // already; a Quad window above 3 left the fast native merge): a stored 5 or 6 becomes 4
         Object window = prefs.getAll().get(MOSAIC_WINDOW_KEY);
@@ -851,12 +847,13 @@ public final class SettingsMigration {
             e.putInt(VIBRANCE_REV, 1);
             markOnly = true;
         }
-        // P164: the multiscale finish denoise's stored engine value has its own name; any value but "nlm" is that engine
-        final Object engine = values.get(ScamHybridKeys.PREFIX + "dn_engine");
-        if (engine instanceof String && !"nlm".equals(engine) && !"multiscale".equals(engine)) {
-            e.putString(ScamHybridKeys.PREFIX + "dn_engine", "multiscale");
-            changed = true;
-        }
+        // P421: the hybrid's NLM engine (its choice and two strengths), the manual SNR and «Карта силы» left the menu (the
+        // reference app has the one finish denoise; the last two stay scam_dev keys): their stored values go
+        for (String k : new String[]{"dn_engine", "post_luma", "post_chroma", "dn_snr", "dn_strength_map"})
+            if (values.containsKey(ScamHybridKeys.PREFIX + k) || written.contains(ScamHybridKeys.PREFIX + k)) {
+                e.remove(ScamHybridKeys.PREFIX + k);   // also a value the legacy move above just wrote
+                changed = true;
+            }
         if (changed || markOnly) e.commit();
         return changed;
     }

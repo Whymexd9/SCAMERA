@@ -73,14 +73,6 @@
         <item>2 кадра</item>
         <item>3 кадра</item>
     </string-array>
-    <string-array name="scam_hybrid_dn_engine_entries">
-        <item>Многомасштабный</item>
-        <item>NLM (прежний)</item>
-    </string-array>
-    <string-array name="scam_hybrid_dn_map_entries">
-        <item>Авто (карта кадров, если склейка её дала)</item>
-        <item>Равномерно</item>
-    </string-array>
     <string-array name="scam_hybrid_local_align_entries">
         <item>Выкл.</item>
         <item>Поле по тайлам (по умолчанию)</item>

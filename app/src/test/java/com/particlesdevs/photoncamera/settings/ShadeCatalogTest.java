@@ -294,7 +294,8 @@ public class ShadeCatalogTest {
             assertFalse(key, catalog.isKnown(key));
         // Free text of the hybrid denoise tables is not pinnable.
         for (ShadeCatalog.Entry e : catalog.all()) assertFalse(e.key, e.key.startsWith("pref_scam_hybrid_why_luma_"));
-        assertTrue(catalog.isKnown("pref_scam_hybrid_post_luma"));
+        assertTrue(catalog.isKnown("pref_scam_hybrid_why_ms_luma"));
+        assertFalse("P421: no NLM rows", catalog.isKnown("pref_scam_hybrid_post_luma"));
         assertTrue(catalog.isKnown("pref_jpeg_quality"));
     }
 
@@ -359,11 +360,11 @@ public class ShadeCatalogTest {
         List<ShadeCatalog.Entry> luma = catalog.search("Luma");
         Set<String> keys = new HashSet<>();
         for (ShadeCatalog.Entry e : luma) keys.add(e.key);
-        assertTrue(keys.contains("pref_scam_hybrid_post_luma"));
+        assertTrue(keys.contains("pref_scam_hybrid_why_ms_luma"));
         assertTrue(keys.contains("pref_scam_hybrid_dn_luma_mult"));
         Set<String> cyrillic = new HashSet<>();
         for (ShadeCatalog.Entry e : catalog.search("люма")) cyrillic.add(e.key);
-        assertTrue(cyrillic.contains("pref_scam_hybrid_post_luma"));
+        assertTrue(cyrillic.contains("pref_scam_hybrid_dn_sabre_luma_mult"));   // its English title «Luma denoise: dark scenes»
         Set<String> grid = new HashSet<>();
         for (ShadeCatalog.Entry e : catalog.search("grid")) grid.add(e.key);
         assertTrue(grid.contains("pref_show_grid_key"));

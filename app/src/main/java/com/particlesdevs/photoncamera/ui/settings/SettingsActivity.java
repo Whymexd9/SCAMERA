@@ -1187,12 +1187,6 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             if (!isAdded() || mSettingsManager == null) return;
             com.particlesdevs.photoncamera.settings.SettingsAvailability state =
                     com.particlesdevs.photoncamera.settings.DeviceAvailability.of(mSettingsManager.getDefaultPreferences().getAll());
-            // the main settings hold a FULLRES 200 MP profile (its page, or the camera's while FULLRES is on): no NLM there
-            boolean on200 = false;
-            try {
-                on200 = PreferenceKeys.isPerLensSettingsOn() && com.particlesdevs.photoncamera.settings.FullResProfiles.is200(editedModule());
-            } catch (RuntimeException ignored) { }
-            state.editing200(on200);
             applyAvailability(getPreferenceScreen(), state);
             if (layout != null) SettingsLayoutTree.hideEmpty(layout);   // P385: a group that gave its rows away
         }

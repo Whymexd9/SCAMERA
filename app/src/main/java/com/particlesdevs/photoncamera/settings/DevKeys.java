@@ -322,6 +322,9 @@ public final class DevKeys {
         k.add(s(post, "ccm_signed_hue", true, Lang.t("Цвет за пределами sRGB после матрицы камеры: тон и яркость OKLab по цвету без обрезки каналов (выкл — по обрезанному цвету, как раньше)",
                 "A colour the camera matrix puts outside sRGB: OKLab hue and lightness from the colour before the channel clamp (off: from the clamped colour, as before)")));
         k.add(n(post, "hybrid_dn_luma_grain", "0.5", Lang.t("Шумодав: доля убранного мелкого зерна яркости, которая возвращается (0 — как раньше)", "Denoise: share of the removed fine luma grain that comes back (0: as before)")));
+        // P421: the finish denoise's diagnostics out of the menu
+        k.add(n(post, "hybrid_dn_snr", "0", Lang.t("Шумодав: ручная чистота кадра (SNR), 0 — авто", "Denoise: manual shot cleanness (SNR), 0: auto")));
+        k.add(n(post, "hybrid_dn_strength_map", "0", Lang.t("Шумодав: карта силы — 0 авто, 1 по кадрам, 2 равномерно", "Denoise: strength map - 0 auto, 1 by frames, 2 uniform")));
         k.add(n(post, "hybrid_dn_chroma_day", "0.5", Lang.t("Шумодав цвета днём: множитель при SNR 80 и выше (1 — как раньше; до SNR 20 всегда 1)", "Daylight colour denoise: multiplier at SNR 80 and above (1: as before; up to SNR 20 always 1)")));
         k.add(n(post, "hybrid_dn_dark_chroma_hi", "4", Lang.t("Шумодав: цвет в тенях, верхний порог (x1e-4)", "Denoise: colour in the shadows, upper threshold (x1e-4)")));
         k.add(n(post, "hybrid_dn_dark_chroma_lo", "1.5", Lang.t("Шумодав: цвет в тенях, нижний порог (x1e-4)", "Denoise: colour in the shadows, lower threshold (x1e-4)")));

@@ -1334,12 +1334,11 @@ public class PreferenceKeys {
     }
     /**
      * scam_dev.txt overrides of hybrid list settings for A/B without the menu: "hybrid_&lt;key&gt; i" picks the i-th entry value
-     * (order of arrays.xml), e.g. "hybrid_dn_engine 1" = nlm. Other list keys have their own getters (output, downsampler)
-     * or none.
+     * (order of the list), e.g. "hybrid_dn_strength_map 2" = uniform. Other list keys have their own getters (output,
+     * downsampler) or none.
      */
     private static final Map<String, String[]> HYBRID_DEV_LISTS = new HashMap<>();
     static {
-        HYBRID_DEV_LISTS.put("dn_engine", new String[]{"multiscale", "nlm"});
         HYBRID_DEV_LISTS.put("dn_strength_map", new String[]{"auto", "frames", "uniform"});
     }
     /** SCAM Hybrid text value pref_scam_hybrid_&lt;key&gt; (a ListPreference entry value), {@code fallback} when unset. */
@@ -1426,6 +1425,10 @@ public class PreferenceKeys {
             Float override = hybridDevValue(key);
             return override != null ? override : hybridStored(key, fallback);
         }
+        return scamInternalValue(key, fallback);
+    }
+    /** P421: a SCAM HDR shot's own value pref_scamhdr_&lt;key&gt; (its scam_dev override first), as routeInternalValue reads it there. */
+    public static float scamHdrValue(String key, float fallback) {
         return scamInternalValue(key, fallback);
     }
     private static float scamInternalValue(String key, float fallback) {
