@@ -483,6 +483,7 @@ struct HybridTuning {
     float shastaScopeMax=60.f,shastaScopeFeather=0.75f;
     float shastaScopeWeak=0.05f;  // P392 review: the scope's map also takes the blocks beside a moved one over 4 sigma + this x the level (0 = off)
     int shastaScopeAll=0;         // P392 review: 1 = the scope also on a forced long frame at or below shastaMotionMax (0: kept whole as before; P414: the app sends 1)
+    int rejEdge=0;                // P418: the reject's "no sample beyond the frame" marker, not spread by the dilation (0 = off; the app sends 1)
     int shastaScopeLone=0;        // P414: 1 = with the scope, a moved block only the noise decided and without a moved neighbour stays (shastaMotion lone; the app sends 1)
     // misc
     int snrFixed=0;
@@ -1053,7 +1054,7 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             ||set("bentoPartial",nullptr,&t.bentoPartial)||set("bentoPartialZLo",&t.bentoPartialZLo)||set("bentoPartialZHi",&t.bentoPartialZHi) // P392
             ||set("bentoPartialClose",nullptr,&t.bentoPartialClose)||set("bentoPartialGrow",nullptr,&t.bentoPartialGrow)||set("bentoPartialGuide",nullptr,&t.bentoPartialGuide)
             ||set("bentoPartialPlaus",&t.bentoPartialPlaus)||set("bentoFillReach",&t.bentoFillReach)||set("bentoRefuseShare",&t.bentoRefuseShare)||set("bentoAliasDamp",&t.bentoAliasDamp)||set("bentoPartialEdge",&t.bentoPartialEdge)||set("bentoFillRelax",nullptr,&t.bentoFillRelax)||set("bentoPartialInner",&t.bentoPartialInner)||set("bentoPartialLift",nullptr,&t.bentoPartialLift)||set("bentoPartialOpen",nullptr,&t.bentoPartialOpen)
-            ||set("shastaMotionScope",nullptr,&t.shastaMotionScope)||set("shastaScopeDilate",nullptr,&t.shastaScopeDilate)||set("shastaScopeMax",&t.shastaScopeMax)||set("shastaScopeFeather",&t.shastaScopeFeather)||set("shastaScopeWeak",&t.shastaScopeWeak)||set("shastaScopeAll",nullptr,&t.shastaScopeAll)||set("shastaScopeLone",nullptr,&t.shastaScopeLone)
+            ||set("shastaMotionScope",nullptr,&t.shastaMotionScope)||set("shastaScopeDilate",nullptr,&t.shastaScopeDilate)||set("shastaScopeMax",&t.shastaScopeMax)||set("shastaScopeFeather",&t.shastaScopeFeather)||set("shastaScopeWeak",&t.shastaScopeWeak)||set("shastaScopeAll",nullptr,&t.shastaScopeAll)||set("shastaScopeLone",nullptr,&t.shastaScopeLone)||set("rejEdge",nullptr,&t.rejEdge)
             ||set("bentoUsWeight",&t.bentoUsWeight)||set("bentoUsSigma",&t.bentoUsSigma)||set("bentoFrames",nullptr,&t.bentoFrames)||set("bentoValidate",nullptr,&t.bentoValidate)||set("bentoMotionMax",&t.bentoMotionMax)
             ||set("bentoChromaSigma",&t.bentoChromaSigma)||set("bentoChroma",&t.bentoChroma)||set("dayKernelScale",&t.dayKernelScale)||set("shastaSharpness",&t.shastaSharpness)||set("shastaSharpLo",&t.shastaSharpLo)||set("shastaSharpHi",&t.shastaSharpHi)||set("shastaSat",&t.shastaSat)||set("shastaMaxRatio",&t.shastaMaxRatio)
             ||set("shastaEnable",nullptr,&t.shastaEnable)||set("shastaForce",nullptr,&t.shastaForce)||set("shastaMotionMax",&t.shastaMotionMax)||set("snr",nullptr,&t.snrFixed)||set("snrScale",&t.snrScale)||set("debugFrame",nullptr,&t.debugFrame)
@@ -1883,6 +1884,9 @@ layout(std430,binding=10) readonly buffer Guide{vec4 guide[];};
 uniform int ry0;
 uniform int ry1;
 uniform vec4 rj; // cdm, boost, variance threshold, filter variance scale
+// P418 rejEdge: 1 = a donor cell warped beyond the donor's frame is written as -1 (no sample: weight 0 as before, but kHybDilate
+// does not spread it as motion); 0 = 0 as before
+uniform int rejEdgeU;
 uniform vec4 rk; // boost mode (0 off, 1 local motion, 2 everywhere), motion threshold (RAW px), z: 1 = soft motion prior (P335),
                 // w: 1 = a normal donor clearly darker than a clipped base cell is rejected (P337 clipReject)
 uniform vec2 rp; // P341: x 1 = the distance of the 3 x 3 means (rejPool), y: a single cell's own excess over it (rejPoolT)
@@ -2175,7 +2179,7 @@ void main(){
         }
 #endif
     }
-    rawR[(f-1)*(ry1-ry0)*w2+(cy-ry0)*w2+cx]=w;
+    rawR[(f-1)*(ry1-ry0)*w2+(cy-ry0)*w2+cx]=rejEdgeU!=0&&!inside?-1.0:w;
 }
 )";
 
@@ -2241,8 +2245,9 @@ void main(){
         int y=clamp(cy+dj,ry0,ry1-1),x=clamp(cx+di,0,w2-1);
         float v=rawR[(f-1)*(ry1-ry0)*w2+(y-ry0)*w2+x];
 #endif
-        s+=max(1.0-v-dl.w,0.0)/max(1.0-dl.w,1.0e-3);
-        if(di==0&&dj==0)wc=v;
+        // P418: -1 = no sample beyond the donor's frame (rejEdge): weight 0 here, not spread as motion
+        s+=v<0.0?0.0:max(1.0-v-dl.w,0.0)/max(1.0-dl.w,1.0e-3);
+        if(di==0&&dj==0)wc=max(v,0.0);
     }
     float rej=clamp((s-dl.x)/max(dl.y,1.0e-3),0.0,1.0);
 #ifdef REJ_OPTS
@@ -2270,7 +2275,7 @@ void main(){
                 if(sh<1.0){
                     float acc=0.0;int cnt=0;
                     int yy=clamp(cy,ry0,ry1-1);
-                    for(int j=1;j<frameCount;j++){int role=int(fParam[j].w);if(role==5||role==3)continue;acc+=rawR[(j-1)*(ry1-ry0)*w2+(yy-ry0)*w2+cx];cnt++;}
+                    for(int j=1;j<frameCount;j++){int role=int(fParam[j].w);if(role==5||role==3)continue;acc+=max(rawR[(j-1)*(ry1-ry0)*w2+(yy-ry0)*w2+cx],0.0);cnt++;}
                     r*=mix(cnt>0?acc/float(cnt):1.0,1.0,smoothstep(0.9,1.0,sh));
                 }
             }
@@ -6296,6 +6301,7 @@ public:
         glUniform4f(loc(rejectProgram,"rj"),tune.cdm,tune.boost,tune.varianceThreshold,tune.filterVariance);
         // boost mode 1 needs the Z channel of the local alignment; without it only the forced mode 2 boosts
         const float boostMode=tune.boostEnable>1.5f?2.f:(tune.boostEnable>0.5f&&localAlign?1.f:0.f);
+        glUniform1i(loc(rejectProgram,"rejEdgeU"),tune.rejEdge>0?1:0);
         glUniform4f(loc(rejectProgram,"rk"),boostMode,tune.motionThreshold,tune.rejPrior>0.f?1.f:0.f,tune.clipReject>0.f?1.f:0.f);
         glUniform2f(loc(rejectProgram,"rp"),tune.rejPool>2.5f?3.f:tune.rejPool>1.5f?2.f:tune.rejPool>0.f?1.f:0.f,tune.rejPoolT);
         // P344: the rejection options (all 0 = the program's results as before)

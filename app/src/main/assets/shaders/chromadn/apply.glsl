@@ -35,6 +35,9 @@ uniform vec2 darkChroma;     // colour deviation |RGB - mean| from which a dark 
 uniform int pxStepU;            // outputScale: dilates the fixed 3x3 and +-3 px windows to sensor-pixel units
 uniform float lowRatio;      // full-resolution pixels per Before/After texel (2 * outputScale)
 uniform int signedU;         // 1: signed input (PostPipeline.signedRgb), see above
+// P416: the frame edge's band (output pixels, unset 0: off): the merge's outer ~6 sensor px hold colour blots; a band pixel takes
+// the colour of the band's inner border (the nearest pixel edgeBandU from the edge), the mean of 7 along the edge (as scamdn/cbf)
+uniform int edgeBandU;
 out vec4 Output;
 void main() {
     int pxStep = max(pxStepU, 1); // unset uniform (0) = 1x behaviour
@@ -107,6 +110,16 @@ void main() {
         float dist = length(own - q) / tolC;
         float keep = smoothstep(1.6, 3.0, dist);
         q = mix(q, own, keep);
+    }
+    if (edgeBandU > 0) {
+        ivec2 lastE = textureSize(InputBuffer, 0) - ivec2(1);
+        ivec2 qp = clamp(p, ivec2(edgeBandU), lastE - edgeBandU);
+        if (qp != p && all(greaterThan(lastE, ivec2(2 * edgeBandU)))) {
+            ivec2 along = min(p.y, lastE.y - p.y) <= min(p.x, lastE.x - p.x) ? ivec2(1, 0) : ivec2(0, 1);
+            vec3 a = vec3(0.0);
+            for (int i = -3; i <= 3; i++) a += max(texelFetch(InputBuffer, clamp(qp + along * (i * pxStep), ivec2(0), lastE), 0).rgb, vec3(0.0));
+            q = a / max(dot(a, vec3(1.0 / 3.0)), 1.0e-6);
+        }
     }
     // q has mean 1, so ym * (q - 1) is the colour's deviation from neutral in linear RGB: a colour clearly stronger than
     // a black-level tint (a dark teal curtain) is kept.

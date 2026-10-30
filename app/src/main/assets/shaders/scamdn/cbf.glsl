@@ -34,6 +34,9 @@ uniform float keepU;            // modeU 3: share of the 2x-only colour kept by 
 // edge - a coloured strip on every photo); a band pixel takes the U, V of the band's inner border (the nearest pixel b from the
 // edge), averaged over 2 EDGE_R + 1 pixels along the edge. Y is kept.
 uniform int edgeBandU;
+// P417: the dark colour tier: sigma^2 x mix(1, x, smoothstep(y, z, Y)) - the pass's k (the stronger, dark tier's) at and below
+// Y = y, the day tier's (x = its k / the pass's) from z up; z = 0 (unset): off
+uniform vec3 darkMixU;
 uniform int fadeU;              // modeU 2: colour fades to neutral in the darkest pixels (black-level error)
 uniform vec2 darkFadeU;         // mean RGB where the colour starts to fade / is fully kept
 uniform vec2 darkChromaU;       // fadeU: colour deviation |RGB - mean| from which a dark colour starts to stay / stays
@@ -84,6 +87,7 @@ void main() {
 #else
         float sigma2 = f * (noiseU.x * max(c.x, 0.0) + noiseU.y);
 #endif
+        if (darkMixU.z > 0.0) sigma2 *= mix(1.0, darkMixU.x, smoothstep(darkMixU.y, darkMixU.z, c.x));
         vec2 a0 = vec2(0.0), a1 = vec2(0.0);
         float s0 = 0.0, s1 = 0.0;
         for (int j = -1; j <= 1; j++) {

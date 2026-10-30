@@ -1047,6 +1047,10 @@ public class PreferenceKeys {
         // 2 - 4 x low: the long frames refused in random 1 - 2 cell spots). Replay of the owner's burst: shadow noise -33 %, its
         // spread 0.40 -> 0.28; the vivo hand ghost at 0.0045 unchanged. scam_dev.txt "hybrid_dark_read 0" = before.
         if (hybridValue("dark_read", 1f) > 0f) out.append("noiseDarkRead 1\n");
+        // P418 (owner, 2026-10-30: «Проверь реджекты, возможно из-за них на Oppo x8 Ultra вылазит эта полоса»): a donor cell warped
+        // beyond its frame is no motion: the dilation spread its weight 0 two more cells in (OPPO replay: every N frame refused on
+        // the outer 3 cells, 0.19 / 0.62 on the next two; the band 6 px -> 2 - 4 px). scam_dev.txt "hybrid_rej_edge 0" = before.
+        if (hybridValue("rej_edge", 1f) > 0f) out.append("rejEdge 1\n");
         // P392 (owner, 2026-10-28: «Без отказа целиком. Отсекать только пятна и ячейки, где есть движение ... Замену выбирать по
         // пикселю ... Без швов ... Без ложного движения»): after the P350 set (later lines win in the worker). The ultrashort
         // frames refused per moved region (hysteresis on the noise-normalised check, closed and grown; alias damping of its colour

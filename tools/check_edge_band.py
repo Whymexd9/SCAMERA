@@ -11,6 +11,12 @@ Checks on noisy YUV with colour blots in the band (no filtering, so the pass is 
 - the band's U, V equal numpy's mean of the 7 inner-border pixels (within 1e-6), the corners included;
 - the band's colour noise along the edge is below the interior's and the blots are gone (max |U|, |V| in the band at most the
   inner border's).
+The NLM route (chromadn/apply edgeBandU, hybrid shots on the "nlm" engine or a failed SCAM denoise): unset is bit for bit the
+output without it, pixels at least b from the edges are the same bit for bit, and a band pixel's colour (RGB over its mean) is
+the inner border's 7-pixel mean colour.
+P417, the dark colour tier of scamdn/cbf (darkMixU = (x, y, z): sigma^2 x mix(1, x, smoothstep(y, z, Y))): unset is bit for bit
+the pass without it; with it a pixel at or below y is filtered as the pass alone, one at or above z as the pass with its noise
+x x (the day tier), on a filtering pass over noisy patches at both levels.
 Usage: check_edge_band.py [--shaders DIR] [--report]
 """
 from pathlib import Path
@@ -77,6 +83,84 @@ def draw(textures, uniforms):
     return data
 
 
+def draw_named(name, textures, uniforms):
+    p = ctx.program(vertex_shader=VS, fragment_shader=source(name))
+    out = ctx.texture((W, H), 4, dtype='f4')
+    fbo = ctx.framebuffer([out])
+    fbo.use()
+    ctx.viewport = (0, 0, W, H)
+    for unit, (k, t) in enumerate(textures.items()):
+        t.use(unit)
+        if k in p:
+            p[k].value = unit
+    for k, v in uniforms.items():
+        if k in p:
+            p[k].value = v
+    ctx.vertex_array(p, []).render(vertices=3)
+    ctx.finish()
+    data = np.frombuffer(out.read(), np.float32).astype(np.float64).reshape(H, W, 4)[..., :3]
+    fbo.release(); out.release(); p.release()
+    return data
+
+
+def check_apply(rgb, edge, fails):
+    t = texture(rgb)
+    half = texture(rgb[::2, ::2])
+    eff = ctx.texture((1, 1), 1, np.zeros(1, np.uint8).tobytes(), dtype='u1')
+    tex = {'InputBuffer': t, 'Before': half, 'After': half, 'Noisy': t, 'Clean': t, 'Coarse': half, 'EffMap': eff}
+    base = {'sigma': 0.0, 'lumaAmount': 0.0, 'chromaAmount': 1.0, 'darkFade': (-1.0, -0.5), 'lowRatio': 2.0, 'pxStepU': 1}
+    off = draw_named('chromadn/apply.glsl', tex, base)
+    on = draw_named('chromadn/apply.glsl', tex, dict(base, edgeBandU=B))
+    if not np.array_equal(off, draw_named('chromadn/apply.glsl', tex, dict(base, edgeBandU=0))):
+        fails.append('apply: edgeBandU 0 changes the output')
+    if not np.array_equal(on[edge >= B], off[edge >= B]):
+        fails.append('apply: pixels at least %d px from the edges changed' % B)
+    yy, xx = np.mgrid[0:H, 0:W]
+    qy, qx = np.clip(yy, B, H - 1 - B), np.clip(xx, B, W - 1 - B)
+    along_x = np.minimum(yy, H - 1 - yy) <= np.minimum(xx, W - 1 - xx)
+    a = np.zeros((H, W, 3))
+    for i in range(-R, R + 1):
+        a += np.maximum(rgb[np.clip(qy + np.where(along_x, 0, i), 0, H - 1), np.clip(qx + np.where(along_x, i, 0), 0, W - 1)], 0)
+    want = a / a.mean(-1, keepdims=True)
+    band = edge < B
+    got = on / on.mean(-1, keepdims=True)
+    err = np.abs(got[band] - want[band]).max()
+    if err > 2e-3:
+        fails.append('apply: band colour not the inner border\'s mean (max error %.2e)' % err)
+    if REPORT:
+        print('apply edge band: max colour error %.1e' % err)
+    t.release(); half.release(); eff.release()
+
+
+def check_dark_mix(fails):
+    rng = np.random.default_rng(417)
+    rgb = np.empty((H, W, 3))
+    rgb[:, :W // 2] = 0.001                                    # a deep shadow
+    rgb[:, W // 2:] = 0.05                                     # a mid-tone
+    rgb *= 1 + 0.3 * rng.standard_normal((H, W, 3))
+    yuv = np.stack([rgb @ KY, rgb @ KU, rgb @ KV], -1)
+    t = texture(yuv)
+    tex = {'InputBuffer': t, 'DeltaUV': t, 'Orig': t, 'StrMap': t, 'Grain': t}
+    noise = (2e-4, 4e-8)
+    base = {'strideU': 1, 'filterU': 1, 'useDeltaU': 0, 'useMapU': 0, 'modeU': 0, 'uvsU': (1.0, 1.0), 'thrU': 0.0}
+    full = draw(tex, dict(base, noiseU=noise))
+    day = draw(tex, dict(base, noiseU=(noise[0] * 0.25, noise[1] * 0.25)))
+    if not np.array_equal(full, draw(tex, dict(base, noiseU=noise, darkMixU=(0.0, 0.0, 0.0)))):
+        fails.append('dark tier: darkMixU unset changes the pass')
+    mixed = draw(tex, dict(base, noiseU=noise, darkMixU=(0.25, 0.002, 0.008)))
+    dark, mid = (slice(2, H - 2), slice(2, W // 2 - 2)), (slice(2, H - 2), slice(W // 2 + 2, W - 2))
+    if not np.allclose(mixed[dark], full[dark], atol=1e-7):
+        fails.append('dark tier: the deep shadow is not filtered at the pass\'s (dark tier\'s) strength')
+    dm = np.abs(mixed[mid] - day[mid]).max()
+    if dm > 1e-6 * 0.05:
+        fails.append('dark tier: the mid-tone is not filtered at the day tier\'s strength (max diff %.2e)' % dm)
+    if np.array_equal(full[mid], day[mid]):
+        fails.append('dark tier: the test patch does not tell the two strengths apart')
+    if REPORT:
+        print('dark tier: shadow as the pass, mid-tone as the day tier (max diff %.1e)' % dm)
+    t.release()
+
+
 def expected_uv(yuv):
     yy, xx = np.mgrid[0:H, 0:W]
     qy, qx = np.clip(yy, B, H - 1 - B), np.clip(xx, B, W - 1 - B)
@@ -137,6 +221,8 @@ def main():
                 print('edge band: band colour noise %.2e vs interior %.2e, max band |UV| %.4f (input %.4f)'
                       % (band_noise, in_noise, np.abs(got[band][:, 1:]).max(), np.abs(yuv[band][:, 1:]).max()))
     t.release(); orig.release()
+    check_apply(rgb, edge, fails)
+    check_dark_mix(fails)
     if fails:
         print('FAIL\n' + '\n'.join(fails))
         sys.exit(1)

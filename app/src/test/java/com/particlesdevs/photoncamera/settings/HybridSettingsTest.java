@@ -690,6 +690,7 @@ public class HybridSettingsTest {
                 &&tuning.indexOf("bentoPartial 1\n")>tuning.indexOf("bentoRefuseScope 1\n"));
         assertTrue("P414: the long frames' moved blocks out of every kept long frame",tuning.contains("shastaMotionScope 1\nshastaScopeAll 1\nshastaScopeLone 1\n"));
         assertTrue("P415: the reject's deep-shadow read term",tuning.contains("noiseRoles 1\nshastaNoiseWeight 0.005\nnoiseDarkRead 1\n"));
+        assertTrue("P418: no spread of the frame edge's missing samples",tuning.contains("noiseDarkRead 1\nrejEdge 1\n"));
         assertTrue("P344: the spread floor over the untouched default",tuning.lastIndexOf("dilateFloor ")==tuning.indexOf("dilateFloor 0.35\n"));
         assertEquals(2,PreferenceKeys.getHybridShastaMode());
         assertEquals(20,PreferenceKeys.getHybridZslFrames());

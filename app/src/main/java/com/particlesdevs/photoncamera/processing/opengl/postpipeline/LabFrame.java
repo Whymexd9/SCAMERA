@@ -41,6 +41,8 @@ public final class LabFrame {
     /** P362: the «Inpaint opposed» chrominance of the whole frame (a fragment uses it), null: none measured. */
     @Nullable float[] oppChroma;
     float p50 = Float.NaN, p90 = Float.NaN;
+    /** P417: the dark quantile of the finish input's block means (ScamDenoise's dark colour tier), NaN: none. */
+    float pDark = Float.NaN;
     @Nullable float[] lsc;
     boolean lscNone;
     float lensExpo = Float.NaN;
@@ -83,6 +85,7 @@ public final class LabFrame {
         if (oppChroma != null) o.put("oppChroma", floats(oppChroma));
         put(o, "p50", p50);
         put(o, "p90", p90);
+        put(o, "pDark", pDark);
         if (lsc != null) o.put("lsc", floats(lsc));
         o.put("lscNone", lscNone);
         put(o, "lensExpo", lensExpo);
@@ -116,6 +119,7 @@ public final class LabFrame {
         if (o.has("oppChroma")) f.oppChroma = floats(o.getJSONArray("oppChroma"));
         f.p50 = get(o, "p50");
         f.p90 = get(o, "p90");
+        f.pDark = get(o, "pDark");
         if (o.has("lsc")) f.lsc = floats(o.getJSONArray("lsc"));
         f.lscNone = o.optBoolean("lscNone");
         f.lensExpo = get(o, "lensExpo");
