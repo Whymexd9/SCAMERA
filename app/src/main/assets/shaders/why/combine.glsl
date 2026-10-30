@@ -133,6 +133,16 @@ precision highp int;
 // skin by its own mask (OKLab hue round the skin centre, sigma 0.28 rad, chroma 0.015 .. 0.28, L from the skin's lower luminance)
 // x the skin protection, and the skin's saturation shift; with our vibrance, in scene OKLab. 0: the shader before, token for token.
 #define ARK_VIB 0
+// P419 ARK_VIBRANCE 1 (owner, 2026-10-30: «Исправь настройку вайбранса, можешь взять её из Арк камеры»; WhyCombine and the viewfinder
+// set it): the reference app's vibrance (tonemap_final 4.1 - 4.3) in one gain, in scene OKLab before the tone: x max(0, 1 + boost x
+// (1 - 0.70 skin x protection)), boost = mix(pastel, saturated, smoothstep(0.02, 0.09, chroma)) + sky x (-b / C) + green x (-a / C)
+// + light tones x (L 0.60 .. 0.80 to 0.88 .. 0.98) + mid-tones x (L 0.15 .. 0.35 to 0.55 .. 0.75) + shadows x (L under 0.08 ..
+// 0.25); the skin's own mask (OKLab hue round its centre, sigma 0.28 rad, chroma 0.015 .. 0.28, L from its lower luminance) and its
+// saturation shift. Ours on top of it: the sky term in the sky mask on a clearly blue colour only (P378 C1, the clouds neutral) and
+// the light-tone term not on a near-white's cast (P393: vibHlShapeU's chroma gate); the light tones' term only with TONE_OP 1 (AgX
+// keeps P341's form after it). It replaces the overall / sky / green gain (vibU's protect form), ARK_VIB and «Цвет»'s vibrance by
+// brightness and skin protection of positive gains. 0: the shader before, token for token.
+#define ARK_VIBRANCE 0
 #import interpolation
 uniform sampler2D InputBuffer;      // full-size white-balanced linear camera RGB (the merge after denoising)
 uniform sampler2D GainMap;          // lens shading gains
@@ -155,6 +165,11 @@ uniform float toeU;                 // ACES toe; <= 0 -> 0.05
 uniform float gammaInvU;            // 1 / ef_gamma; <= 0 -> 1 / 2.2
 uniform float macroU;               // OKLab macro contrast; <= 0 -> 1.1
 uniform vec3 vibU;                  // vibrance: overall, sky, green (0 = off)
+#if ARK_VIBRANCE == 1
+uniform vec4 vibArkU;               // P419: saturated, light tones (the reference's strength), mid-tones, shadows
+uniform vec4 vibSkinU;              // P419: skin protection 0..1, the skin hue centre (radians, OKLab), its lower luminance (OKLab L), its
+                                    // saturation shift
+#endif
 #if ARK_VIB == 1
 uniform vec4 arkVibU;               // P404: saturated, mid-tones, shadows, skin protection (0..1)
 uniform vec3 arkSkinU;              // P404: the skin hue centre (radians, OKLab), its lower luminance (OKLab L), its saturation shift
@@ -1247,6 +1262,40 @@ void main() {
     if (abs(macro - 1.0) > 0.001) lab.x = max(0.40 + (lab.x - 0.40) * macro, 0.0001);
 #endif
 #endif
+#if ARK_VIBRANCE == 1
+    float satMult = 1.0;   // the «Цвет» skin keep of positive vibrance below: inside the gain
+    float vibHlK = 1.0;    // the light tones' share of the gain (P393: divided out of the mid rendition)
+    {
+        float cs = max(length(lab.yz), 0.0001);
+        float dth = atan(lab.z, lab.y) - vibSkinU.y;
+        dth = mod(dth + 3.14159265, 6.2831853) - 3.14159265;
+        float skinA = clamp(exp(-0.5 * dth * dth / (0.28 * 0.28)) * smoothstep(0.015, 0.040, cs) * (1.0 - smoothstep(0.18, 0.28, cs))
+                            * smoothstep(vibSkinU.z - 0.06, vibSkinU.z + 0.06, lab.x) * (1.0 - smoothstep(0.88, 0.98, lab.x)), 0.0, 1.0);
+        float boost = mix(vibU.x, vibArkU.x, smoothstep(0.02, 0.09, cs));
+        if (abs(vibU.y) > 0.001 && lab.z < 0.0) {
+#if SKY == 1
+            boost += vibU.y * clamp(-lab.z / cs, 0.0, 1.0) * (skyNeutral > 0.0 ? mix(1.0, skyBlue(lab, cs) * skyMU.w, skyNeutral) : 1.0);
+#else
+            boost += vibU.y * clamp(-lab.z / cs, 0.0, 1.0);
+#endif
+        }
+        if (abs(vibU.z) > 0.001 && lab.y < 0.0) boost += vibU.z * clamp(-lab.y / cs, 0.0, 1.0);
+        float hlT = 0.0;
+#if TONE_OP == 1
+        if (abs(vibArkU.y) > 0.001) {
+            vec4 hlShape = vibHlShape();
+            hlT = vibArkU.y * smoothstep(0.60, 0.80, lab.x) * (1.0 - smoothstep(0.88, 0.98, lab.x)) * smoothstep(hlShape.z, hlShape.w, cs);
+        }
+#endif
+        if (abs(vibArkU.z) > 0.001) boost += vibArkU.z * smoothstep(0.15, 0.35, lab.x) * (1.0 - smoothstep(0.55, 0.75, lab.x));
+        if (abs(vibArkU.w) > 0.001) boost += vibArkU.w * (1.0 - smoothstep(0.08, 0.25, lab.x));
+        float skinMult = mix(1.0, 1.0 - 0.70 * skinA, vibSkinU.x);
+        float gNoHl = max(0.0, 1.0 + boost * skinMult), g = max(0.0, 1.0 + (boost + hlT) * skinMult);
+        vibHlK = gNoHl > 0.000001 ? g / gNoHl : 1.0;
+        lab.yz *= g;
+        if (abs(vibSkinU.w) > 0.001) lab.yz *= max(0.0, 1.0 + vibSkinU.w * skinA);
+    }
+#else
     float sat = max(length(lab.yz), 0.0001);
     float protect = max(1.0 - sat * 2.0, 0.0);
     float satMult = 1.0 + vibU.x * protect;
@@ -1276,8 +1325,13 @@ void main() {
         if (abs(arkSkinU.z) > 0.001) lab.yz *= max(0.0, 1.0 + arkSkinU.z * skinA);
     }
 #endif
+#endif
 #if LIGHT_CHROMA == 1
+#if ARK_VIBRANCE == 1
+    float cPreK = length(lab.yz) / vibHlK;   // P419: the chroma without the light tones' term of the gain (P393)
+#else
     float cPreK = length(lab.yz);   // P393: the chroma before the light tones' vibrance (its gain is divided out of the mid rendition)
+#endif
 #endif
     // P341 (owner, 2026-10-26: «нам нужно получить цвет у неба как у стока, при этом чтобы небо не темнило», «сделай чтобы было
     // лучше чем в стоке»): the AgX shoulder and the path to white take most of a pale bright sky's chroma (the 17:57 sunset at
@@ -1293,11 +1347,14 @@ void main() {
     // config's strength 0.25. Host model of the shot: wallpaper / board sRGB 168 150 121 / 167 142 92 -> 164 151 130 / 159 143 115,
     // ArkCam 162 150 129 / 160 144 118.
     // P393's cast gate kept (a white-balance cast on a near-white not raised; the reference raises it x1.25).
+    // P419 (ARK_VIBRANCE 1): inside the one gain above.
+#if ARK_VIBRANCE == 0
     if (vibHlU > 0.0) {
         vec4 hlShape = vibHlShape();
         lab.yz *= 1.0 + 0.25 * vibHlU * smoothstep(0.60, 0.80, lab.x) * (1.0 - smoothstep(0.88, 0.98, lab.x))
                   * smoothstep(hlShape.z, hlShape.w, length(lab.yz));
     }
+#endif
 #else
 #if SKY == 1
     // P378 (C1): in the sky the neutral gate is 0.015 .. 0.03 - a cloud tinted at chroma 0.004 - 0.012 (the white balance's cast)
@@ -1334,6 +1391,7 @@ void main() {
         float keep = 1.0 - skinU.x * skinW;
         // skin protection: positive vibrance reaches skin only with (1 - protection)
         if (satMult > 1.0 && keep < 1.0) lab.yz *= (1.0 + (satMult - 1.0) * keep) / satMult;
+#if ARK_VIBRANCE == 0   // P419: the gain above has the shadows' and the light tones' terms
         if (vibLU != vec2(0.0)) {
             float mSh = (1.0 - smoothstep(0.25, 0.45, lab.x)) * smoothstep(0.05, 0.12, lab.x);
             float mHl = smoothstep(0.6, 0.8, lab.x) * (1.0 - smoothstep(0.88, 0.98, lab.x));
@@ -1341,6 +1399,7 @@ void main() {
             if (g > 0.0) g *= keep;
             lab.yz *= max(1.0 + g, 0.0);
         }
+#endif
         if (mixOnU == 1) {
             float c = length(lab.yz);
             float h = mod(degrees(atan(lab.z, lab.y)), 360.0);

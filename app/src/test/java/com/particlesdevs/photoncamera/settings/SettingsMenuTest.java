@@ -824,7 +824,7 @@ public class SettingsMenuTest {
         assertNull(new SettingsAvailability(v).reason("pref_scam_hybrid_why_agx_sat"));
         v.put("pref_scam_hybrid_why_agx_look","1");
         assertNotNull(new SettingsAvailability(v).reason("pref_scam_hybrid_why_agx_sat"));
-        for(String k:new String[]{"pref_scam_hybrid_colour_warmth","pref_scam_hybrid_colour_mix_red_hue","pref_scam_hybrid_colour_vib_shadows",
+        for(String k:new String[]{"pref_scam_hybrid_colour_warmth","pref_scam_hybrid_colour_mix_red_hue","pref_scam_hybrid_why_vibrance_hl_str",
                 "pref_scam_hybrid_colour_grade_mids_hue","pref_scam_hybrid_colour_grade_blend"})
             assertNotNull(k+" needs numeric bounds",SettingsNumericRules.bounds(k));
     }
@@ -1548,16 +1548,16 @@ public class SettingsMenuTest {
                 keys(screen.findPreference("colour_ccm_category")));
         assertNull(((androidx.preference.PreferenceGroup)screen.findPreference("colour_wb_category")).findPreference("pref_scam_hybrid_mosaic_wb_mode"));
         for(String key:new String[]{"pref_scam_hybrid_colour_tint","pref_scam_hybrid_colour_keep_warm","pref_scam_hybrid_colour_keep_cool",
-                "pref_scam_hybrid_why_vibrance","pref_scam_hybrid_why_vibrance_sky","pref_scam_hybrid_colour_vib_highlights","colour_mixer_screen",
+                "pref_scam_hybrid_why_vibrance","pref_scam_hybrid_why_vibrance_sky","pref_scam_hybrid_why_vibrance_hl_str","colour_mixer_screen",
                 "pref_scam_hybrid_colour_mix_blue_sat","colour_grading_screen","pref_scam_hybrid_colour_grade_highlights_hue"})
             assertNotNull(key,fine.findPreference(key));
         // P404 / P406: the skin's hue, saturation, mask; the two skin protections sit with the vibrance they hold back
         assertEquals(Arrays.asList("pref_scam_hybrid_colour_skin_hue","pref_scam_hybrid_why_skin_sat_shift","pref_scam_hybrid_why_skin_hue_center",
                 "pref_scam_hybrid_why_skin_luma_min","pref_scam_hybrid_colour_skin_even"),keys(screen.findPreference("colour_skin_category")));
+        // P419: the reference app's eight vibrance rows in its order - one light-tone, one shadow row, one skin protection
         assertEquals(Arrays.asList("pref_scam_hybrid_why_vibrance","pref_scam_hybrid_why_vibrance_saturated","pref_scam_hybrid_why_vibrance_sky",
-                "pref_scam_hybrid_why_vibrance_green","pref_scam_hybrid_colour_vib_highlights","pref_scam_hybrid_why_vibrance_mid",
-                "pref_scam_hybrid_why_vibrance_shadows","pref_scam_hybrid_colour_vib_shadows","pref_scam_hybrid_colour_skin_protect",
-                "pref_scam_hybrid_why_skin_protect"),keys(screen.findPreference("colour_sat_category")));
+                "pref_scam_hybrid_why_vibrance_green","pref_scam_hybrid_why_vibrance_hl_str","pref_scam_hybrid_why_vibrance_mid",
+                "pref_scam_hybrid_why_vibrance_shadows","pref_scam_hybrid_why_skin_protect"),keys(screen.findPreference("colour_sat_category")));
         // the merge: the burst's frames lead «Склейка», as the reference app's frame count
         assertEquals(Arrays.asList("pref_scam_hybrid_zsl_frames","pref_scam_hybrid_fullres50_frames","pref_scam_hybrid_fullres50_zsl",
                 "pref_scam_hybrid_fullres200_frames","pref_zsl_buffer_count_key","scam_hybrid_motion_screen"),

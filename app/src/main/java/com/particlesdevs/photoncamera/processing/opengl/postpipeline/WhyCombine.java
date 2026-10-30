@@ -231,6 +231,8 @@ public final class WhyCombine extends Node {
             if (WhyTone.gammaType() != 0) glProg.setDefine("GAMMA_TYPE", WhyTone.gammaType());   // P404: the display standard
             final float[][] arkVib = WhyTone.arkVibrance();
             if (arkVib != null) glProg.setDefine("ARK_VIB", 1);   // P404: saturated / mid / shadow vibrance, the skin's own mask
+            final boolean arkVibrance = WhyTone.arkVibranceOn();
+            if (arkVibrance) glProg.setDefine("ARK_VIBRANCE", 1);   // P419: the reference app's vibrance in one gain
             if (WhyTone.edgeHold() > 0f && !st.inputReleased) glProg.setDefine("EDGE_HOLD", 1);   // P394 (the full-size merge)
             skyLog = st.sky == null ? "" : " sky=" + Math.round(100f * st.skyMask.coverage) + "%" + (st.skyMask.keep < 1f
                     ? " backlit (level x" + Math.round(100f * st.skyMask.keep) / 100f + ")" : "");
@@ -315,6 +317,10 @@ public final class WhyCombine extends Node {
             if (arkVib != null) {
                 glProg.setVar("arkVibU", arkVib[0]);
                 glProg.setVar("arkSkinU", arkVib[1]);
+            }
+            if (arkVibrance) {
+                glProg.setVar("vibArkU", WhyTone.vibranceArkUniform());
+                glProg.setVar("vibSkinU", WhyTone.vibranceSkinUniform());
             }
             // P216: real Bento headroom above the capped clip - WhyCam 1.58's shoulder, the landing on the real ceiling and the
             // highlight detail (not when the full-size image is gone: InputBuffer is then the sharpened luma)

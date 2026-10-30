@@ -9343,3 +9343,23 @@ emulation), not tried on a phone
 - kHybReject writes -1 there with rejEdge 1 (sent by the app), kHybDilate does not spread it (its own weight stays 0); the merge
   kernel untouched. Replay: the band 6 px -> 2 - 4 px (luma 2.5 x -> 1.2 - 1.45 x beyond 2 px), 16+ px in bit for bit (40+ px:
   float rounding); the vivo hand burst unchanged. Check: tools/check_hybrid_stages.cpp (cells 2 - 3 from the edge 0.49 -> 0.98).
+
+### P419 - the vibrance as in the reference app (owner, 2026-10-30: «Исправь настройку вайбранса, можешь взять её из Арк камеры.
+Так же остальные настройки цвета проверь и исправь»): DONE in code (host GL check), not tried on a phone
+- Ours was four stacked forms: the overall / sky / green gain tapered by (1 - 2 chroma) (a colour at chroma 0.1 kept 0.8 of
+  «Сочность»), P404's saturated / mid / shadow terms behind ARK_VIB with a skin protection of their own, P341 / P407's light tones
+  behind a hidden factor and «Цвет»'s shadow / light vibrance with a second skin protection (0 by default: the sky and green gains
+  reached faces). The visible «Сочность бледных светов» was a different term from the light tones' vibrance the photo used.
+- why/combine ARK_VIBRANCE 1 (WhyCombine and the viewfinder): the reference's tonemap_final 4.1 - 4.3 in one gain in scene OKLab,
+  x max(0, 1 + boost x (1 - 0.70 skin x protection)); boost = mix(pastel, saturated, smoothstep(0.02, 0.09, C)) + sky (-b / C) +
+  green (-a / C) + light tones (TONE_OP 1; L 0.60 .. 0.80 to 0.88 .. 0.98, P393's cast gate) + mid-tones + shadows; the skin's mask
+  (hue sigma 0.28 rad) and saturation shift. Ours kept: the sky term in the sky mask on a clearly blue colour only (P378 C1). AgX
+  (TONE_OP 0) keeps P341's light-tone form after the gain.
+- Rows: «Сочность», «Сочность насыщенных», неба, зелени, «Сочность в светах» (why_vibrance_hl_str, the reference's 0..1.5, 0.25),
+  средних тонов, теней, «Защита кожи в сочности» (1 by default, also the look's protection of positive gains). Removed:
+  colour_vib_shadows / colour_vib_highlights / colour_skin_protect; SettingsMigration adds a set value to the shadows / light rows
+  once (VIBRANCE_REV). scam_dev "ark_vibrance 0" = the forms before, token for token.
+- Colour rows checked: CCM gains, cct_sat, calibration, warmth / tint / keep warm / cool, skin hue / evenness are wired as shown;
+  «Насыщенность матрицы» acts under AgX only (its summary says so).
+- Check: tools/check_ark_vibrance.py (every strength 0 bit for bit no vibrance under SKY 0 / 1, TONE_OP 0 / 1; each term on its
+  colours; the skin's share of the gain 0.30 with protection 1, 1.0 with 0; the light tones not on a near-white's cast).

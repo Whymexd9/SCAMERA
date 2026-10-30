@@ -237,6 +237,8 @@ public final class LiveWhyTone {
     private int gammaType;
     /** P404: the reference app's vibrance terms (ARK_VIB), as WhyCombine sets them; null: none. */
     private float[][] arkVib;
+    /** P419: the reference app's vibrance (ARK_VIBRANCE), as WhyCombine sets it; null: off. */
+    private float[] vibArk, vibSkin;
     private float[] vib = new float[3];
     /** P393: the light-tone vibrance's shape for pale colour, as WhyCombine sets it. */
     private float[] vibHlShape = WhyTone.VIBRANCE_HL_SHAPE.clone();
@@ -538,6 +540,8 @@ public final class LiveWhyTone {
         inset = WhyTone.insetStrength();
         gammaType = WhyTone.gammaType();
         arkVib = WhyTone.arkVibrance();
+        vibArk = WhyTone.arkVibranceOn() ? WhyTone.vibranceArkUniform() : null;
+        vibSkin = vibArk != null ? WhyTone.vibranceSkinUniform() : null;
         FusedCurve.GAMMA_TYPE[0] = gammaType;
         // P378 review: the lens' f-number (the sky's absolute EV), as Parameters reads it
         float[] apertures = camera != null ? camera.get(android.hardware.camera2.CameraCharacteristics.LENS_INFO_AVAILABLE_APERTURES) : null;
@@ -1002,6 +1006,10 @@ public final class LiveWhyTone {
             GLES20.glUniform4f(loc(p, "arkVibU"), arkVib[0][0], arkVib[0][1], arkVib[0][2], arkVib[0][3]);
             GLES20.glUniform3f(loc(p, "arkSkinU"), arkVib[1][0], arkVib[1][1], arkVib[1][2]);
         }
+        if (vibArk != null) {   // P419, as the photo
+            GLES20.glUniform4f(loc(p, "vibArkU"), vibArk[0], vibArk[1], vibArk[2], vibArk[3]);
+            GLES20.glUniform4f(loc(p, "vibSkinU"), vibSkin[0], vibSkin[1], vibSkin[2], vibSkin[3]);
+        }
         if (skyOnDraw) {
             // P378 review: the photo's sky term (WhyCombine) on the shown cells - the level share eased (0 backlit), the tops in this
             // frame's log2 Y
@@ -1113,6 +1121,7 @@ public final class LiveWhyTone {
         if (inset < 0.999f) defs.add(new String[]{"AGX_INSET", "1"});   // P402, as the photo
         if (gammaType != 0) defs.add(new String[]{"GAMMA_TYPE", String.valueOf(gammaType)});   // P404, as the photo
         if (arkVib != null) defs.add(new String[]{"ARK_VIB", "1"});   // P404, as the photo
+        if (vibArk != null) defs.add(new String[]{"ARK_VIBRANCE", "1"});   // P419, as the photo
         // P369: a film's scene table (FILM_SIM) or the chosen LUT (FILM_LUT), never both
         if (lutOn) defs.add(new String[]{scene ? "FILM_SIM" : "FILM_LUT", "1"});
         // P378 review: the sky term (the photo's SKY, its cells from LiveSky)

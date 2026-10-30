@@ -1144,6 +1144,25 @@ public class HybridSettingsTest {
         assertEquals("the former 1.0","1.1",prefs.getString("pref_scam_hybrid_why_cct_sat",""));
     }
 
+    @Test public void lookVibranceMovesIntoTheReferenceRowsOnce() {
+        // P419: «Цвет»'s shadow / light vibrance add to the reference app's rows once, its skin protection goes (why_skin_protect stays)
+        prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putInt("pref_scam_hybrid_defaults_rev",7)
+                .putInt(SettingsMigration.CONFIG_DEFAULTS_REV,1).putInt(SettingsMigration.CCT_SAT_REV,1)
+                .putString("pref_scam_hybrid_colour_vib_shadows","0.3").putString("pref_scam_hybrid_why_vibrance_shadows","-0.1")
+                .putString("pref_scam_hybrid_colour_vib_highlights","0.5").putString("pref_scam_hybrid_colour_skin_protect","40")
+                .putString("pref_scam_hybrid_why_skin_protect","0.8").commit();
+        assertTrue(SettingsMigration.migrateScamHybrid(prefs,false));
+        assertEquals(0.2,PreferenceNumber.read(prefs.getAll().get("pref_scam_hybrid_why_vibrance_shadows"),9),1e-6);
+        assertEquals(0.75,PreferenceNumber.read(prefs.getAll().get("pref_scam_hybrid_why_vibrance_hl_str"),9),1e-6);
+        assertEquals("0.8",prefs.getString("pref_scam_hybrid_why_skin_protect",""));
+        for(String k:new String[]{"pref_scam_hybrid_colour_vib_shadows","pref_scam_hybrid_colour_vib_highlights","pref_scam_hybrid_colour_skin_protect"})
+            assertFalse(k,prefs.contains(k));
+        assertEquals(1,prefs.getInt(SettingsMigration.VIBRANCE_REV,0));
+        prefs.edit().putString("pref_scam_hybrid_why_vibrance_hl_str","1.2").commit();
+        SettingsMigration.migrateScamHybrid(prefs,false);
+        assertEquals("once: a later value stays","1.2",prefs.getString("pref_scam_hybrid_why_vibrance_hl_str",""));
+    }
+
     @Test public void cellClipFormerDefaultMovesOffOnce() {
         // P394: a stored «Клип ячейки 2×2 целиком» on (the former XML default) moves off once; turned on after the move it stays
         prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putInt("pref_scam_hybrid_defaults_rev",7)
