@@ -9268,3 +9268,25 @@ wallpaper, speakers, board): DONE
   colour_expert_category, expert_module_ids, noise_model_screen) are removed: each row exists once. «Камеры и линзы» holds the
   module pages only (ModulePageFilter.NOT_MODULE: a module's photo page hides it, the settings order does not move rows into it).
   Search opens the lens page of the row's slot (or the active module).
+- (owner, 2026-10-30: «учитывай что у нас могут быть настройки которых в Арк нет, если они подходят по смыслу, то мы их тоже
+  переносим») LensPage puts the module's generated sensor rows in the reference app's sections: the ISP stream, the RAW frame rate,
+  its check and the RAW viewfinder size under «Формат RAW»; the manual black / white levels under «Уровни»; OIS and the session
+  type under «Управление ISP и оптикой»; the camera keys, the sensor mode and the reset stay in «Ключи камеры (вендор-теги)». The
+  page's header names the module (label · ID, shared with its FULLRES shots). The face detection, metering and tap AE of the
+  reference's page are shared settings here (global), so they stay where they are.
+
+### P414 - the long (Shasta) frames' reject map after P409 / P410 (owner, 2026-10-30: «Мне кажется стоит обновить карту реджекта для
+шаста кадров»): DONE in code (host replays), not tried on a phone
+- Replays (window burst: OPPO, 3 L static; m014303: vivo room, moving hand, 3 L; m234300: PC LEDs, hand, 2 L): the P392 map
+  (shastaMotion's 15 % + 4 sigma block test) took the hands whole, no fringe against the merges without L.
+- Gap 1: a kept long frame at or below shastaMotionMax (4 %) merged whole, its moved blocks too (window burst 2.8 %: branches
+  behind the glass). The app now sends shastaScopeAll 1.
+- Gap 2: lone moved blocks only the noise decided (4 sigma above 15 % of the level in every colour, no moved neighbour) cut the
+  long frame out in spots on static dark surfaces (window burst: 137 of the 150 moved blocks below 2^-8; m234300: 37 % of the dark
+  ones, a wall) - where the deep-shadow long frames matter most. Worker shastaScopeLone 1 (sent by the app) leaves them in the
+  merge and out of the moved share. Flat shadow noise -1 .. -4 % on the hand bursts, the hand crops unchanged (no ghost).
+- Measured and not taken: a per-block detail test against motion blur (empirical noise floors, relative to the frame's median
+  detail): 0.2 - 0.3 % more blocks on the replays, nearly nothing beyond the mean test on a synthetic smear; the noise / offset
+  from the burst instead of the models (the median offset hid the LED burst's real colour change, the MAD of a level band full
+  of hand lost 50 - 80 % of its blocks); 2 x 2 pooled blocks in deep shadows (read black-level offsets of a static wall as motion).
+- scam_dev "hybrid_long_scope 0" takes all three lines out (as before P392).

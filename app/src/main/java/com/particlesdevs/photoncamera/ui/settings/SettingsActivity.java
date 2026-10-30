@@ -338,6 +338,8 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                 // keep their full rebind)
                 generateSensorConfigPreferences();
                 moduleRows = ModuleRows.build(moduleHost, getPreferenceScreen(), module, sensorSelection);
+                if (ModuleRows.LENS.equals(rootKey) && sensorSelection != null)
+                    LensPage.arrange(getPreferenceScreen(), sensorSelection.selected(), getString(R.string.pref_cfa_key));
                 getPreferenceManager().setPreferenceComparisonCallback(new PreferenceManager.SimplePreferenceComparisonCallback());
             }
             // «Для разработчика»: the hidden scam_dev.txt lines (DevKeys), edited in the file itself
@@ -578,6 +580,14 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                     header.subtitle.setText(size != null ? Lang.t(getContext(), "Действует, когда включён FULLRES " + size, "Applies while FULLRES " + size + " is on")
                             : !com.particlesdevs.photoncamera.settings.FullResProfiles.variants(slot).isEmpty() ? Lang.t(getContext(), "Действует без FULLRES", "Applies without FULLRES")
                             : Lang.t(getContext(), "Только настройки этого модуля", "This module's own settings"));
+                    header.subtitle.setVisibility(View.VISIBLE);
+                } else if (screen != null && ModuleRows.LENS.equals(screen.getKey())) {
+                    // P413: the lens page names its module (its sensor rows are the module's, shared with its FULLRES shots)
+                    String id = com.particlesdevs.photoncamera.settings.FullResProfiles.label(module) + " · ID "
+                            + com.particlesdevs.photoncamera.settings.ModuleRegistry.camera(slot);
+                    header.subtitle.setText(com.particlesdevs.photoncamera.settings.FullResProfiles.isVariant(module)
+                            || !com.particlesdevs.photoncamera.settings.FullResProfiles.variants(slot).isEmpty()
+                            ? id + "\n" + getString(R.string.module_sensor_shared, com.particlesdevs.photoncamera.settings.ModuleRegistry.label(slot)) : id);
                     header.subtitle.setVisibility(View.VISIBLE);
                 }
                 chip = PreferenceKeys.isPerLensSettingsOn()

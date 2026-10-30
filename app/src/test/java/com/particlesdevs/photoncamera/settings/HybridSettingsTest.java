@@ -655,7 +655,7 @@ public class HybridSettingsTest {
             java.nio.file.Files.write(file.toPath(),"hybrid_long_scope 0\n".getBytes(java.nio.charset.StandardCharsets.UTF_8));
             stamp.setLong(null,-1);
             t=PreferenceKeys.hybridTuningText();
-            assertFalse(t,t.contains("shastaMotionScope"));
+            assertFalse(t,t.contains("shastaMotionScope")||t.contains("shastaScopeAll")||t.contains("shastaScopeLone"));
             assertTrue(t,t.contains("bentoPartial 1\nbentoAliasDamp 1\n"));
         }finally{
             java.nio.file.Files.deleteIfExists(file.toPath());
@@ -683,6 +683,7 @@ public class HybridSettingsTest {
         assertTrue("P392: partial ultrashort refusal and the long frames' block scope, after the P350 set",
                 tuning.contains("bentoPartial 1\nbentoAliasDamp 1\n")&&tuning.contains("shastaMotionScope 1\n")
                 &&tuning.indexOf("bentoPartial 1\n")>tuning.indexOf("bentoRefuseScope 1\n"));
+        assertTrue("P414: the long frames' moved blocks out of every kept long frame",tuning.contains("shastaMotionScope 1\nshastaScopeAll 1\nshastaScopeLone 1\n"));
         assertTrue("P344: the spread floor over the untouched default",tuning.lastIndexOf("dilateFloor ")==tuning.indexOf("dilateFloor 0.35\n"));
         assertEquals(2,PreferenceKeys.getHybridShastaMode());
         assertEquals(20,PreferenceKeys.getHybridZslFrames());

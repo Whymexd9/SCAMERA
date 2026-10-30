@@ -1489,9 +1489,10 @@ public class SettingsMenuTest {
         // «Camera ID модулей» and «Сенсор по модулям» are gone (their rows live there or in the module's card)
         assertEquals(Arrays.asList("modules_screen","pref_xiaomi_smooth_zoom"),keys(screen.findPreference("root_lenses")));
         assertEquals(Arrays.asList("root_modules","lens_screen"),keys(screen.findPreference("modules_screen")));
-        assertEquals(Arrays.asList("expert_module_sensor","lens_raw_category","lens_levels_category","lens_colour_category","lens_noise_category"),
-                keys(screen.findPreference("lens_screen")));
-        for(String group:new String[]{"root_modules","expert_module_sensor"})
+        // the module's generated sensor rows go to RAW / levels / «Управление ISP и оптикой» on the page (LensPage); its camera keys last
+        assertEquals(Arrays.asList("lens_raw_category","lens_levels_category","lens_colour_category","lens_noise_category","lens_isp_category",
+                "expert_module_sensor"),keys(screen.findPreference("lens_screen")));
+        for(String group:new String[]{"root_modules","expert_module_sensor","lens_isp_category"})
             assertEquals(group,0,((androidx.preference.PreferenceGroup)screen.findPreference(group)).getPreferenceCount());
         assertEquals(Arrays.asList("pref_fullres_hw_remosaic","pref_raw_stream_format","pref_cfa_key","raw_crop_screen"),keys(screen.findPreference("lens_raw_category")));
         assertEquals(Arrays.asList("pref_raw_black_from_data","pref_raw_lsc_mode","expert_sensor_screen"),keys(screen.findPreference("lens_levels_category")));

@@ -229,7 +229,7 @@ public final class LiveWhyTone {
     private float yellowHue;
     /** P398: a pale light tone towards white (hlNeutralU), as WhyCombine sets it. */
     private float hlNeutral;
-    /** P402: the v2.07 fusion layout's base of the tone (ARK_BASE), as WhyCombine sets it. */
+    /** P402: the reference fusion layout's base of the tone (ARK_BASE), as WhyCombine sets it. */
     private boolean arkBase;
     /** P402: the AgX inset's strength (AGX_INSET below 1), as WhyCombine sets it. */
     private float inset = 1f;

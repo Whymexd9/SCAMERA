@@ -10,7 +10,6 @@
         <!-- P413 (owner, 2026-10-30: «Сделай настройки линз аналогично Арк, убедись что настройки нигде не дублируются»): one lens
          module's page (a module card's «Настройки линзы»: SettingsFragment.modulePage(slot, lens_screen)), the reference app's
          sections; hidden from the page itself -->
-        <PreferenceCategory android:key="expert_module_sensor" android:title="@string/prefs_lens_sensor_category_title" android:summary="@string/prefs_expert_module_sensor_summary" app:iconSpaceReserved="false" />
         <PreferenceCategory android:key="lens_raw_category" android:title="@string/prefs_lens_raw_category_title" app:iconSpaceReserved="false">
           <SwitchPreferenceCompat android:key="pref_fullres_hw_remosaic" android:title="@string/prefs_fullres_hw_remosaic_title" android:defaultValue="false" app:iconSpaceReserved="false" android:summary="@string/prefs_fullres_hw_remosaic_summary" android:icon="@drawable/settings_ic_mosaic" />
           <ListPreference android:key="pref_raw_stream_format" android:title="@string/prefs_raw_stream_format_title" android:defaultValue="auto" android:entries="@array/raw_stream_format_entries" android:entryValues="@array/raw_stream_format_values" android:summary="@string/prefs_raw_stream_format_summary" android:icon="@drawable/settings_ic_chip" />
@@ -48,6 +47,10 @@
           <Preference android:key="pref_noise_model_export_key" android:title="@string/noise_model_export" android:summary="@string/noise_model_export_summary" />
           <Preference android:key="noise_model_note" android:summary="@string/prefs_noise_model_note_summary" android:selectable="false" />
         </PreferenceCategory>
+        <!-- P413: the module's generated sensor rows go to their section on this page (LensPage): RAW stream, levels, ISP and
+             optics; the camera keys (vendor tags), the sensor mode and the reset stay in the module's category below -->
+        <PreferenceCategory android:key="lens_isp_category" android:title="@string/prefs_lens_isp_category_title" app:iconSpaceReserved="false" />
+        <PreferenceCategory android:key="expert_module_sensor" android:title="@string/prefs_lens_keys_category_title" android:summary="@string/prefs_lens_keys_category_summary" app:iconSpaceReserved="false" />
       </PreferenceScreen>
     </PreferenceScreen>
     <SwitchPreferenceCompat android:key="pref_xiaomi_smooth_zoom" android:title="@string/prefs_xiaomi_smooth_zoom_title" android:defaultValue="true" app:iconSpaceReserved="false" android:summary="@string/prefs_xiaomi_smooth_zoom_summary" android:icon="@drawable/settings_ic_zoom" />

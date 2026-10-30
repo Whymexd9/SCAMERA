@@ -339,6 +339,13 @@ public class ModuleProfilesPageTest {
         return lens;
     }
 
+    private static List<String> texts(View v) {
+        List<String> out = new ArrayList<>();
+        if (v instanceof TextView && v.isShown()) out.add(String.valueOf(((TextView) v).getText()));
+        if (v instanceof ViewGroup) for (int i = 0; i < ((ViewGroup) v).getChildCount(); i++) out.addAll(texts(((ViewGroup) v).getChildAt(i)));
+        return out;
+    }
+
     private static boolean shown(Preference p) {
         for (Preference q = p; q != null; q = q.getParent()) if (!q.isVisible()) return false;
         return true;
@@ -391,7 +398,7 @@ public class ModuleProfilesPageTest {
         assertFalse(shown(root.findPreference("root_lenses")));
         PreferenceGroup lens = lensPage("back0");
         assertTrue(shown(lens.findPreference(ModulePageFilter.SENSOR_GROUP)));
-        assertEquals("This module's sensor", String.valueOf(lens.findPreference(ModulePageFilter.SENSOR_GROUP).getTitle()));
+        assertEquals("Camera keys (vendor tags)", String.valueOf(lens.findPreference(ModulePageFilter.SENSOR_GROUP).getTitle()));
         for (String key : new String[]{"pref_raw_stream_format", "pref_cfa_key", "pref_raw_black_from_data", "pref_dcp_profile_key",
                 "pref_color_method_key", "pref_scam_hybrid_why_ccm_profile", "pref_noise_model_profile_key"})
             assertTrue("the lens page's " + key, shown(lens.findPreference(key)));
@@ -450,8 +457,26 @@ public class ModuleProfilesPageTest {
             assertEquals("back1@full200", lens.moduleProfile());
             PreferenceGroup sensor = lens.findPreference(ModulePageFilter.SENSOR_GROUP);
             assertTrue(shown(sensor));
-            assertEquals("This module's sensor", String.valueOf(sensor.getTitle()));
-            assertTrue(String.valueOf(sensor.getSummary()), String.valueOf(sensor.getSummary()).contains("Shared by “3×” and its FULLRES shots"));
+            assertEquals("Camera keys (vendor tags)", String.valueOf(sensor.getTitle()));
+            // P413: the page names its module; the module's sensor rows sit in the sections of their meaning
+            String id = FullResProfiles.label("back1@full200") + " · ID " + ModuleRegistry.camera("back1");
+            assertTrue(texts(activity.getWindow().getDecorView()).toString(),
+                    texts(activity.getWindow().getDecorView()).contains(id + "\nShared by “3×” and its FULLRES shots"));
+            String[][] sections = {{"lens_raw_category", "ispsurface"}, {"lens_raw_category", "rawfps"}, {"lens_raw_category", "rawviewfinder"},
+                    {"lens_levels_category", "blackleveloverride"}, {"lens_levels_category", "whiteleveloverride"},
+                    {"lens_isp_category", "sessiontype"}};
+            for (String[] s : sections) {
+                Preference row = lens.findPreference("pref_sensorconfig_back1_" + s[1]);
+                assertNotNull(s[1], row);
+                assertEquals(s[1], s[0], row.getParent().getKey());
+                assertTrue(s[1], shown(row));
+            }
+            Preference raw = lens.findPreference("lens_raw_category");
+            List<String> rawRows = new ArrayList<>();
+            for (int i = 0; i < ((PreferenceGroup) raw).getPreferenceCount(); i++) rawRows.add(((PreferenceGroup) raw).getPreference(i).getKey());
+            rawRows.sort((a, b) -> Integer.compare(lens.findPreference(a).getOrder(), lens.findPreference(b).getOrder()));
+            assertEquals(rawRows.toString(), rawRows.indexOf("pref_cfa_key") + 1, rawRows.indexOf("pref_sensorconfig_back1_ispsurface"));
+            assertEquals(rawRows.toString(), rawRows.size() - 1, rawRows.indexOf("raw_crop_screen"));
             List<String> shownCategories = new ArrayList<>();
             for (int i = 0; i < sensor.getPreferenceCount(); i++)
                 if (sensor.getPreference(i) instanceof androidx.preference.PreferenceCategory && sensor.getPreference(i).isVisible())

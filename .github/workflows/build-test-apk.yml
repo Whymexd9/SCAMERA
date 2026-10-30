@@ -125,7 +125,7 @@ jobs:
           LIBGL_ALWAYS_SOFTWARE=1 /tmp/tetra-gpu-check/bin/python tools/check_purple_fringe.py
           # P400: a daylit window's mid-tones under its sky darker in a room (the room, the sky, a backlit face, a sunlit sill bit for bit)
           LIBGL_ALWAYS_SOFTWARE=1 /tmp/tetra-gpu-check/bin/python tools/check_why_window.py
-          # P402: the reference app v2.07's settings ported (the tone's inset / shoulder strength / base, the pyramid denoise, the dezipper)
+          # P402: the reference app's settings ported (the tone's inset / shoulder strength / base, the pyramid denoise, the dezipper)
           LIBGL_ALWAYS_SOFTWARE=1 /tmp/tetra-gpu-check/bin/python tools/check_why_v207.py
           LIBGL_ALWAYS_SOFTWARE=1 /tmp/tetra-gpu-check/bin/python tools/check_ms_denoise.py
           LIBGL_ALWAYS_SOFTWARE=1 /tmp/tetra-gpu-check/bin/python tools/check_hybrid_dezipper.py

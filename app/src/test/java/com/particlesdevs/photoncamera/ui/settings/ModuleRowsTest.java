@@ -660,6 +660,7 @@ public class ModuleRowsTest {
             shotWhole(lens, "p413-lens-back1-ru");
             shotAt(lens, "pref_sensorconfig_back1_ispsurface", "p413-lens-back1-keys-ru");
             shotAt(lens, "lens_colour_category", "p413-lens-back1-colour-ru");
+            shotAt(lens, "lens_isp_category", "p413-lens-back1-isp-ru");
             activity.getOnBackPressedDispatcher().onBackPressed();
             root = root(activity);
             prefs.edit().putString("module_id_back1", "7").commit();
